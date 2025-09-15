@@ -1,5 +1,9 @@
 const STATE = require('../src/node_modules/STATE')
 const statedb = STATE(__filename)
+const admin_api = statedb.admin()
+admin_api.on(event => {
+  console.log(event)
+})
 const { sdb, io } = statedb(fallback_module)
 const { drive, admin } = sdb
 /******************************************************************************
@@ -277,7 +281,7 @@ async function create_component (entries_obj) {
       func(data, type)
     }
   }
-  function fail (data, type) { throw new Error('invalid message', { cause: { data, type } }) }
+  function fail (data, type) {  }
   function inject(data) {
     style.innerHTML = data.join('\n')
   }
@@ -526,7 +530,21 @@ function fallback_module () {
         z-index: 16;
       }`
         }
-      }
+      },
+      'icons/': {},
+      'variables/': {},
+      'scroll/': {},
+      'commands/': {},
+      'actions/': {},
+      'hardcons/': {},
+      'files/': {},
+      'highlight/': {},
+      'active_tab/': {},
+      'count/': {},
+      'entries/': {},
+      'runtime/': {},
+      'mode/': {},
+      'data/': {},
     }
   }
   function quick_editor$ (args, tools, [quick_editor]){
