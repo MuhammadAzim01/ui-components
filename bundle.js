@@ -25,32 +25,24 @@ async function graph_explorer (opts) {
   let all_entries = {} // Holds the entire graph structure from entries.json.
   let instance_states = {} // Holds expansion state {expanded_subs, expanded_hubs} for each node instance.
   let search_state_instances = {}
-  let search_entry_states = {} // Holds expansion state for search mode interactions separately
   let view = [] // A flat array representing the visible nodes in the graph.
   let mode // Current mode of the graph explorer, can be set to 'default', 'menubar' or 'search'. Its value should be set by the `mode` file in the drive.
-  let previous_mode
+  let previous_mode = 'menubar'
   let search_query = ''
   let drive_updated_by_scroll = false // Flag to prevent `onbatch` from re-rendering on scroll updates.
   let drive_updated_by_toggle = false // Flag to prevent `onbatch` from re-rendering on toggle updates.
   let drive_updated_by_search = false // Flag to prevent `onbatch` from re-rendering on search updates.
-  let multi_select_enabled = false // Flag to enable multi-select mode without ctrl key
-  let select_between_enabled = false // Flag to enable select between mode
-  let select_between_first_node = null // First node selected in select between mode
   let is_rendering = false // Flag to prevent concurrent rendering operations in virtual scrolling.
   let spacer_element = null // DOM element used to manage scroll position when hubs are toggled.
-  let spacer_initial_height = 0
   let hub_num = 0 // Counter for expanded hubs.
-  let last_clicked_node = null // Track the last clicked node instance path for highlighting.
 
   const el = document.createElement('div')
   el.className = 'graph-explorer-wrapper'
   const shadow = el.attachShadow({ mode: 'closed' })
   shadow.innerHTML = `
     <div class="graph-container"></div>
-    <div class="searchbar"></div>
     <div class="menubar"></div>
   `
-  const searchbar = shadow.querySelector('.searchbar')
   const menubar = shadow.querySelector('.menubar')
   const container = shadow.querySelector('.graph-container')
 
@@ -73,7 +65,6 @@ async function graph_explorer (opts) {
     rootMargin: '500px 0px',
     threshold: 0
   })
-
   // Define handlers for different data types from the drive, called by `onbatch`.
   const on = {
     entries: on_entries,
@@ -151,16 +142,6 @@ async function graph_explorer (opts) {
   }
 
   function on_runtime ({ data, paths }) {
-    const on_runtime_paths = {
-      'node_height.json': handle_node_height,
-      'vertical_scroll_value.json': handle_vertical_scroll,
-      'horizontal_scroll_value.json': handle_horizontal_scroll,
-      'selected_instance_paths.json': handle_selected_paths,
-      'confirmed_selected.json': handle_confirmed_paths,
-      'instance_states.json': handle_instance_states,
-      'search_entry_states.json': handle_search_entry_states,
-      'last_clicked_node.json': handle_last_clicked_node
-    }
     let needs_render = false
     const render_nodes_needed = new Set()
 
@@ -169,12 +150,44 @@ async function graph_explorer (opts) {
       const value = parse_json_data(data[i], path)
       if (value === null) return
 
-      // Extract filename from path and use handler if available
-      const filename = path.split('/').pop()
-      const handler = on_runtime_paths[filename]
-      if (handler) {
-        const result = handler({ value, render_nodes_needed })
-        if (result?.needs_render) needs_render = true
+      // Handle different runtime state updates based on the path i.e files
+      switch (true) {
+        case path.endsWith('node_height.json'):
+          node_height = value
+          break
+        case path.endsWith('vertical_scroll_value.json'):
+          if (typeof value === 'number') vertical_scroll_value = value
+          break
+        case path.endsWith('horizontal_scroll_value.json'):
+          if (typeof value === 'number') horizontal_scroll_value = value
+          break
+        case path.endsWith('selected_instance_paths.json'):
+          selected_instance_paths = process_path_array_update({
+            current_paths: selected_instance_paths,
+            value,
+            render_set: render_nodes_needed,
+            name: 'selected_instance_paths'
+          })
+          break
+        case path.endsWith('confirmed_selected.json'):
+          confirmed_instance_paths = process_path_array_update({
+            current_paths: confirmed_instance_paths,
+            value,
+            render_set: render_nodes_needed,
+            name: 'confirmed_selected'
+          })
+          break
+        case path.endsWith('instance_states.json'):
+          if (typeof value === 'object' && value && !Array.isArray(value)) {
+            instance_states = value
+            needs_render = true
+          } else {
+            console.warn(
+              'instance_states is not a valid object, ignoring.',
+              value
+            )
+          }
+          break
       }
     })
 
@@ -182,107 +195,30 @@ async function graph_explorer (opts) {
     else if (render_nodes_needed.size > 0) {
       render_nodes_needed.forEach(re_render_node)
     }
-
-    function handle_node_height ({ value }) {
-      node_height = value
-    }
-
-    function handle_vertical_scroll ({ value }) {
-      if (typeof value === 'number') vertical_scroll_value = value
-    }
-
-    function handle_horizontal_scroll ({ value }) {
-      if (typeof value === 'number') horizontal_scroll_value = value
-    }
-
-    function handle_selected_paths ({ value, render_nodes_needed }) {
-      selected_instance_paths = process_path_array_update({
-        current_paths: selected_instance_paths,
-        value,
-        render_set: render_nodes_needed,
-        name: 'selected_instance_paths'
-      })
-    }
-
-    function handle_confirmed_paths ({ value, render_nodes_needed }) {
-      confirmed_instance_paths = process_path_array_update({
-        current_paths: confirmed_instance_paths,
-        value,
-        render_set: render_nodes_needed,
-        name: 'confirmed_selected'
-      })
-    }
-
-    function handle_instance_states ({ value }) {
-      if (typeof value === 'object' && value && !Array.isArray(value)) {
-        instance_states = value
-        return { needs_render: true }
-      } else {
-        console.warn('instance_states is not a valid object, ignoring.', value)
-      }
-    }
-
-    function handle_search_entry_states ({ value }) {
-      if (typeof value === 'object' && value && !Array.isArray(value)) {
-        search_entry_states = value
-        if (mode === 'search') return { needs_render: true }
-      } else {
-        console.warn('search_entry_states is not a valid object, ignoring.', value)
-      }
-    }
-
-    function handle_last_clicked_node ({ value, render_nodes_needed }) {
-      const old_last_clicked = last_clicked_node
-      last_clicked_node = typeof value === 'string' ? value : null
-      if (old_last_clicked) render_nodes_needed.add(old_last_clicked)
-      if (last_clicked_node) render_nodes_needed.add(last_clicked_node)
-    }
   }
 
   function on_mode ({ data, paths }) {
-    const on_mode_paths = {
-      'current_mode.json': handle_current_mode,
-      'previous_mode.json': handle_previous_mode,
-      'search_query.json': handle_search_query,
-      'multi_select_enabled.json': handle_multi_select_enabled,
-      'select_between_enabled.json': handle_select_between_enabled
-    }
-    let new_current_mode, new_previous_mode, new_search_query, new_multi_select_enabled, new_select_between_enabled
+    let new_current_mode, new_previous_mode, new_search_query
 
     paths.forEach((path, i) => {
       const value = parse_json_data(data[i], path)
       if (value === null) return
 
-      const filename = path.split('/').pop()
-      const handler = on_mode_paths[filename]
-      if (handler) {
-        const result = handler({ value })
-        if (result?.current_mode !== undefined) new_current_mode = result.current_mode
-        if (result?.previous_mode !== undefined) new_previous_mode = result.previous_mode
-        if (result?.search_query !== undefined) new_search_query = result.search_query
-        if (result?.multi_select_enabled !== undefined) new_multi_select_enabled = result.multi_select_enabled
-        if (result?.select_between_enabled !== undefined) new_select_between_enabled = result.select_between_enabled
-      }
+      if (path.endsWith('current_mode.json')) new_current_mode = value
+      else if (path.endsWith('previous_mode.json')) new_previous_mode = value
+      else if (path.endsWith('search_query.json')) new_search_query = value
     })
 
     if (typeof new_search_query === 'string') search_query = new_search_query
     if (new_previous_mode) previous_mode = new_previous_mode
-    if (typeof new_multi_select_enabled === 'boolean') {
-      multi_select_enabled = new_multi_select_enabled
-      render_menubar() // Re-render menubar to update button text
-    }
-    if (typeof new_select_between_enabled === 'boolean') {
-      select_between_enabled = new_select_between_enabled
-      if (!select_between_enabled) select_between_first_node = null
-      render_menubar()
-    }
 
     if (
       new_current_mode &&
       !['default', 'menubar', 'search'].includes(new_current_mode)
     ) {
-      console.warn(`Invalid mode "${new_current_mode}" provided. Ignoring update.`)
-      return
+      return void console.warn(
+        `Invalid mode "${new_current_mode}" provided. Ignoring update.`
+      )
     }
 
     if (new_current_mode === 'search' && !search_query) {
@@ -293,29 +229,8 @@ async function graph_explorer (opts) {
     if (mode && new_current_mode === 'search') update_drive_state({ dataset: 'mode', name: 'previous_mode', value: mode })
     mode = new_current_mode
     render_menubar()
-    render_searchbar()
     handle_mode_change()
     if (mode === 'search' && search_query) perform_search(search_query)
-
-    function handle_current_mode ({ value }) {
-      return { current_mode: value }
-    }
-
-    function handle_previous_mode ({ value }) {
-      return { previous_mode: value }
-    }
-
-    function handle_search_query ({ value }) {
-      return { search_query: value }
-    }
-
-    function handle_multi_select_enabled ({ value }) {
-      return { multi_select_enabled: value }
-    }
-
-    function handle_select_between_enabled ({ value }) {
-      return { select_between_enabled: value }
-    }
   }
 
   function inject_style ({ data }) {
@@ -340,90 +255,14 @@ async function graph_explorer (opts) {
     return states[instance_path]
   }
 
-  function calculate_children_pipe_trail ({
-    depth,
-    is_hub,
-    is_last_sub,
-    is_first_hub = false,
-    parent_pipe_trail,
-    parent_base_path,
-    base_path,
-    all_entries
-  }) {
-    const children_pipe_trail = [...parent_pipe_trail]
-    const is_hub_on_top = base_path === all_entries[parent_base_path]?.hubs?.[0] || base_path === '/'
-
-    if (depth > 0) {
-      if (is_hub) {
-        if (is_last_sub) {
-          children_pipe_trail.pop()
-          children_pipe_trail.push(true)
-        }
-        if (is_hub_on_top && !is_last_sub) {
-          children_pipe_trail.pop()
-          children_pipe_trail.push(true)
-        }
-        if (is_first_hub) {
-          children_pipe_trail.pop()
-          children_pipe_trail.push(false)
-        }
-      }
-      children_pipe_trail.push(is_hub || !is_last_sub)
-    }
-    return { children_pipe_trail, is_hub_on_top }
-  }
-
-  // Extracted pipe logic for reuse in both default and search modes
-  function calculate_pipe_trail ({
-    depth,
-    is_hub,
-    is_last_sub,
-    is_first_hub = false,
-    is_hub_on_top,
-    parent_pipe_trail,
-    parent_base_path,
-    base_path,
-    all_entries
-  }) {
-    let last_pipe = null
-    const calculated_is_hub_on_top = base_path === all_entries[parent_base_path]?.hubs?.[0] || base_path === '/'
-    const final_is_hub_on_top = is_hub_on_top !== undefined ? is_hub_on_top : calculated_is_hub_on_top
-
-    if (depth > 0) {
-      if (is_hub) {
-        last_pipe = [...parent_pipe_trail]
-        if (is_last_sub) {
-          last_pipe.pop()
-          last_pipe.push(true)
-          if (is_first_hub) {
-            last_pipe.pop()
-            last_pipe.push(false)
-          }
-        }
-        if (final_is_hub_on_top && !is_last_sub) {
-          last_pipe.pop()
-          last_pipe.push(true)
-        }
-      }
-    }
-
-    const pipe_trail = (is_hub && is_last_sub) || (is_hub && final_is_hub_on_top) ? last_pipe : parent_pipe_trail
-    const product = { pipe_trail, is_hub_on_top: final_is_hub_on_top }
-    return product
-  }
-
   /******************************************************************************
-  3. VIEW AND RENDERING LOGIC AND SCALING
+  3. VIEW AND RENDERING LOGIC
     - These functions build the `view` array and render the DOM.
     - `build_and_render_view` is the main orchestrator.
     - `build_view_recursive` creates the flat `view` array from the hierarchical data.
-    - `calculate_mobile_scale` calculates the scale factor for mobile devices.
 ******************************************************************************/
   function build_and_render_view (focal_instance_path, hub_toggle = false) {
-    if (Object.keys(all_entries).length === 0) {
-      console.warn('No entries available to render.')
-      return
-    }
+    if (Object.keys(all_entries).length === 0) return void console.warn('No entries available to render.')
 
     const old_view = [...view]
     const old_scroll_top = vertical_scroll_value
@@ -470,7 +309,7 @@ async function graph_explorer (opts) {
       vertical_scroll_value = container.scrollTop
     }
 
-    // Handle the spacer element used for keep entries static wrt cursor by scrolling when hubs are toggled.
+   // Handle the spacer element used for keep entries static wrt cursor by scrolling when hubs are toggled.
     handle_spacer_element({
       hub_toggle,
       existing_height: existing_spacer_height,
@@ -497,19 +336,40 @@ async function graph_explorer (opts) {
     if (!entry) return []
 
     const state = get_or_create_state(instance_states, instance_path)
+    const is_hub_on_top =
+      base_path === all_entries[parent_base_path]?.hubs?.[0] || base_path === '/'
 
-    const { children_pipe_trail, is_hub_on_top } = calculate_children_pipe_trail({
-      depth,
-      is_hub,
-      is_last_sub,
-      is_first_hub,
-      parent_pipe_trail,
-      parent_base_path,
-      base_path,
-      all_entries
-    })
+    // Calculate the pipe trail for drawing the tree lines. Quite complex logic here.
+    const children_pipe_trail = [...parent_pipe_trail]
+    let last_pipe = null
+    if (depth > 0) {
+      if (is_hub) {
+        last_pipe = [...parent_pipe_trail]
+        if (is_last_sub) {
+          children_pipe_trail.pop()
+          children_pipe_trail.push(true)
+          last_pipe.pop()
+          last_pipe.push(true)
+          if (is_first_hub) {
+            last_pipe.pop()
+            last_pipe.push(false)
+          }
+        }
+        if (is_hub_on_top && !is_last_sub) {
+          last_pipe.pop()
+          last_pipe.push(true)
+          children_pipe_trail.pop()
+          children_pipe_trail.push(true)
+        }
+        if (is_first_hub) {
+          children_pipe_trail.pop()
+          children_pipe_trail.push(false)
+        }
+      }
+      children_pipe_trail.push(is_hub || !is_last_sub)
+    }
 
-    const current_view = []
+    let current_view = []
     // If hubs are expanded, recursively add them to the view first (they appear above the node).
     if (state.expanded_hubs && Array.isArray(entry.hubs)) {
       entry.hubs.forEach((hub_path, i, arr) => {
@@ -536,9 +396,11 @@ async function graph_explorer (opts) {
       depth,
       is_last_sub,
       is_hub,
-      is_first_hub,
-      parent_pipe_trail,
-      parent_base_path
+      pipe_trail:
+        (is_hub && is_last_sub) || (is_hub && is_hub_on_top)
+          ? last_pipe
+          : parent_pipe_trail,
+      is_hub_on_top
     })
 
     // If subs are expanded, recursively add them to the view (they appear below the node).
@@ -548,7 +410,6 @@ async function graph_explorer (opts) {
           ...build_view_recursive({
             base_path: sub_path,
             parent_instance_path: instance_path,
-            parent_base_path: base_path,
             depth: depth + 1,
             is_last_sub: i === arr.length - 1,
             is_hub: false,
@@ -574,9 +435,8 @@ async function graph_explorer (opts) {
     depth,
     is_last_sub,
     is_hub,
-    is_first_hub,
-    parent_pipe_trail,
-    parent_base_path,
+    pipe_trail,
+    is_hub_on_top,
     is_search_match,
     is_direct_match,
     is_in_original_view,
@@ -592,18 +452,6 @@ async function graph_explorer (opts) {
 
     const states = mode === 'search' ? search_state_instances : instance_states
     const state = get_or_create_state(states, instance_path)
-
-    const { pipe_trail, is_hub_on_top } = calculate_pipe_trail({
-      depth,
-      is_hub,
-      is_last_sub,
-      is_first_hub,
-      parent_pipe_trail,
-      parent_base_path,
-      base_path,
-      all_entries
-    })
-
     const el = document.createElement('div')
     el.className = `node type-${entry.type || 'unknown'}`
     el.dataset.instance_path = instance_path
@@ -616,68 +464,42 @@ async function graph_explorer (opts) {
 
     if (selected_instance_paths.includes(instance_path)) el.classList.add('selected')
     if (confirmed_instance_paths.includes(instance_path)) el.classList.add('confirmed')
-    if (last_clicked_node === instance_path) el.classList.add('last-clicked')
 
     const has_hubs = Array.isArray(entry.hubs) && entry.hubs.length > 0
     const has_subs = Array.isArray(entry.subs) && entry.subs.length > 0
 
-    if (depth) {
-      el.classList.add('left-indent')
-      el.style.paddingLeft *= depth
-    }
+    if (depth) el.style.paddingLeft = '17.5px'
+    el.style.height = `${node_height}px`
 
     if (base_path === '/' && instance_path === '|/') return create_root_node({ state, has_subs, instance_path })
 
     const prefix_class_name = get_prefix({ is_last_sub, has_subs, state, is_hub, is_hub_on_top })
     const pipe_html = pipe_trail.map(p => `<span class="${p ? 'pipe' : 'blank'}"></span>`).join('')
-    const prefix_class = has_subs ? 'prefix clickable' : 'prefix'
-    const icon_class = has_hubs && base_path !== '/' ? 'icon clickable' : 'icon'
+    const prefix_class = has_subs && mode !== 'search' ? 'prefix clickable' : 'prefix'
+    const icon_class = has_hubs && base_path !== '/' && mode !== 'search' ? 'icon clickable' : 'icon'
     const entry_name = entry.name || base_path
     const name_html = (is_direct_match && query)
       ? get_highlighted_name(entry_name, query)
       : entry_name
 
-    // Check if this entry appears elsewhere in the view (any duplicate)
-    collect_all_duplicate_entries()
-    const has_duplicate_entries = has_duplicates(base_path)
-    const navigate_button_html = has_duplicate_entries ? '<span class="navigate-to-hub clickable">^</span>' : ''
-
     el.innerHTML = `
       <span class="indent">${pipe_html}</span>
       <span class="${prefix_class} ${prefix_class_name}"></span>
       <span class="${icon_class}"></span>
-      ${navigate_button_html}
       <span class="name clickable">${name_html}</span>
     `
 
     const icon_el = el.querySelector('.icon')
-    if (icon_el && has_hubs && base_path !== '/') {
-      icon_el.onclick = mode === 'search'
-        ? () => toggle_search_hubs(instance_path)
-        : () => toggle_hubs(instance_path)
+    if (icon_el && has_hubs && base_path !== '/') icon_el.onclick = mode !== 'search' ? () => toggle_hubs(instance_path) : null
+
+    const prefix_el = el.querySelector('.prefix')
+    if (prefix_el && has_subs) prefix_el.onclick = mode !== 'search' ? () => toggle_subs(instance_path) : null
+
+    el.querySelector('.name').onclick = ev => select_node(ev, instance_path)
+
+    if (selected_instance_paths.includes(instance_path) || confirmed_instance_paths.includes(instance_path)) {
+      el.appendChild(create_confirm_checkbox(instance_path))
     }
-
-    const navigate_el = el.querySelector('.navigate-to-hub')
-    if (navigate_el) {
-      navigate_el.onclick = () => cycle_to_next_duplicate(base_path, instance_path)
-    }
-
-    // Add click event to the whole first part (indent + prefix) for expanding/collapsing subs
-    if (has_subs) {
-      const indent_el = el.querySelector('.indent')
-      const prefix_el = el.querySelector('.prefix')
-
-      const toggle_subs_handler = mode === 'search'
-        ? () => toggle_search_subs(instance_path)
-        : () => toggle_subs(instance_path)
-
-      if (indent_el) indent_el.onclick = toggle_subs_handler
-      if (prefix_el) prefix_el.onclick = toggle_subs_handler
-    }
-
-    el.querySelector('.name').onclick = ev => mode === 'search' ? search_expand_into_default(instance_path) : select_node(ev, instance_path)
-
-    if (selected_instance_paths.includes(instance_path) || confirmed_instance_paths.includes(instance_path)) el.appendChild(create_confirm_checkbox(instance_path))
 
     return el
   }
@@ -697,55 +519,31 @@ async function graph_explorer (opts) {
       console.error('get_prefix called with invalid state.')
       return 'middle-line'
     }
-
-    // Define handlers for different prefix types based on node position
-    const on_prefix_types = {
-      hub_on_top: get_hub_on_top_prefix,
-      hub_not_on_top: get_hub_not_on_top_prefix,
-      last_sub: get_last_sub_prefix,
-      middle_sub: get_middle_sub_prefix
-    }
-    // Determine the prefix type based on node position
-    let prefix_type
-    if (is_hub && is_hub_on_top) prefix_type = 'hub_on_top'
-    else if (is_hub && !is_hub_on_top) prefix_type = 'hub_not_on_top'
-    else if (is_last_sub) prefix_type = 'last_sub'
-    else prefix_type = 'middle_sub'
-
-    const handler = on_prefix_types[prefix_type]
-
-    return handler ? handler({ state, has_subs }) : 'middle-line'
-
-    function get_hub_on_top_prefix ({ state }) {
-      const { expanded_subs, expanded_hubs } = state
-      if (expanded_subs && expanded_hubs) return 'top-cross'
-      if (expanded_subs) return 'top-tee-down'
-      if (expanded_hubs) return 'top-tee-up'
-      return 'top-line'
-    }
-
-    function get_hub_not_on_top_prefix ({ state }) {
-      const { expanded_subs, expanded_hubs } = state
-      if (expanded_subs && expanded_hubs) return 'middle-cross'
-      if (expanded_subs) return 'middle-tee-down'
-      if (expanded_hubs) return 'middle-tee-up'
-      return 'middle-line'
-    }
-
-    function get_last_sub_prefix ({ state, has_subs }) {
-      const { expanded_subs, expanded_hubs } = state
+    const { expanded_subs, expanded_hubs } = state
+    if (is_hub) {
+      if (is_hub_on_top) {
+        if (expanded_subs && expanded_hubs) return 'top-cross'
+        if (expanded_subs) return 'top-tee-down'
+        if (expanded_hubs) return 'top-tee-up'
+        return 'top-line'
+      } else {
+        if (expanded_subs && expanded_hubs) return 'middle-cross'
+        if (expanded_subs) return 'middle-tee-down'
+        if (expanded_hubs) return 'middle-tee-up'
+        return 'middle-line'
+      }
+    } else if (is_last_sub) {
       if (expanded_subs && expanded_hubs) return 'bottom-cross'
       if (expanded_subs) return 'bottom-tee-down'
-      if (expanded_hubs) return has_subs ? 'bottom-tee-up' : 'bottom-light-tee-up'
+      if (expanded_hubs)
+        return has_subs ? 'bottom-tee-up' : 'bottom-light-tee-up'
       return has_subs ? 'bottom-line' : 'bottom-light-line'
-    }
-
-    function get_middle_sub_prefix ({ state, has_subs }) {
-      const { expanded_subs, expanded_hubs } = state
+    } else {
       if (expanded_subs && expanded_hubs) return 'middle-cross'
       if (expanded_subs) return 'middle-tee-down'
-      if (expanded_hubs) return has_subs ? 'middle-tee-up' : 'middle-light-tee-up'
-      return has_subs ? 'middle-line' : 'middle-light-line'
+      if (expanded_hubs)
+        return has_subs ? 'middle-tee-up' : 'middle-light-tee-up'
+    return has_subs ? 'middle-line' : 'middle-light-line'
     }
   }
 
@@ -758,25 +556,8 @@ async function graph_explorer (opts) {
       onclick: toggle_search_mode
     })
 
-    const multi_select_button = document.createElement('button')
-    multi_select_button.innerHTML = `Multi Select: ${multi_select_enabled ? 'true' : 'false'}`
-    multi_select_button.onclick = mode === 'search' ? null : toggle_multi_select
+    if (mode !== 'search') return void menubar.replaceChildren(search_button)
 
-    const select_between_button = document.createElement('button')
-    select_between_button.innerHTML = `Select Between: ${select_between_enabled ? 'true' : 'false'}`
-    select_between_button.onclick = mode === 'search' ? null : toggle_select_between
-
-    menubar.replaceChildren(search_button, multi_select_button, select_between_button)
-  }
-
-  function render_searchbar () {
-    if (mode !== 'search') {
-      searchbar.style.display = 'none'
-      searchbar.replaceChildren()
-      return
-    }
-
-    searchbar.style.display = 'flex'
     const search_input = Object.assign(document.createElement('input'), {
       type: 'text',
       placeholder: 'Search entries...',
@@ -785,13 +566,12 @@ async function graph_explorer (opts) {
       oninput: on_search_input
     })
 
-    searchbar.replaceChildren(search_input)
+    menubar.replaceChildren(search_button, search_input)
     requestAnimationFrame(() => search_input.focus())
   }
 
   function handle_mode_change () {
     menubar.style.display = mode === 'default' ? 'none' : 'flex'
-    render_searchbar()
     build_and_render_view()
   }
 
@@ -803,30 +583,6 @@ async function graph_explorer (opts) {
     }
     update_drive_state({ dataset: 'mode', name: 'current_mode', value: mode === 'search' ? previous_mode : 'search' })
     search_state_instances = instance_states
-  }
-
-  function toggle_multi_select () {
-    multi_select_enabled = !multi_select_enabled
-    // Disable select between when enabling multi select
-    if (multi_select_enabled && select_between_enabled) {
-      select_between_enabled = false
-      select_between_first_node = null
-      update_drive_state({ dataset: 'mode', name: 'select_between_enabled', value: false })
-    }
-    update_drive_state({ dataset: 'mode', name: 'multi_select_enabled', value: multi_select_enabled })
-    render_menubar() // Re-render to update button text
-  }
-
-  function toggle_select_between () {
-    select_between_enabled = !select_between_enabled
-    select_between_first_node = null // Reset first node selection
-    // Disable multi select when enabling select between
-    if (select_between_enabled && multi_select_enabled) {
-      multi_select_enabled = false
-      update_drive_state({ dataset: 'mode', name: 'multi_select_enabled', value: false })
-    }
-    update_drive_state({ dataset: 'mode', name: 'select_between_enabled', value: select_between_enabled })
-    render_menubar() // Re-render to update button text
   }
 
   function on_search_input (event) {
@@ -849,21 +605,18 @@ async function graph_explorer (opts) {
       instance_states,
       all_entries
     })
-    const original_view_paths = original_view.map(n => n.instance_path)
     search_state_instances = {}
     const search_view = build_search_view_recursive({
       query,
       base_path: '/',
       parent_instance_path: '',
-      parent_base_path: null,
       depth: 0,
       is_last_sub: true,
       is_hub: false,
-      is_first_hub: false,
       parent_pipe_trail: [],
-      instance_states: search_state_instances,
+      instance_states: search_state_instances, // Use a temporary state for search
       all_entries,
-      original_view_paths
+      original_view
     })
     render_search_results(search_view, query)
   }
@@ -872,16 +625,13 @@ async function graph_explorer (opts) {
     query,
     base_path,
     parent_instance_path,
-    parent_base_path = null,
     depth,
     is_last_sub,
     is_hub,
-    is_first_hub = false,
     parent_pipe_trail,
     instance_states,
     all_entries,
-    original_view_paths,
-    is_expanded_child = false
+    original_view
   }) {
     const entry = all_entries[base_path]
     if (!entry) return []
@@ -889,94 +639,29 @@ async function graph_explorer (opts) {
     const instance_path = `${parent_instance_path}|${base_path}`
     const is_direct_match = entry.name && entry.name.toLowerCase().includes(query.toLowerCase())
 
-    // Use extracted pipe logic for consistent rendering
-    const { children_pipe_trail, is_hub_on_top } = calculate_children_pipe_trail({
-      depth,
-      is_hub,
-      is_last_sub,
-      is_first_hub,
-      parent_pipe_trail,
-      parent_base_path,
-      base_path,
-      all_entries
-    })
+    const children_pipe_trail = [...parent_pipe_trail]
+    if (depth > 0) children_pipe_trail.push(!is_last_sub)
 
-    // Process hubs if they should be expanded
-    const search_state = search_entry_states[instance_path]
-    const should_expand_hubs = search_state ? search_state.expanded_hubs : false
-    const should_expand_subs = search_state ? search_state.expanded_subs : false
-
-    // Process hubs: if manually expanded, show ALL hubs regardless of search match
-    const hub_results = (should_expand_hubs ? (entry.hubs || []) : []).flatMap((hub_path, i, arr) => {
-      return build_search_view_recursive({
+    const sub_results = (entry.subs || []).flatMap((sub_path, i, arr) =>
+      build_search_view_recursive({
         query,
-        base_path: hub_path,
+        base_path: sub_path,
         parent_instance_path: instance_path,
-        parent_base_path: base_path,
         depth: depth + 1,
         is_last_sub: i === arr.length - 1,
-        is_hub: true,
-        is_first_hub: is_hub_on_top,
+        is_hub: false,
         parent_pipe_trail: children_pipe_trail,
         instance_states,
         all_entries,
-        original_view_paths,
-        is_expanded_child: true
+        original_view
       })
-    })
-
-    // Handle subs: if manually expanded, show ALL children; otherwise, search through them
-    let sub_results = []
-    if (should_expand_subs) {
-      // Show ALL subs when manually expanded
-      sub_results = (entry.subs || []).flatMap((sub_path, i, arr) => {
-        return build_search_view_recursive({
-          query,
-          base_path: sub_path,
-          parent_instance_path: instance_path,
-          parent_base_path: base_path,
-          depth: depth + 1,
-          is_last_sub: i === arr.length - 1,
-          is_hub: false,
-          is_first_hub: false,
-          parent_pipe_trail: children_pipe_trail,
-          instance_states,
-          all_entries,
-          original_view_paths,
-          is_expanded_child: true
-        })
-      })
-    } else if (!is_expanded_child) {
-      // Only search through subs if this node itself isn't an expanded child
-      sub_results = (entry.subs || []).flatMap((sub_path, i, arr) =>
-        build_search_view_recursive({
-          query,
-          base_path: sub_path,
-          parent_instance_path: instance_path,
-          parent_base_path: base_path,
-          depth: depth + 1,
-          is_last_sub: i === arr.length - 1,
-          is_hub: false,
-          is_first_hub: false,
-          parent_pipe_trail: children_pipe_trail,
-          instance_states,
-          all_entries,
-          original_view_paths
-        })
-      )
-    }
+    )
 
     const has_matching_descendant = sub_results.length > 0
+    if (!is_direct_match && !has_matching_descendant) return []
 
-    // If this is an expanded child, always include it regardless of search match
-    if (!is_expanded_child && !is_direct_match && !has_matching_descendant) return []
-
-    // Set instance states for rendering
-    const final_expand_subs = search_state ? search_state.expanded_subs : has_matching_descendant
-    const final_expand_hubs = search_state ? search_state.expanded_hubs : false
-
-    instance_states[instance_path] = { expanded_subs: final_expand_subs, expanded_hubs: final_expand_hubs }
-    const is_in_original_view = original_view_paths.includes(instance_path)
+    instance_states[instance_path] = { expanded_subs: has_matching_descendant, expanded_hubs: false }
+    const is_in_original_view = original_view.some(node => node.instance_path === instance_path)
 
     const current_node_view = {
       base_path,
@@ -984,15 +669,14 @@ async function graph_explorer (opts) {
       depth,
       is_last_sub,
       is_hub,
-      is_first_hub,
-      parent_pipe_trail,
-      parent_base_path,
+      pipe_trail: parent_pipe_trail,
+      is_hub_on_top: false,
       is_search_match: true,
       is_direct_match,
       is_in_original_view
     }
 
-    return [...hub_results, current_node_view, ...sub_results]
+    return [current_node_view, ...sub_results]
   }
 
   function render_search_results (search_view, query) {
@@ -1014,85 +698,27 @@ async function graph_explorer (opts) {
         toggling, and resetting the graph.
   ******************************************************************************/
   function select_node (ev, instance_path) {
-    last_clicked_node = instance_path
-    update_drive_state({ dataset: 'runtime', name: 'last_clicked_node', value: instance_path })
-
-    // Handle shift+click to enable select between mode temporarily
-    if (ev.shiftKey && !select_between_enabled) {
-      select_between_enabled = true
-      select_between_first_node = null
-      update_drive_state({ dataset: 'mode', name: 'select_between_enabled', value: true })
-      render_menubar()
+    if (mode === 'search') {
+      let current_path = instance_path
+      // Traverse up the tree to expand all parents
+      while (current_path) {
+        const parent_path = current_path.substring(0, current_path.lastIndexOf('|'))
+        if (!parent_path) break
+        get_or_create_state(instance_states, parent_path).expanded_subs = true
+        current_path = parent_path
+      }
+      drive_updated_by_toggle = true
+      update_drive_state({ dataset: 'runtime', name: 'instance_states', value: instance_states })
+      update_drive_state({ dataset: 'mode', name: 'current_mode', value: previous_mode })
     }
 
     const new_selected = new Set(selected_instance_paths)
-
-    if (select_between_enabled) {
-      handle_select_between(instance_path, new_selected)
-    } else if (ev.ctrlKey || multi_select_enabled) {
+    if (ev.ctrlKey) {
       new_selected.has(instance_path) ? new_selected.delete(instance_path) : new_selected.add(instance_path)
       update_drive_state({ dataset: 'runtime', name: 'selected_instance_paths', value: [...new_selected] })
     } else {
       update_drive_state({ dataset: 'runtime', name: 'selected_instance_paths', value: [instance_path] })
     }
-  }
-
-  function handle_select_between (instance_path, new_selected) {
-    if (!select_between_first_node) {
-      select_between_first_node = instance_path
-    } else {
-      const first_index = view.findIndex(n => n.instance_path === select_between_first_node)
-      const second_index = view.findIndex(n => n.instance_path === instance_path)
-
-      if (first_index !== -1 && second_index !== -1) {
-        const start_index = Math.min(first_index, second_index)
-        const end_index = Math.max(first_index, second_index)
-
-        // Toggle selection for all nodes in the range
-        for (let i = start_index; i <= end_index; i++) {
-          const node_instance_path = view[i].instance_path
-          new_selected.has(node_instance_path) ? new_selected.delete(node_instance_path) : new_selected.add(node_instance_path)
-        }
-
-        update_drive_state({ dataset: 'runtime', name: 'selected_instance_paths', value: [...new_selected] })
-      }
-
-      // Reset select between mode after second click
-      select_between_enabled = false
-      select_between_first_node = null
-      update_drive_state({ dataset: 'mode', name: 'select_between_enabled', value: false })
-      render_menubar()
-    }
-  }
-
-  // Add the clicked entry and all its parents in the default tree
-  function search_expand_into_default (target_instance_path) {
-    if (!target_instance_path) return
-    const parts = target_instance_path.split('|').filter(Boolean)
-    if (parts.length === 0) return
-
-    const root_state = get_or_create_state(instance_states, '|/')
-    root_state.expanded_subs = true
-
-    // Walk from root to target, expanding the path relative to alredy expanded entries
-    for (let i = 0; i < parts.length - 1; i++) {
-      const parent_base = parts[i]
-      const child_base = parts[i + 1]
-      const parent_instance_path = parts.slice(0, i + 1).map(p => '|' + p).join('')
-      const parent_state = get_or_create_state(instance_states, parent_instance_path)
-      const parent_entry = all_entries[parent_base]
-      if (!parent_entry) continue
-      if (Array.isArray(parent_entry.subs) && parent_entry.subs.includes(child_base)) parent_state.expanded_subs = true
-      if (Array.isArray(parent_entry.hubs) && parent_entry.hubs.includes(child_base)) parent_state.expanded_hubs = true
-    }
-
-    // Persist selection and expansion state
-    update_drive_state({ dataset: 'runtime', name: 'selected_instance_paths', value: [target_instance_path] })
-    drive_updated_by_toggle = true
-    update_drive_state({ dataset: 'runtime', name: 'instance_states', value: instance_states })
-    search_query = ''
-    update_drive_state({ dataset: 'mode', name: 'query', value: '' })
-    update_drive_state({ dataset: 'mode', name: 'current_mode', value: previous_mode })
   }
 
   function handle_confirm (ev, instance_path) {
@@ -1131,31 +757,7 @@ async function graph_explorer (opts) {
     update_drive_state({ dataset: 'runtime', name: 'instance_states', value: instance_states })
   }
 
-  function toggle_search_subs (instance_path) {
-    const state = get_or_create_state(search_entry_states, instance_path)
-    state.expanded_subs = !state.expanded_subs
-    perform_search(search_query) // Re-render search results with new state
-    drive_updated_by_toggle = true
-    update_drive_state({ dataset: 'runtime', name: 'search_entry_states', value: search_entry_states })
-  }
-
-  function toggle_search_hubs (instance_path) {
-    const state = get_or_create_state(search_entry_states, instance_path)
-    state.expanded_hubs = !state.expanded_hubs
-    perform_search(search_query) // Re-render search results with new state
-    drive_updated_by_toggle = true
-    update_drive_state({ dataset: 'runtime', name: 'search_entry_states', value: search_entry_states })
-  }
-
   function reset () {
-    // reset all of the manual expansions made
-    if (mode === 'search') {
-      search_entry_states = {}
-      drive_updated_by_toggle = true
-      update_drive_state({ dataset: 'runtime', name: 'search_entry_states', value: search_entry_states })
-      perform_search(search_query)
-      return
-    }
     const root_instance_path = '|/'
     const new_instance_states = {
       [root_instance_path]: { expanded_subs: true, expanded_hubs: false }
@@ -1230,7 +832,8 @@ async function graph_explorer (opts) {
     if (end_index >= view.length) return
     const fragment = document.createDocumentFragment()
     const next_end = Math.min(view.length, end_index + chunk_size)
-    for (let i = end_index; i < next_end; i++) { if (view[i]) fragment.appendChild(create_node(view[i])) }
+    for (let i = end_index; i < next_end; i++)
+      if (view[i]) fragment.appendChild(create_node(view[i]))
     container.insertBefore(fragment, bottom_sentinel)
     end_index = next_end
     bottom_sentinel.style.height = `${(view.length - end_index) * node_height}px`
@@ -1270,88 +873,26 @@ async function graph_explorer (opts) {
   }
 
   /******************************************************************************
-  8. HUB DUPLICATION PREVENTION
+  8. HELPER FUNCTIONS
   ******************************************************************************/
-
-  function collect_all_duplicate_entries () {
-    duplicate_entries_map = {}
-    const base_path_counts = {}
-    for (const node of view) {
-      if (!base_path_counts[node.base_path]) {
-        base_path_counts[node.base_path] = []
-      }
-      base_path_counts[node.base_path].push(node.instance_path)
-    }
-
-    // Store only duplicates
-    for (const [base_path, instance_paths] of Object.entries(base_path_counts)) {
-      if (instance_paths.length > 1) {
-        duplicate_entries_map[base_path] = instance_paths
-      }
-    }
-  }
-
-  function get_next_duplicate_instance (base_path, current_instance_path) {
-    const duplicates = duplicate_entries_map[base_path]
-    if (!duplicates || duplicates.length <= 1) return null
-
-    const current_index = duplicates.indexOf(current_instance_path)
-    if (current_index === -1) return duplicates[0]
-
-    const next_index = (current_index + 1) % duplicates.length
-    return duplicates[next_index]
-  }
-
-  function has_duplicates (base_path) {
-    return duplicate_entries_map[base_path] && duplicate_entries_map[base_path].length > 1
-  }
-
-  function cycle_to_next_duplicate (base_path, current_instance_path) {
-    const next_instance_path = get_next_duplicate_instance(base_path, current_instance_path)
-    if (next_instance_path) {
-      scroll_to_and_highlight_instance(next_instance_path)
-    }
-  }
-
-  function scroll_to_and_highlight_instance (target_instance_path) {
-    const target_index = view.findIndex(n => n.instance_path === target_instance_path)
-    if (target_index === -1) return
-
-    // Calculate scroll position
-    const target_scroll_top = target_index * node_height
-    container.scrollTop = target_scroll_top
-
-    // Find and highlight the DOM element
-    const target_element = shadow.querySelector(`[data-instance_path="${CSS.escape(target_instance_path)}"]`)
-    if (target_element) {
-      target_element.classList.add('highlight-instance')
-      setTimeout(() => {
-        target_element.classList.remove('highlight-instance')
-      }, 2000)
-    }
-  }
-
-  /******************************************************************************
-  9. HELPER FUNCTIONS
-  ******************************************************************************/
-  function get_highlighted_name (name, query) {
+function get_highlighted_name (name, query) {
   // Creates a new regular expression.
   // `escape_regex(query)` sanitizes the query string to treat special regex characters literally.
   // `(...)` creates a capturing group for the escaped query.
   // 'gi' flags: 'g' for global (all occurrences), 'i' for case-insensitive.
-    const regex = new RegExp(`(${escape_regex(query)})`, 'gi')
-    // Replaces all matches of the regex in 'name' with the matched text wrapped in search-match class.
-    // '$1' refers to the content of the first capturing group (the matched query).
-    return name.replace(regex, '<span class="search-match">$1</span>')
-  }
+  const regex = new RegExp(`(${escape_regex(query)})`, 'gi')
+  // Replaces all matches of the regex in 'name' with the matched text wrapped in <b> tags.
+  // '$1' refers to the content of the first capturing group (the matched query).
+  return name.replace(regex, '<b>$1</b>')
+}
 
-  function escape_regex (string) {
+function escape_regex (string) {
   // Escapes special regular expression characters in a string.
   // It replaces characters like -, /, \, ^, $, *, +, ?, ., (, ), |, [, ], {, }
   // with their escaped versions (e.g., '.' becomes '\.').
   // This prevents them from being interpreted as regex metacharacters.
-    return string.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&') // Corrected: should be \\$& to escape the found char
-  }
+  return string.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&') // Corrected: should be \\$& to escape the found char
+}
 
   function check_and_reset_feedback_flags () {
     if (drive_updated_by_scroll) {
@@ -1419,13 +960,9 @@ async function graph_explorer (opts) {
 
       if (hub_toggle) {
         requestAnimationFrame(() => {
-          const container_height = container.clientHeight
-          const content_height = view.length * node_height
-          const max_scroll_top = content_height - container_height
-
-          if (new_scroll_top > max_scroll_top) {
-            spacer_initial_height = new_scroll_top - max_scroll_top
-            spacer_element.style.height = `${spacer_initial_height}px`
+          const max_scroll = container.scrollHeight - container.clientHeight
+          if (new_scroll_top > max_scroll) {
+            spacer_element.style.height = `${new_scroll_top - max_scroll}px`
           }
           sync_fn()
         })
@@ -1445,18 +982,16 @@ async function graph_explorer (opts) {
     const el = document.createElement('div')
     el.className = 'node type-root'
     el.dataset.instance_path = instance_path
-    const prefix_class = has_subs || mode === 'search' ? 'prefix clickable' : 'prefix'
+    const prefix_class = has_subs && mode !== 'search' ? 'prefix clickable' : 'prefix'
     const prefix_name = state.expanded_subs ? 'tee-down' : 'line-h'
-    el.innerHTML = `<div class="wand clickable">🪄</div><span class="${prefix_class} ${prefix_name}"></span><span class="name ${mode === 'search' ? '' : 'clickable'}">/🌐</span>`
+    el.innerHTML = `<div class="wand">🪄</div><span class="${prefix_class} ${prefix_name}"></span><span class="name clickable">/🌐</span>`
 
     el.querySelector('.wand').onclick = reset
     if (has_subs) {
       const prefix_el = el.querySelector('.prefix')
-      if (prefix_el) {
-        prefix_el.onclick = mode === 'search' ? null : () => toggle_subs(instance_path)
-      }
+      if (prefix_el) prefix_el.onclick = mode !== 'search' ? () => toggle_subs(instance_path) : null
     }
-    el.querySelector('.name').onclick = ev => mode === 'search' ? null : select_node(ev, instance_path)
+    el.querySelector('.name').onclick = ev => select_node(ev, instance_path)
     return el
   }
 
@@ -1489,7 +1024,7 @@ async function graph_explorer (opts) {
 }
 
 /******************************************************************************
-  10. FALLBACK CONFIGURATION
+  9. FALLBACK CONFIGURATION
     - This provides the default data and API configuration for the component,
       following the pattern described in `instructions.md`.
     - It defines the default datasets (`entries`, `style`, `runtime`) and their
@@ -1507,7 +1042,7 @@ function fallback_module () {
         },
         'style/': {
           'theme.css': {
-            $ref: 'theme.css'
+            '$ref' : 'theme.css'
           }
         },
         'runtime/': {
@@ -1516,22 +1051,17 @@ function fallback_module () {
           'horizontal_scroll_value.json': { raw: '0' },
           'selected_instance_paths.json': { raw: '[]' },
           'confirmed_selected.json': { raw: '[]' },
-          'instance_states.json': { raw: '{}' },
-          'search_entry_states.json': { raw: '{}' },
-          'last_clicked_node.json': { raw: 'null' }
+          'instance_states.json': { raw: '{}' }
         },
         'mode/': {
           'current_mode.json': { raw: '"menubar"' },
           'previous_mode.json': { raw: '"menubar"' },
-          'search_query.json': { raw: '""' },
-          'multi_select_enabled.json': { raw: 'false' },
-          'select_between_enabled.json': { raw: 'false' }
+          'search_query.json': { raw: '""' }
         }
       }
     }
   }
 }
-
 }).call(this)}).call(this,"/node_modules/graph-explorer/lib/graph_explorer.js")
 },{"./STATE":1}],3:[function(require,module,exports){
 arguments[4][1][0].apply(exports,arguments)
@@ -4096,12 +3626,11 @@ const { resource } = require('helpers')
 
 module.exports = quick_editor
 let is_called
+const nesting = 0
 
 async function quick_editor(opts) {
   // ----------------------------------------
-  let init
-  let data
-  let port
+  let init, data, port, labels, nesting_limit, top_first, select = []
   const current_data = {}
 
   const { sdb, io, net } = await get(opts.sid)
@@ -4119,11 +3648,6 @@ async function quick_editor(opts) {
       <button class="dots-button">⋮</button>
       <div class="quick-box">
         <div class="quick-menu hidden">
-          <!-- Root Tabs -->
-          <div class="root-btns">
-          </div>
-          <div class="root-tabs">
-          </div>
           <div class="btn-box">
             <button class="button">Apply</button>
             ${is_called ? '' :
@@ -4146,8 +3670,6 @@ async function quick_editor(opts) {
   const export_btn = shadow.querySelector('.button.export')
   const input = shadow.querySelector('input')
   const apply_btn = shadow.querySelector('.button')
-  const root_btns = shadow.querySelector('.root-btns')
-  const root_tabs = shadow.querySelector('.root-tabs')
   // ----------------------------------------
   // EVENTS
   // ----------------------------------------
@@ -4156,18 +3678,29 @@ async function quick_editor(opts) {
   if (is_called) {
     apply_btn.onclick = apply
     menu_btn.onclick = () => menu_click(true)
+    labels = ['Nodes', 'Types', 'Files']
+    nesting_limit = nesting + 3
+    top_first = 0
   }
   else {
     apply_btn.onclick = () => {
-      port.postMessage({ type: 'swtch', data: [{ name: current_data.dataset, type: current_data.node }] })
+      port.postMessage({ type: 'swtch', data: [{ name: current_data.Types.trim(), type: current_data.Names.trim() }] })
     }
     input.onchange = upload
     import_btn.onclick = () => {
       input.click()
     }
     export_btn.onclick = () => {
-      port.postMessage({ type: 'export_db', data: [{ name: current_data.dataset, type: current_data.node }] })
+      if(current_data.radio.name === 'Names')
+        port.postMessage({ type: 'export_db', data: [{ name: current_data.Names.trim(), type: current_data.Types.trim() }]})
+      else
+        port.postMessage({ type: 'export_root', data: [{ name: current_data.Root.trim(), type: current_data.Nodes.trim() }]})
     }
+    menu.classList.add('admin')
+    labels = ['Root', 'Types', 'Names', 'Nodes', 'Files', 'Entries']
+    nesting_limit = nesting + 6
+    top_first = 1
+    select = [1, 0, 1, 0, 0, 0]
   }
 
   // ----------------------------------------
@@ -4202,42 +3735,65 @@ async function quick_editor(opts) {
       const content = event.target.result
       try {
         data = JSON.parse(content)
-        port.postMessage({ type: 'import_db', data: [data] })
+        console.log(file)
+        if(current_data.radio.name === 'Names')
+          port.postMessage({ type: 'import_db', data: [data] })
+        else
+          port.postMessage({ type: 'import_root', data: [data, file.name.split('.')[0]] })
+
       } catch (err) {
         console.error('Invalid JSON file', err)
       }
     }
     reader.readAsText(file)
   }
-  function make_btn(name, classes, tab_id, key) {
+  function make_btn(name, classes, key, nesting) {
     const btn = document.createElement('button')
-    btn.textContent = name
+    if(select[nesting]){
+        btn.innerHTML = `
+        <input type='radio' name='${key}' /> ${name}
+      `
+      const input = btn.querySelector('input')
+      input.onchange = () => radio_change(input)
+    }
+    else
+      btn.textContent = name
     btn.classList.add(...classes.split(' '))
-    btn.setAttribute('tab', name)
-    btn.setAttribute('tab_id', tab_id)
+    btn.setAttribute('tab', name.replaceAll(/[^A-Za-z0-9]/g, ''))
     btn.setAttribute('key', key)
     btn.setAttribute('title', name)
     return btn
   }
-  function make_tab(id, classes, sub_classes) {
+  function make_tab(id, classes, sub_classes, nesting = 0) {
     const tab = document.createElement('div')
-    tab.classList.add(...classes.split(' '))
-    tab.id = id.replaceAll(/[^A-Za-z0-9]/g, '')
+    tab.classList.add(...classes.split(' '), id.replaceAll(/[^A-Za-z0-9]/g, ''))
+
+    if (nesting % 2 === top_first)
+      var height = 565 - ((nesting + 1) * 30) + 'px'
+    else
+      tab.style.maxWidth = 700 - ((nesting + 1) * 47) + 'px'
+
     tab.innerHTML = `
-      <div class="${sub_classes[0]}">
+      <div class="${sub_classes[0]}" style="--before-content: '${labels[nesting]}'; max-height: ${height}">
       </div>
       <div class="${sub_classes[1]}">
       </div>
     `
+
     return tab
   }
-  function make_textarea(id, classes, value) {
+  function make_textarea(id, classes, value, nesting) {
     const textarea = document.createElement('textarea')
     textarea.id = id.replaceAll(/[^A-Za-z0-9]/g, '')
     textarea.classList.add(...classes.split(' '))
     textarea.value = typeof (value) === 'object' ? JSON.stringify(value, null, 2) : value
     textarea.placeholder = 'Type here...'
+    textarea.style.width = 700 - ((nesting + 2) * 47) + 'px'
     return textarea
+  }
+  function radio_change (radio) {
+    current_data.radio && (current_data.radio.checked = false)
+    current_data.radio = radio
   }
   async function menu_click(call) {
     port = await item.get(net.page.id)
@@ -4245,74 +3801,61 @@ async function quick_editor(opts) {
     if (init)
       return
     init = true
-    root_btns.innerHTML = ''
-    root_tabs.innerHTML = ''
-    Object.entries(data).forEach(([node, datasets], k) => {
-      let first = ''
-      if (!k) {
-        first = ' active'
-        current_data.node = node
-      }
-      const no_slash = node.split('/').at(-1)
-      const btn = make_btn(no_slash, `tab-button${first}`, node, 'node')
-      const tab = make_tab(no_slash, `tab-content${first}`, ['top-btns', 'top-tabs'])
 
-      btn.onclick = () => tab_btn_click(btn, root_btns, root_tabs, '.root-tabs > .tab-content', 'node', node)
+    const old_box = menu.querySelector('.tab-content')
+    old_box && old_box.remove()
 
-      root_btns.append(btn)
-      root_tabs.append(tab)
-
-      const top_btns = tab.querySelector('.top-btns')
-      const top_tabs = tab.querySelector('.top-tabs')
-      Object.entries(datasets).forEach(([dataset, files], i) => {
-        let first = ''
-        if (!i) {
-          first = ' active'
-          if (!k)
-            current_data.dataset = dataset
-        }
-        const no_slash = dataset.split('/')[0]
-        const btn = make_btn(no_slash, `tab-button${first}`, dataset, 'dataset')
-        const tab = make_tab(no_slash, `tab-content${first}`, ['sub-btns', 'subtab-content'])
-
-        btn.onclick = () => tab_btn_click(btn, top_btns, top_tabs, '.tab-content', 'dataset', dataset)
-
-        top_btns.append(btn)
-        top_tabs.append(tab)
-
-        const sub_btns = tab.querySelector('.sub-btns')
-        const subtab = tab.querySelector('.subtab-content')
-        Object.entries(files).forEach(([file, raw], j) => {
-          let first = ''
-          if (!j) {
-            first = ' active'
-            if (!i && !k)
-              current_data.file = file
-          }
-          const sub_btn = make_btn(file, `sub-btn${first}`, file, 'file')
-          const textarea = make_textarea(file, `subtab-textarea${first}`, raw)
-
-          sub_btn.onclick = () => tab_btn_click(sub_btn, sub_btns, subtab, '.subtab-textarea', 'file', file)
-
-          sub_btns.append(sub_btn)
-          subtab.append(textarea)
-        })
-      })
-    })
-
+    const box = make_tab('any', 'tab-content active' + (top_first ? '' : ' sub'), ['btns', 'tabs'])
+    menu.append(box)
+    make_tabs(box, data, nesting)
   }
-  function tab_btn_click(btn, btns, tabs, tab_class, key, name) {
+  function make_tabs(box, data, nesting) {
+    const local_nesting = nesting + 1
+    const not_last_nest = local_nesting !== nesting_limit
+    let sub = ''
+    if (local_nesting % 2 === top_first)
+      sub = ' sub'
+    const btns = box.querySelector(`.btns`)
+    const tabs = box.querySelector(`.tabs`)
+    Object.entries(data).forEach(([key, value], i) => {
+      let first = ''
+      if (!i) {
+        first = ' active'
+        current_data[labels[nesting]] = key
+      }
+      
+      const btn = make_btn(key, `tab-button${first}`, labels[nesting], nesting)
+      const tab = make_tab(key, `tab-content${sub+first}`, ['btns', 'tabs'], local_nesting)
+      btn.onclick = () => tab_btn_click(btn, btns, tabs, '.root-tabs > .tab-content', 'node', key)
+
+      btns.append(btn)
+      tabs.append(tab)
+      if(typeof(value) === 'object' && value !== null && not_last_nest && Object.keys(value).length)
+        make_tabs(tab, value, local_nesting)
+      else {
+        const textarea = make_textarea(key, `subtab-textarea${first}`, value, local_nesting)
+        tab.append(textarea)
+      }
+    })
+  }
+  function tab_btn_click(btn, btns, tabs) {
     btns.querySelector('.active').classList.remove('active')
-    tabs.querySelector(tab_class + '.active').classList.remove('active')
+    tabs.querySelector(':scope > .active').classList.remove('active')
 
     btn.classList.add('active')
-    const tab = tabs.querySelector('#' + btn.getAttribute('tab').replaceAll(/[^A-Za-z0-9]/g, ''))
+    const tab = tabs.querySelector('.' + btn.getAttribute('tab'))
     tab.classList.add('active')
-    current_data[btn.getAttribute('key')] = btn.getAttribute('tab_id')
-    const active_btns = tab.querySelectorAll('button.active')
-    active_btns.forEach(active_btn => {
-      current_data[active_btn.getAttribute('key')] = active_btn.getAttribute('tab_id')
-    })
+    current_data[btn.getAttribute('key')] = btn.textContent
+
+    recurse(tab)
+    function recurse (tab) {
+      const btn = tab.querySelector('.btns > .active')
+      if(!btn)
+        return
+      current_data[btn.getAttribute('key')] = btn.textContent
+      const sub_tab = tab.querySelector('.tabs > .active')
+      recurse(sub_tab)
+    }
   }
 
   function apply() {
@@ -4378,79 +3921,91 @@ function fallback_module() {
               z-index: 10;
               width: fit-content;
             }
+            *{
+              box-sizing: border-box;
+            }
 
             .hidden {
               display: none;
             }
-            .root-btns{
+            
+            .btns::before {
+              display: none;
+              content: var(--before-content);
+              font-weight: bold;
+              color: white;
+              background: #4CAF50;
+              padding: 2px 6px;
+              border-radius: 4px;
+              position: absolute;
+              margin-left: -10px;
+              margin-top: -20px;
+            }
+            .btns:hover {
+              border: 2px solid #4CAF50;
+            }
+            .btns:hover::before {
+              display: block;
+            }
+            .btns{
+              display: flex;
+              margin-bottom: 8px;
+              overflow-x: auto;
+              background: #d0f0d0;
+            }
+            .sub > .btns {
               display: flex;
               flex-direction: column;
               gap: 4px;
-              margin-right: 10px;
-            }
-
-            .top-btns {
-              display: flex;
-              margin-bottom: 8px;
+              max-height: 400px;
+              overflow-y: auto;
+              min-width: fit-content;
+              margin-right: 8px;
+              background: #d0d2f0ff;
             }
 
             .tab-button {
               flex: 1;
-              padding: 6px 10px;
+              padding: 6px;
               background: #eee;
               border: none;
               cursor: pointer;
               border-bottom: 2px solid transparent;
+              max-width: 70px;
+              width: fit-content;
+              text-overflow: ellipsis;
+              overflow: hidden;
+              min-width: 70px;
+              min-height: 29px;
+              position: relative;
+              text-align: left;
             }
             .tab-button.active {
-              background: white;
+              background: #fff;
               border-bottom: 2px solid #4CAF50;
+            }
+            .sub > div > .tab-button.active {
+              border-bottom: 2px solid #2196F3;
             }
             .tab-content {
               display: none;
+              max-width: 700px;
+              background: #d0d2f0ff;
             }
             .tab-content.active {
               display: block;
             }
-
-            .sub-btns {
-              float: right;
+            .tab-content.sub.active{
               display: flex;
-              flex-direction: column;
-              gap: 4px;
-              margin-left: 5px;
-              max-height: 400px;
-              overflow-y: auto;
+              align-items: flex-start;
             }
 
-            .sub-btn {
-              padding: 4px 8px;
-              background: #f1f1f1;
-              border: none;
-              cursor: pointer;
-              text-align: right;
-              max-width: 100px;
-              text-overflow: ellipsis;
-              overflow: hidden;
-              min-height: 30px;
-            }
-            .sub-btn.active {
-              background: #d0f0d0;
-            }
-
-            .subtab-content {
-              overflow: hidden;
-            }
-
-            .subtab-textarea {
-              width: 300px;
+            textarea {
+              width: 500px;
+              max-width: 560px;
               height: 400px;
-              display: none;
-              resize: vertical;
-              margin-right: 100px;
-            }
-            .subtab-textarea.active {
               display: block;
+              resize: vertical;
             }
 
             .button {
@@ -4467,8 +4022,25 @@ function fallback_module() {
               width: 100%;
             }
             .btn-box {
-              border-left: 1px solid #ccc;
-              padding-left: 10px;
+              border-right: 1px solid #ccc;
+              padding-right: 10px;
+            }
+            .tabs{
+              border-left: 2px solid #ccc;
+              border-top: 1px solid #ccc;
+            }
+            button:has(input[type="radio"]:checked){
+              background: #45abffff;
+            }
+            button > input[type="radio"]{
+              width: 12px;
+              height: 12px;
+              border: 2px solid #555;
+              border-radius: 50%;
+              display: inline-block;
+              position: relative;
+              cursor: pointer;
+              margin: 0;
             }
             `
           }
@@ -6336,7 +5908,7 @@ async function boot(opts) {
   await create_component(entries)
   window.onload = scroll_to_initial_selected
   send_quick_editor_data()
-  admin_on['import_db'] = send_quick_editor_data
+  admin_on['import'] = send_quick_editor_data
 
   return el
   async function create_component(entries_obj) {
@@ -6480,21 +6052,30 @@ async function boot(opts) {
   function inject(data) {
     style.innerHTML = data.join('\n')
   }
-  async function send_quick_editor_data() {
-      const inputs = sdb.admin.get_dataset() || []
+    async function send_quick_editor_data() {
+      const roots = admin.status.db.read(['root_datasets'])
       const result = {}
-      inputs.forEach(type => {
-        result[type] = {}
-        const datasets = sdb.admin.get_dataset({ type })
-        datasets && Object.values(datasets).forEach(name => {
-          result[type][name] = {}
-          const ds = sdb.admin.get_dataset({ type, name: name })
-          ds.forEach(ds_id => {
-            const files = admin.status.db.read(['state', ds_id]).files || []
-            result[type][name][ds_id] = files
+      roots.forEach(root_dataset => {
+        const root = root_dataset.name
+        result[root] = {}
+        const inputs = sdb.admin.get_dataset({ root }) || []
+        inputs.forEach(type => {
+          result[root][type] = {}
+          const datasets = sdb.admin.get_dataset({ root, type })
+          datasets && Object.values(datasets).forEach(name => {
+            result[root][type][name] = {}
+            const ds = sdb.admin.get_dataset({ root, type, name: name })
+            ds.forEach(ds_id => {
+              const files = admin.status.db.read([root, ds_id]).files || []
+              result[root][type][name][ds_id] = {}
+              files.forEach(file_id => {
+                result[root][type][name][ds_id][file_id] = admin.status.db.read([root, file_id]) 
+              })
+            })
           })
         })
       })
+      
       const editor_id = admin.status.a2i[admin.status.s2i[editor_subs[0].sid]]
       const port = await item.get(editor_id)
       // await io.at(editor_id)

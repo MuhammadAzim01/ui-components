@@ -156,7 +156,7 @@ async function boot(opts) {
   await create_component(entries)
   window.onload = scroll_to_initial_selected
   send_quick_editor_data()
-  admin_on['import_db'] = send_quick_editor_data
+  admin_on['import'] = send_quick_editor_data
 
   return el
   async function create_component(entries_obj) {
@@ -300,21 +300,30 @@ async function boot(opts) {
   function inject(data) {
     style.innerHTML = data.join('\n')
   }
-  async function send_quick_editor_data() {
-      const inputs = sdb.admin.get_dataset() || []
+    async function send_quick_editor_data() {
+      const roots = admin.status.db.read(['root_datasets'])
       const result = {}
-      inputs.forEach(type => {
-        result[type] = {}
-        const datasets = sdb.admin.get_dataset({ type })
-        datasets && Object.values(datasets).forEach(name => {
-          result[type][name] = {}
-          const ds = sdb.admin.get_dataset({ type, name: name })
-          ds.forEach(ds_id => {
-            const files = admin.status.db.read(['state', ds_id]).files || []
-            result[type][name][ds_id] = files
+      roots.forEach(root_dataset => {
+        const root = root_dataset.name
+        result[root] = {}
+        const inputs = sdb.admin.get_dataset({ root }) || []
+        inputs.forEach(type => {
+          result[root][type] = {}
+          const datasets = sdb.admin.get_dataset({ root, type })
+          datasets && Object.values(datasets).forEach(name => {
+            result[root][type][name] = {}
+            const ds = sdb.admin.get_dataset({ root, type, name: name })
+            ds.forEach(ds_id => {
+              const files = admin.status.db.read([root, ds_id]).files || []
+              result[root][type][name][ds_id] = {}
+              files.forEach(file_id => {
+                result[root][type][name][ds_id][file_id] = admin.status.db.read([root, file_id]) 
+              })
+            })
           })
         })
       })
+      
       const editor_id = admin.status.a2i[admin.status.s2i[editor_subs[0].sid]]
       const port = await item.get(editor_id)
       // await io.at(editor_id)
