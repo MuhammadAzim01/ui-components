@@ -296,7 +296,7 @@ async function boot(opts) {
       func(data, type)
     }
   }
-  function fail (data, type) {  }
+  function fail (data, type) { throw new Error('invalid message', { cause: { data, type } }) }
   function inject(data) {
     style.innerHTML = data.join('\n')
   }
@@ -360,6 +360,27 @@ function fallback_module() {
       'variables': 'variables',
       'scroll': 'scroll',
       'style': 'style'
+    }
+  }
+  subs['../src/node_modules/space'] = {
+    $: '',
+    0: '',
+    mapping: {
+      'style': 'style',
+      'flags': 'flags',
+      "commands": "commands",
+      "icons": "icons",
+      "scroll": "scroll",
+      "actions": "actions",
+      "hardcons": "hardcons",
+      "files": "files",
+      "highlight": "highlight",
+      "active_tab": "active_tab",
+      "entries": "entries",
+      "runtime": "runtime",
+      "mode": "mode",
+      'keybinds': 'keybinds',
+      'undo': 'undo'
     }
   }
   subs['../src/node_modules/manager'] = {
@@ -462,6 +483,40 @@ function fallback_module() {
     mapping: {
       'style': 'style'
     }
+  },
+  subs['../src/node_modules/theme_widget'] = {
+    $: '',
+    0: '',
+    mapping: {
+      'style': 'style',
+      "commands": "commands",
+      "icons": "icons",
+      "scroll": "scroll",
+      "actions": "actions",
+      "hardcons": "hardcons",
+      "files": "files",
+      "highlight": "highlight",
+      "active_tab": "active_tab",
+      "entries": "entries",
+      "runtime": "runtime",
+      "mode": "mode",
+      "flags": "flags",
+      'keybinds': 'keybinds',
+      'undo': 'undo'
+    }
+  }
+  subs['graph-explorer'] = {
+    $: '',
+    0: '',
+    mapping: {
+      'style': 'style',
+      'entries': 'entries',
+      'runtime': 'runtime',
+      'mode': 'mode',
+      'flags': 'flags',
+      'keybinds': 'keybinds',
+      'undo': 'undo'
+    }
   }
   for (i = 0; i < Object.keys(subs).length - 1; i++) {
     subs['../src/node_modules/quick_editor'][i] = quick_editor$
@@ -512,74 +567,73 @@ function fallback_module() {
             height: 100%;
           }
           .toggle-switch {
-          position: relative;
-          display: inline-block;
-          width: 50px;
-          height: 26px;
-        }
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 26px;
+          }
 
-        .toggle-switch input {
-          opacity: 0;
-          width: 0;
-          height: 0;
-        }
+          .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+          }
 
-        .slider {
-          position: absolute;
-          cursor: pointer;
-          inset: 0;
-          background-color: #ccc;
-          border-radius: 26px;
-          transition: 0.4s;
-        }
+          .slider {
+            position: absolute;
+            cursor: pointer;
+            inset: 0;
+            background-color: #ccc;
+            border-radius: 26px;
+            transition: 0.4s;
+          }
 
-        .slider::before {
-          content: "";
-          position: absolute;
-          height: 20px;
-          width: 20px;
-          left: 3px;
-          bottom: 3px;
-          background-color: white;
-          border-radius: 50%;
-          transition: 0.4s;
-        }
+          .slider::before {
+            content: "";
+            position: absolute;
+            height: 20px;
+            width: 20px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            border-radius: 50%;
+            transition: 0.4s;
+          }
 
-        input:checked + .slider {
-          background-color: #2196F3;
-        }
+          input:checked + .slider {
+            background-color: #2196F3;
+          }
 
-        input:checked + .slider::before {
-          transform: translateX(24px);
-        }
-      .component-wrapper:hover::before {
-        content: '';
-        position: absolute;
-        width: 100%;
-        height: 100%;
-        top: 0;
-        left: 0;
-        border: 4px solid skyblue;
-        pointer-events: none;
-        z-index: 15;
-        resize: both;
-        overflow: auto;
-      }
-      .quick-editor {
-        position: absolute;
-        z-index: 100;
-        top: 0;
-        right: 0;
-      }
-      .component-wrapper:hover .quick-editor {
-        display: block;
-      }
-      .component-wrapper > .quick-editor {
-        display: none;
-        top: -5px;
-        right: -10px;
-        z-index: 16;
-      }`
+          input:checked + .slider::before {
+            transform: translateX(24px);
+          }
+          .component-wrapper:hover::before {
+            content: '';
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            border: 4px solid skyblue;
+            pointer-events: none;
+            z-index: 15;
+            resize: both;
+            overflow: auto;
+          }
+          .quick-editor {
+            position: absolute;
+            z-index: 100;
+            top: 0;
+            right: 0;
+          }
+          .component-wrapper:hover .quick-editor {
+            display: block;
+          }
+          .component-wrapper > .quick-editor {
+            display: none;
+            top: -5px;
+            right: -10px;
+          }`
         }
       },
       'icons/': {},
@@ -590,12 +644,15 @@ function fallback_module() {
       'hardcons/': {},
       'files/': {},
       'highlight/': {},
-      'active_tab/': {},
       'count/': {},
       'entries/': {},
+      'active_tab/': {},
       'runtime/': {},
       'mode/': {},
       'data/': {},
+      'flags/': {},
+      'keybinds/': {},
+      'undo/': {}
     }
   }
   function quick_editor$(args, tools, [quick_editor]) {
