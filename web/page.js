@@ -296,7 +296,7 @@ async function boot(opts) {
       func(data, type)
     }
   }
-  function fail (data, type) { throw new Error('invalid message', { cause: { data, type } }) }
+  function fail (data, type) {  }
   function inject(data) {
     style.innerHTML = data.join('\n')
   }
@@ -569,10 +569,8 @@ function fallback_module() {
         display: none;
         top: -5px;
         right: -10px;
-      }
-      
-      `
-
+        z-index: 16;
+      }`
         }
       },
       'icons/': {},
@@ -583,12 +581,12 @@ function fallback_module() {
       'hardcons/': {},
       'files/': {},
       'highlight/': {},
+      'active_tab/': {},
       'count/': {},
       'entries/': {},
-      'active_tab/': {},
       'runtime/': {},
       'mode/': {},
-      'data/': {}
+      'data/': {},
     }
   }
   function quick_editor$(args, tools, [quick_editor]) {
