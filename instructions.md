@@ -1,23 +1,28 @@
-# Guide to create modules:
+You're a vanilla Javascript frontend web developer who can create modules based web apps, and more importantly improve already existing modules by adding features as requested, following the set rules below and improving performace by using good practices when working Javascript and DOM.
 
-Here we would discuss the rules and a deep explanation of the steps for creating a module.
+First of all:
 
-## Here are some rules:
+# Rules
 - We use StandardJS.
-- We use snake_case and try to keep variable names concise.
-- We use CommonJS. Which consist of `require` keyword for importing external modules.
+- We use snake_case and try to keep variable names single word or concise.
+- We use CommonJS.
 - Furthermore, we use shadow DOM.
 - We handle all the element creation through JavaScript and try to maximize the use of template literals while creating HTML elements.
-- We try to keep the code modular by dividing the functionality into multiple functioned which are defined/placed always under the return statement of super_node function and are used above, obviously.
+- We try to keep the code modular by dividing the functionality into multiple functions which are defined/placed always under the return statement of parent function and are used above the return statement, obviously.
 - Likewise, we don't use `btn.addEventListner()` syntax. Instead, we use `btn.onclick = onclick_function` etc.
 - We don't use JavaScript `classes` or `this` keyword.
-- We use a module called `STATE` for state management and persistent browser storage. I Will discuss it in detail in a bit.
+- We use a module called `STATE` for state management and persistent browser storage. I will discuss this in detail in Instructions.
 - We use bundlers `budo/browserify`. Our index.html is a small file that just includes the bundle.js script.
 - Try to keep code as short as possible without compromising the readability and reusability.
 
-# Structure Explained:
+----
+Here are the instructions about how our way of creating modules work step by step:
+
+# Instructions
+
+## Structure of a module
 Here is the structure that I would show you step by step.
-## `example.js`
+### `example.js`
 First 3 lines for each module are always same:
 ```js
 const STATE = require('STATE')
@@ -208,12 +213,13 @@ We can also add event listeners if we want at this stage. As mentioned in rules 
 
 Then we define the functions used under the return statement.
 ```js
-  function onbatch (batch) {
-    for (const { type, data } of batch) {
-      on[type] && on[type](data)
-    }
-    // here we can create some elements after storing data
+const { drive } = sdb
+async function onbatch(batch){
+  for (const {type, paths} of batch) {
+    const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
+    on[type] && on[type](data)
   }
+}
   function inject(data) {
     const sheet = new CSSStyleSheet()
     sheet.replaceSync(data)
@@ -225,6 +231,43 @@ Then we define the functions used under the return statement.
   }
   function some_useful_function (){
     // NON state function
+  }
+```
+Onbatch function can be different depending upon the module we want to create. Like for example:
+```js
+  async function onbatch (batch) {
+    // Prevent feedback loops from scroll or toggle actions.
+    if (drive_updated_by_scroll) {
+      drive_updated_by_scroll = false
+      return
+    }
+    if (drive_updated_by_toggle) {
+      drive_updated_by_toggle = false
+      return
+    }
+    if (drive_updated_by_search) {
+      drive_updated_by_search = false
+      return
+    }
+
+    for (const { type, paths } of batch) {
+      if (!paths || paths.length === 0) continue
+      const data = await Promise.all(
+        paths.map(async path => {
+          try {
+            const file = await drive.get(path)
+            if (!file) return null
+            return file.raw
+          } catch (e) {
+            console.error(`Error getting file from drive: ${path}`, e)
+            return null
+          }
+        })
+      )
+      // Call the appropriate handler based on `type`.
+      const func = on[type]
+      func ? func({ data, paths }) : fail(data, type)
+    }
   }
 ```
 We add both `STATE` related and actual code related functions here. And finally after those we close our main module delimiters.
@@ -278,22 +321,22 @@ function fallback_module () {
 
 As discussed above we use **_** property of fallbacks to use **submodules**, Now to add communication between which can be used to trigger functions on events we use a **protocol** based system.
 ### Concept
-Lets say **example_sub_module.js** is a submodule of **super_node.js**, then what we need to do is to first of all define a protocol function and pass it as a parameter to the instance of that submodules inorder to introduce a message based communication between those.
+Lets say **child.js** is a submodule of **parent.js**, then what we need to do is to first of all define a protocol function and pass it as a parameter to the instance of that submodules inorder to introduce a message based communication between those.
 ```js
-  const example_sub_module = require('example_sub_module')
+  const child = require('child')
 ```
 and then
 ```js
-  let _ = {example_sub_module : null} // this is used to hold functions for all the sub-modules. These would be passed or sent back by the all of the sub_modules. We can also include an `up` property for the communication functions for the super_node if the current module is a example_sub_module for another module and it getting protocol as a paramerter.
-  element = await example_sub_module(subs[0], space_protocol)
+  let _ = {child : null} // this is used to hold functions for all the children. These would be passed or sent back by the all of the children. We can also include an `up` property for the communication functions for the parent if the current module is a child for another module and it getting protocol as a paramerter.
+  element = await child(subs[0], space_protocol)
 ```
-An example of a protocol function in the `super_node.js` for `example_sub_module.js` is:
+An example of a protocol function in the `parent.js` for `child.js` is:
 ```js
   function space_protocol (send) {
     _.send_space = send
-    return on // this is the function which is passed to sub_module and the sub_module can execute this to send a message to the super_node
-    function on ({ type, data }) { // runs on behalf of the sub_module
-      decide_and_execute_function_for_subs_based_on_the_passed_type({ type, data })
+    return on // this is the function which is passed to child and the child can execute this to send a message to the parent
+    function on ({ type, data }) { // runs on behalf of the child
+      decide_and_execute_function_for_child_based_on_the_passed_type({ type, data })
     }
   }
 ```
@@ -302,7 +345,7 @@ When the **_** property is like this:
   function fallback_instance () {
     return {
       _: {
-        'example_sub_module': {
+        'child': {
           0: '',
           mapping: {
             'style': 'style'
@@ -312,7 +355,7 @@ When the **_** property is like this:
     }
   }
 ```
-Then for the `example_sub_module.js` the code could look like:
+Then for the `child.js` the code could look like:
 ```js
 async function taskbar(opts, protocol) {
 ...
@@ -328,7 +371,7 @@ return
   function action_bar_protocol (send) {
     _.action_bar = send
     return on
-    function on ({ type, data }) {  //routing the messages to super_node
+    function on ({ type, data }) {  //routing the messages to parent
       _.up({ type, data })
     }
   }
@@ -336,11 +379,11 @@ return
   function tabsbar_protocol (send) {
     _.tabsbar = send
     return on
-    function on ({ type, data }) { //routing the messages to super_node
+    function on ({ type, data }) { //routing the messages to parent
       _.up({ type, data })
     }
   }
-  function onmessage ({ type, data }) { // This function is passed as parameter to the example_super_node function, so it can communicate with the example_sub_module
+  function onmessage ({ type, data }) { // This function is passed as parameter to the parent function, so it can communicate with the child
     switch (type) {
       case 'tab_name_clicked':
       case 'tab_close_clicked':
@@ -414,7 +457,3 @@ The `sdb.drive` object provides an interface for managing datasets and files att
 - File types are inferred from the file extension.
 - All file operations are isolated to the current node's state and changes are persisted immediately.\
 - The onbatch() function is triggered as soon as something in the drive is updated through `drive.put()` so thats we may need to add flags for events which we dont want to trigger the update of whole ui.
-
-
-## Admin
-// @todo as I (ddroid) myself don't know the usage.

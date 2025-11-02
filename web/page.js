@@ -1,10 +1,11 @@
 const STATE = require('../src/node_modules/STATE')
 const statedb = STATE(__filename)
 const admin_api = statedb.admin()
-admin_api.on(event => {
-  console.log(event)
+const admin_on = {}
+admin_api.on(({type, data}) => {
+  admin_on[type] && admin_on[type]()
 })
-const { sdb, io } = statedb(fallback_module)
+const { sdb, io, id } = statedb(fallback_module)
 const { drive, admin } = sdb
 /******************************************************************************
   PAGE
@@ -25,6 +26,7 @@ const graph_explorer = require('graph-explorer')
 const editor = require('../src/node_modules/quick_editor')
 const manager = require('../src/node_modules/manager')
 const steps_wizard = require('../src/node_modules/steps_wizard')
+const { resource } = require('../src/node_modules/helpers')
 
 const imports = {
   theme_widget,
@@ -44,7 +46,7 @@ const imports = {
 }
 config().then(() => boot({ sid: '' }))
 
-async function config () {
+async function config() {
   // const path = path => new URL(`../src/node_modules/${path}`, `file://${__dirname}`).href.slice(8)
   const html = document.documentElement
   const meta = document.createElement('meta')
@@ -65,13 +67,14 @@ async function config () {
 /******************************************************************************
   PAGE BOOT
 ******************************************************************************/
-async function boot (opts) {
+async function boot(opts) {
   // ----------------------------------------
   // ID + JSON STATE
   // ----------------------------------------
   const on = {
     style: inject,
-    ...sdb.admin.status.dataset.drive
+    ...sdb.admin.status.dataset.drive,
+    ...sdb.admin
   }
   // const status = {}
   // ----------------------------------------
@@ -127,73 +130,86 @@ async function boot (opts) {
     on_label_click: handle_label_click,
     on_select_all_toggle: handle_select_all_toggle
   }
+  const item = resource()
   io.on(port => {
     const { by, to } = port
+    item.set(port.to, port)
     port.onmessage = event => {
       const txt = event.data
       const key = `[${by} -> ${to}]`
-      on[txt.type] && on[txt.type](...txt.args, pairs[to])
+
+      on[txt.type] && on[txt.type](...txt.data)
 
     }
   })
-  
+
 
   const editor_subs = await sdb.get_sub("page>../src/node_modules/quick_editor")
+  // const subs = await sdb.watch(onbatch)
   const subs = (await sdb.watch(onbatch)).filter((_, index) => index % 2 === 0)
   console.log('Page subs', subs)
   const nav_menu_element = await navbar(subs[names.length], names, initial_checked_indices, menu_callbacks)
-  navbar_slot.replaceWith(nav_menu_element)
-  create_component(entries)
-  window.onload = scroll_to_initial_selected
 
-  
+
+
+  navbar_slot.replaceWith(nav_menu_element, await editor(editor_subs[0]))
+  await create_component(entries)
+  window.onload = scroll_to_initial_selected
+  send_quick_editor_data()
+  admin_on['import_db'] = send_quick_editor_data
+
   return el
-async function create_component (entries_obj) {
-  let index = 0
-  for (const [name, factory] of entries_obj) {
-    const is_initially_checked = initial_checked_indices.length === 0 || initial_checked_indices.includes(index + 1)
-    const outer = document.createElement('div')
-    outer.className = 'component-outer-wrapper'
-    outer.style.display = is_initially_checked ? 'block' : 'none'
-    outer.innerHTML = `
+  async function create_component(entries_obj) {
+    let index = 0
+    for (const [name, factory] of entries_obj) {
+      const is_initially_checked = initial_checked_indices.length === 0 || initial_checked_indices.includes(index + 1)
+      const outer = document.createElement('div')
+      outer.className = 'component-outer-wrapper'
+      outer.style.display = is_initially_checked ? 'block' : 'none'
+      outer.innerHTML = `
       <div class="component-name-label">${name}</div>
       <div class="component-wrapper"></div>
     `
-    const inner = outer.querySelector('.component-wrapper')
-    const component_content = await factory(subs[index])
-    console.log('component_content', index)
-    component_content.className = 'component-content'
-    
-    const node_id = admin.status.s2i[subs[index].sid]
-    const editor_id = admin.status.a2i[admin.status.s2i[editor_subs[index].sid]]
-    inner.append(component_content, await editor(editor_subs[index]))
-    
+      const inner = outer.querySelector('.component-wrapper')
+      const component_content = await factory(subs[index])
+      component_content.className = 'component-content'
 
-    const result = {}
-    const drive = admin.status.dataset.drive
+      const node_id = admin.status.s2i[subs[index].sid]
+      const editor_index = index + 1
+      inner.append(component_content, await editor(editor_subs[editor_index]))
 
-    pairs[editor_id] = node_id
-    
-    const datasets = drive.list('', node_id)
-    for(dataset of datasets) {
-      result[dataset] = {}
-      const files = drive.list(dataset, node_id)
-      for(file of files){
-        result[dataset][file] = (await drive.get(dataset+file, node_id)).raw
+
+      const result = {}
+      const drive = admin.status.dataset.drive
+
+
+      const modulepath = node_id.split(':')[0]
+      const fields = admin.status.db.read_all(['state', modulepath])
+      const nodes = Object.keys(fields).filter(field => !isNaN(Number(field.split(':').at(-1))))
+      for (const node of nodes) {
+        result[node] = {}
+        const datasets = drive.list('', node)
+        for (dataset of datasets) {
+          result[node][dataset] = {}
+          const files = drive.list(dataset, node)
+          for (file of files) {
+            result[node][dataset][file] = (await drive.get(dataset + file, node)).raw
+          }
+        }
       }
+
+      const editor_id = admin.status.a2i[admin.status.s2i[editor_subs[editor_index].sid]]
+      const port = await item.get(editor_id)
+      // await io.at(editor_id)
+      port.postMessage(result)
+
+      components_wrapper.appendChild(outer)
+      wrappers[index] = { outer, inner, name, checkbox_state: is_initially_checked }
+      index++
     }
-    
-
-    const port = await io.at(editor_id)
-    port.postMessage(result)
-
-    components_wrapper.appendChild(outer)
-    wrappers[index] = { outer, inner, name, checkbox_state: is_initially_checked }
-    index++
   }
-}
 
-  function scroll_to_initial_selected () {
+  function scroll_to_initial_selected() {
     if (selected_name_param) {
       const index = names.indexOf(selected_name_param)
       if (index !== -1 && wrappers[index]) {
@@ -210,14 +226,14 @@ async function create_component (entries_obj) {
     }
   }
 
-  function clear_selection_highlight () {
+  function clear_selection_highlight() {
     if (current_selected_wrapper) {
       current_selected_wrapper.style.backgroundColor = ''
     }
     current_selected_wrapper = null
   }
 
-  function update_url (selected_name = url_params.get('selected')) {
+  function update_url(selected_name = url_params.get('selected')) {
     const checked_indices = wrappers.reduce((acc, w, i) => {
       if (w.checkbox_state) { acc.push(i + 1) }
       return acc
@@ -234,7 +250,7 @@ async function create_component (entries_obj) {
     window.history.replaceState(null, '', new_url)
   }
 
-  function handle_checkbox_change (detail) {
+  function handle_checkbox_change(detail) {
     const { index, checked } = detail
     if (wrappers[index]) {
       wrappers[index].outer.style.display = checked ? 'block' : 'none'
@@ -247,7 +263,7 @@ async function create_component (entries_obj) {
     }
   }
 
-  function handle_label_click (detail) {
+  function handle_label_click(detail) {
     const { index, name } = detail
     if (wrappers[index]) {
       const target_wrapper = wrappers[index].outer
@@ -263,7 +279,7 @@ async function create_component (entries_obj) {
     }
   }
 
-  function handle_select_all_toggle (detail) {
+  function handle_select_all_toggle(detail) {
     const { selectAll: select_all } = detail
     wrappers.forEach((w, index) => {
       w.outer.style.display = select_all ? 'block' : 'none'
@@ -274,10 +290,9 @@ async function create_component (entries_obj) {
   }
 
   async function onbatch(batch) {
-    for (const { type, paths } of batch){
+    for (const { type, paths } of batch) {
       const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
-      console.log('onbatch', type, data)
-      const func = on[type] || fail
+      const func = on[type] || (() => { })
       func(data, type)
     }
   }
@@ -285,8 +300,29 @@ async function create_component (entries_obj) {
   function inject(data) {
     style.innerHTML = data.join('\n')
   }
+  async function send_quick_editor_data() {
+      const inputs = sdb.admin.get_dataset() || []
+      const result = {}
+      inputs.forEach(type => {
+        result[type] = {}
+        const datasets = sdb.admin.get_dataset({ type })
+        datasets && Object.values(datasets).forEach(name => {
+          result[type][name] = {}
+          const ds = sdb.admin.get_dataset({ type, name: name })
+          ds.forEach(ds_id => {
+            const files = admin.status.db.read(['state', ds_id]).files || []
+            result[type][name][ds_id] = files
+          })
+        })
+      })
+      const editor_id = admin.status.a2i[admin.status.s2i[editor_subs[0].sid]]
+      const port = await item.get(editor_id)
+      // await io.at(editor_id)
+      port.postMessage(result)
+
+  }
 }
-function fallback_module () {
+function fallback_module() {
   const menuname = '../src/node_modules/menu'
   const names = [
     '../src/node_modules/theme_widget',
@@ -306,6 +342,7 @@ function fallback_module () {
   ]
   const subs = {}
   names.forEach(subgen)
+  subs['../src/node_modules/helpers'] = 0
   subs['../src/node_modules/tabs'] = {
     $: '',
     0: '',
@@ -404,7 +441,7 @@ function fallback_module () {
       'mode': 'mode'
     }
   }
-  subs[menuname] = { 
+  subs[menuname] = {
     $: '',
     0: '',
     mapping: {
@@ -417,10 +454,10 @@ function fallback_module () {
       'style': 'style'
     }
   }
-  for(i = 0; i < Object.keys(subs).length - 2; i++){
+  for (i = 0; i < Object.keys(subs).length - 1; i++) {
     subs['../src/node_modules/quick_editor'][i] = quick_editor$
   }
-  
+
   return {
     _: subs,
     drive: {
@@ -456,7 +493,7 @@ function fallback_module () {
             padding: 15px;
             border: 3px solid #666;
             resize: both;
-            overflow: auto;
+            overflow: visible;
             border-radius: 0px;
             background-color: #eceff4;
             min-height: 50px;
@@ -519,12 +556,17 @@ function fallback_module () {
         resize: both;
         overflow: auto;
       }
+      .quick-editor {
+        position: absolute;
+        z-index: 100;
+        top: 0;
+        right: 0;
+      }
       .component-wrapper:hover .quick-editor {
         display: block;
       }
-      .quick-editor {
+      .component-wrapper > .quick-editor {
         display: none;
-        position: absolute;
         top: -5px;
         right: -10px;
         z-index: 16;
@@ -547,14 +589,14 @@ function fallback_module () {
       'data/': {},
     }
   }
-  function quick_editor$ (args, tools, [quick_editor]){
+  function quick_editor$(args, tools, [quick_editor]) {
     const state = quick_editor()
     state.net = {
       page: {}
     }
     return state
   }
-  function subgen (name) {
+  function subgen(name) {
     subs[name] = {
       $: '',
       0: '',
