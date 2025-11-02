@@ -3,18 +3,19 @@
 },{}],2:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('./STATE')
+const graphdb = require('./graphdb')
 const statedb = STATE(__filename)
 const { get } = statedb(fallback_module)
 
 module.exports = graph_explorer
 
-async function graph_explorer (opts) {
+async function graph_explorer (opts, protocol) {
   /******************************************************************************
-  1. COMPONENT INITIALIZATION
+  COMPONENT INITIALIZATION
     - This sets up the initial state, variables, and the basic DOM structure.
     - It also initializes the IntersectionObserver for virtual scrolling and
       sets up the watcher for state changes.
-******************************************************************************/
+  ******************************************************************************/
   const { sdb } = await get(opts.sid)
   const { drive } = sdb
 
@@ -22,27 +23,56 @@ async function graph_explorer (opts) {
   let horizontal_scroll_value = 0
   let selected_instance_paths = []
   let confirmed_instance_paths = []
-  let all_entries = {} // Holds the entire graph structure from entries.json.
+  let db = null // Database for entries
   let instance_states = {} // Holds expansion state {expanded_subs, expanded_hubs} for each node instance.
   let search_state_instances = {}
+  let search_entry_states = {} // Holds expansion state for search mode interactions separately
   let view = [] // A flat array representing the visible nodes in the graph.
   let mode // Current mode of the graph explorer, can be set to 'default', 'menubar' or 'search'. Its value should be set by the `mode` file in the drive.
-  let previous_mode = 'menubar'
+  let previous_mode
   let search_query = ''
+  let hubs_flag = 'default' // Flag for hubs behavior: 'default' (prevent duplication), 'true' (no duplication prevention), 'false' (disable hubs)
+  let selection_flag = 'default' // Flag for selection behavior: 'default' (enable selection), 'false' (disable selection)
+  let recursive_collapse_flag = false // Flag for recursive collapse: true (recursive), false (parent level only)
   let drive_updated_by_scroll = false // Flag to prevent `onbatch` from re-rendering on scroll updates.
   let drive_updated_by_toggle = false // Flag to prevent `onbatch` from re-rendering on toggle updates.
   let drive_updated_by_search = false // Flag to prevent `onbatch` from re-rendering on search updates.
+  let drive_updated_by_last_clicked = false // Flag to prevent `onbatch` from re-rendering on last clicked node updates.
+  let ignore_drive_updated_by_scroll = false // Prevent scroll flag.
+  let drive_updated_by_match = false // Flag to prevent `onbatch` from re-rendering on matching entry updates.
+  let drive_updated_by_tracking = false // Flag to prevent `onbatch` from re-rendering on view order tracking updates.
+  let drive_updated_by_undo = false // Flag to prevent onbatch from re-rendering on undo updates
+  let is_loading_from_drive = false // Flag to prevent saving to drive during initial load
+  let multi_select_enabled = false // Flag to enable multi-select mode without ctrl key
+  let select_between_enabled = false // Flag to enable select between mode
+  let select_between_first_node = null // First node selected in select between mode
+  let duplicate_entries_map = {}
+  let view_order_tracking = {} // Tracks instance paths by base path in real time as they are added into the view through toggle expand/collapse actions.
   let is_rendering = false // Flag to prevent concurrent rendering operations in virtual scrolling.
   let spacer_element = null // DOM element used to manage scroll position when hubs are toggled.
+  let spacer_initial_height = 0
   let hub_num = 0 // Counter for expanded hubs.
+  let last_clicked_node = null // Track the last clicked node instance path for highlighting.
+  let root_wand_state = null // Store original root wand state when replaced with jump button
+  const manipulated_inside_search = {}
+  let keybinds = {} // Store keyboard navigation bindings
+  let undo_stack = [] // Stack to track drive state changes for undo functionality
+
+  // Protocol system for message-based communication
+  let send = null
+  if (protocol) {
+    send = protocol(msg => onmessage(msg))
+  }
 
   const el = document.createElement('div')
   el.className = 'graph-explorer-wrapper'
   const shadow = el.attachShadow({ mode: 'closed' })
   shadow.innerHTML = `
     <div class="graph-container"></div>
+    <div class="searchbar"></div>
     <div class="menubar"></div>
   `
+  const searchbar = shadow.querySelector('.searchbar')
   const menubar = shadow.querySelector('.menubar')
   const container = shadow.querySelector('.graph-container')
 
@@ -65,43 +95,195 @@ async function graph_explorer (opts) {
     rootMargin: '500px 0px',
     threshold: 0
   })
+
   // Define handlers for different data types from the drive, called by `onbatch`.
   const on = {
     entries: on_entries,
     style: inject_style,
     runtime: on_runtime,
-    mode: on_mode
+    mode: on_mode,
+    flags: on_flags,
+    keybinds: on_keybinds,
+    undo: on_undo
   }
   // Start watching for state changes. This is the main trigger for all updates.
   await sdb.watch(onbatch)
 
+  document.onkeydown = handle_keyboard_navigation
+
   return el
 
   /******************************************************************************
-  2. STATE AND DATA HANDLING
+ESSAGE HANDLING
+    - Handles incoming messages and sends outgoing messages.
+    - @TODO: define the messages we wanna to send inorder to receive some info.
+  ******************************************************************************/
+  function onmessage ({ type, data }) {
+    const on_message_types = {
+      set_mode: handle_set_mode,
+      set_search_query: handle_set_search_query,
+      select_nodes: handle_select_nodes,
+      expand_node: handle_expand_node,
+      collapse_node: handle_collapse_node,
+      toggle_node: handle_toggle_node,
+      get_selected: handle_get_selected,
+      get_confirmed: handle_get_confirmed,
+      clear_selection: handle_clear_selection,
+      set_flag: handle_set_flag,
+      scroll_to_node: handle_scroll_to_node
+    }
+
+    const handler = on_message_types[type]
+    if (handler) handler(data)
+    else console.warn(`[graph_explorer-protocol] Unknown message type: ${type}`, data)
+
+    function handle_set_mode (data) {
+      const { mode: new_mode } = data
+      if (new_mode && ['default', 'menubar', 'search'].includes(new_mode)) {
+        update_drive_state({ type: 'mode/current_mode', message: new_mode })
+        send_message({ type: 'mode_changed', data: { mode: new_mode } })
+      }
+    }
+
+    function handle_set_search_query (data) {
+      const { query } = data
+      if (typeof query === 'string') {
+        search_query = query
+        drive_updated_by_search = true
+        update_drive_state({ type: 'mode/search_query', message: query })
+        if (mode === 'search') perform_search(query)
+        send_message({ type: 'search_query_changed', data: { query } })
+      }
+    }
+
+    function handle_select_nodes (data) {
+      const { instance_paths } = data
+      if (Array.isArray(instance_paths)) {
+        update_drive_state({ type: 'runtime/selected_instance_paths', message: instance_paths })
+        send_message({ type: 'selection_changed', data: { selected: instance_paths } })
+      }
+    }
+
+    function handle_expand_node (data) {
+      const { instance_path, expand_subs = true, expand_hubs = false } = data
+      if (instance_path && instance_states[instance_path]) {
+        instance_states[instance_path].expanded_subs = expand_subs
+        instance_states[instance_path].expanded_hubs = expand_hubs
+        drive_updated_by_toggle = true
+        update_drive_state({ type: 'runtime/instance_states', message: instance_states })
+        send_message({ type: 'node_expanded', data: { instance_path, expand_subs, expand_hubs } })
+      }
+    }
+
+    function handle_collapse_node (data) {
+      const { instance_path } = data
+      if (instance_path && instance_states[instance_path]) {
+        instance_states[instance_path].expanded_subs = false
+        instance_states[instance_path].expanded_hubs = false
+        drive_updated_by_toggle = true
+        update_drive_state({ type: 'runtime/instance_states', message: instance_states })
+        send_message({ type: 'node_collapsed', data: { instance_path } })
+      }
+    }
+
+    function handle_toggle_node (data) {
+      const { instance_path, toggle_type = 'subs' } = data
+      if (instance_path && instance_states[instance_path]) {
+        if (toggle_type === 'subs') {
+          toggle_subs(instance_path)
+        } else if (toggle_type === 'hubs') {
+          toggle_hubs(instance_path)
+        }
+        send_message({ type: 'node_toggled', data: { instance_path, toggle_type } })
+      }
+    }
+
+    function handle_get_selected (data) {
+      send_message({ type: 'selected_nodes', data: { selected: selected_instance_paths } })
+    }
+
+    function handle_get_confirmed (data) {
+      send_message({ type: 'confirmed_nodes', data: { confirmed: confirmed_instance_paths } })
+    }
+
+    function handle_clear_selection (data) {
+      update_drive_state({ type: 'runtime/selected_instance_paths', message: [] })
+      update_drive_state({ type: 'runtime/confirmed_selected', message: [] })
+      send_message({ type: 'selection_cleared', data: {} })
+    }
+
+    function handle_set_flag (data) {
+      const { flag_type, value } = data
+      if (flag_type === 'hubs' && ['default', 'true', 'false'].includes(value)) {
+        update_drive_state({ type: 'flags/hubs', message: value })
+      } else if (flag_type === 'selection') {
+        update_drive_state({ type: 'flags/selection', message: value })
+      } else if (flag_type === 'recursive_collapse') {
+        update_drive_state({ type: 'flags/recursive_collapse', message: value })
+      }
+      send_message({ type: 'flag_changed', data: { flag_type, value } })
+    }
+
+    function handle_scroll_to_node (data) {
+      const { instance_path } = data
+      const node_index = view.findIndex(n => n.instance_path === instance_path)
+      if (node_index !== -1) {
+        const scroll_position = node_index * node_height
+        container.scrollTop = scroll_position
+        send_message({ type: 'scrolled_to_node', data: { instance_path, scroll_position } })
+      }
+    }
+  }
+
+  function send_message ({ type, data }) {
+    if (send) {
+      send({ type, data })
+    }
+  }
+
+  /******************************************************************************
+  STATE AND DATA HANDLING
     - These functions process incoming data from the STATE module's `sdb.watch`.
     - `onbatch` is the primary entry point.
-******************************************************************************/
+  ******************************************************************************/
   async function onbatch (batch) {
+    console.log('[SEARCH DEBUG] onbatch caled:', {
+      mode,
+      search_query,
+      last_clicked_node,
+      feedback_flags: {
+        scroll: drive_updated_by_scroll,
+        toggle: drive_updated_by_toggle,
+        search: drive_updated_by_search,
+        match: drive_updated_by_match,
+        tracking: drive_updated_by_tracking
+      }
+    })
+
     // Prevent feedback loops from scroll or toggle actions.
-    if (check_and_reset_feedback_flags()) return
+    if (check_and_reset_feedback_flags()) {
+      console.log('[SEARCH DEBUG] onbatch prevented by feedback flags')
+      return
+    }
 
     for (const { type, paths } of batch) {
       if (!paths || !paths.length) continue
       const data = await Promise.all(
-        paths.map(path =>
-          drive
-            .get(path)
-            .then(file => (file ? file.raw : null))
-            .catch(e => {
-              console.error(`Error getting file from drive: ${path}`, e)
-              return null
-            })
-        )
+        paths.map(path => batch_get(path))
       )
       // Call the appropriate handler based on `type`.
       const func = on[type]
       func ? func({ data, paths }) : fail(data, type)
+    }
+
+    function batch_get (path) {
+      return drive
+        .get(path)
+        .then(file => (file ? file.raw : null))
+        .catch(e => {
+          console.error(`Error getting file from drive: ${path}`, e)
+          return null
+        })
     }
   }
 
@@ -112,20 +294,20 @@ async function graph_explorer (opts) {
   function on_entries ({ data }) {
     if (!data || data[0] == null) {
       console.error('Entries data is missing or empty.')
-      all_entries = {}
+      db = graphdb({})
       return
     }
     const parsed_data = parse_json_data(data[0], 'entries.json')
     if (typeof parsed_data !== 'object' || !parsed_data) {
       console.error('Parsed entries data is not a valid object.')
-      all_entries = {}
+      db = graphdb({})
       return
     }
-    all_entries = parsed_data
+    db = graphdb(parsed_data)
 
     // After receiving entries, ensure the root node state is initialized and trigger the first render.
     const root_path = '/'
-    if (all_entries[root_path]) {
+    if (db.has(root_path)) {
       const root_instance_path = '|/'
       if (!instance_states[root_instance_path]) {
         instance_states[root_instance_path] = {
@@ -133,7 +315,14 @@ async function graph_explorer (opts) {
           expanded_hubs: false
         }
       }
-      build_and_render_view()
+      // don't rebuild view if we're in search mode with active query
+      if (mode === 'search' && search_query) {
+        console.log('[SEARCH DEBUG] on_entries: skipping build_and_render_view in Search Mode with query:', search_query)
+        perform_search(search_query)
+      } else {
+        // tracking will be initialized later if drive data is empty
+        build_and_render_view()
+      }
     } else {
       console.warn('Root path "/" not found in entries. Clearing view.')
       view = []
@@ -142,83 +331,147 @@ async function graph_explorer (opts) {
   }
 
   function on_runtime ({ data, paths }) {
+    const on_runtime_paths = {
+      'node_height.json': handle_node_height,
+      'vertical_scroll_value.json': handle_vertical_scroll,
+      'horizontal_scroll_value.json': handle_horizontal_scroll,
+      'selected_instance_paths.json': handle_selected_paths,
+      'confirmed_selected.json': handle_confirmed_paths,
+      'instance_states.json': handle_instance_states,
+      'search_entry_states.json': handle_search_entry_states,
+      'last_clicked_node.json': handle_last_clicked_node,
+      'view_order_tracking.json': handle_view_order_tracking
+    }
     let needs_render = false
     const render_nodes_needed = new Set()
 
-    paths.forEach((path, i) => {
-      if (data[i] === null) return
-      const value = parse_json_data(data[i], path)
+    paths.forEach((path, i) => runtime_handler(path, data[i]))
+
+    if (needs_render) {
+      if (mode === 'search' && search_query) {
+        console.log('[SEARCH DEBUG] on_runtime: Skipping build_and_render_view in search mode with query:', search_query)
+        perform_search(search_query)
+      } else {
+        build_and_render_view()
+      }
+    } else if (render_nodes_needed.size > 0) {
+      render_nodes_needed.forEach(re_render_node)
+    }
+
+    function runtime_handler (path, data) {
+      if (data === null) return
+      const value = parse_json_data(data, path)
       if (value === null) return
 
-      // Handle different runtime state updates based on the path i.e files
-      switch (true) {
-        case path.endsWith('node_height.json'):
-          node_height = value
-          break
-        case path.endsWith('vertical_scroll_value.json'):
-          if (typeof value === 'number') vertical_scroll_value = value
-          break
-        case path.endsWith('horizontal_scroll_value.json'):
-          if (typeof value === 'number') horizontal_scroll_value = value
-          break
-        case path.endsWith('selected_instance_paths.json'):
-          selected_instance_paths = process_path_array_update({
-            current_paths: selected_instance_paths,
-            value,
-            render_set: render_nodes_needed,
-            name: 'selected_instance_paths'
-          })
-          break
-        case path.endsWith('confirmed_selected.json'):
-          confirmed_instance_paths = process_path_array_update({
-            current_paths: confirmed_instance_paths,
-            value,
-            render_set: render_nodes_needed,
-            name: 'confirmed_selected'
-          })
-          break
-        case path.endsWith('instance_states.json'):
-          if (typeof value === 'object' && value && !Array.isArray(value)) {
-            instance_states = value
-            needs_render = true
-          } else {
-            console.warn(
-              'instance_states is not a valid object, ignoring.',
-              value
-            )
-          }
-          break
+      // Extract filename from path and use handler if available
+      const filename = path.split('/').pop()
+      const handler = on_runtime_paths[filename]
+      if (handler) {
+        const result = handler({ value, render_nodes_needed })
+        if (result?.needs_render) needs_render = true
       }
-    })
+    }
 
-    if (needs_render) build_and_render_view()
-    else if (render_nodes_needed.size > 0) {
-      render_nodes_needed.forEach(re_render_node)
+    function handle_node_height ({ value }) {
+      node_height = value
+    }
+
+    function handle_vertical_scroll ({ value }) {
+      if (typeof value === 'number') vertical_scroll_value = value
+    }
+
+    function handle_horizontal_scroll ({ value }) {
+      if (typeof value === 'number') horizontal_scroll_value = value
+    }
+
+    function handle_selected_paths ({ value, render_nodes_needed }) {
+      selected_instance_paths = process_path_array_update({
+        current_paths: selected_instance_paths,
+        value,
+        render_set: render_nodes_needed,
+        name: 'selected_instance_paths'
+      })
+    }
+
+    function handle_confirmed_paths ({ value, render_nodes_needed }) {
+      confirmed_instance_paths = process_path_array_update({
+        current_paths: confirmed_instance_paths,
+        value,
+        render_set: render_nodes_needed,
+        name: 'confirmed_selected'
+      })
+    }
+
+    function handle_instance_states ({ value }) {
+      if (typeof value === 'object' && value && !Array.isArray(value)) {
+        instance_states = value
+        return { needs_render: true }
+      } else {
+        console.warn('instance_states is not a valid object, ignoring.', value)
+      }
+    }
+
+    function handle_search_entry_states ({ value }) {
+      if (typeof value === 'object' && value && !Array.isArray(value)) {
+        search_entry_states = value
+        if (mode === 'search') return { needs_render: true }
+      } else {
+        console.warn('search_entry_states is not a valid object, ignoring.', value)
+      }
+    }
+
+    function handle_last_clicked_node ({ value, render_nodes_needed }) {
+      const old_last_clicked = last_clicked_node
+      last_clicked_node = typeof value === 'string' ? value : null
+      if (old_last_clicked) render_nodes_needed.add(old_last_clicked)
+      if (last_clicked_node) render_nodes_needed.add(last_clicked_node)
+    }
+
+    function handle_view_order_tracking ({ value }) {
+      if (typeof value === 'object' && value && !Array.isArray(value)) {
+        is_loading_from_drive = true
+        view_order_tracking = value
+        is_loading_from_drive = false
+        if (Object.keys(view_order_tracking).length === 0) {
+          initialize_tracking_from_current_state()
+        }
+        return { needs_render: true }
+      } else {
+        console.warn('view_order_tracking is not a valid object, ignoring.', value)
+      }
     }
   }
 
   function on_mode ({ data, paths }) {
-    let new_current_mode, new_previous_mode, new_search_query
+    const on_mode_paths = {
+      'current_mode.json': handle_current_mode,
+      'previous_mode.json': handle_previous_mode,
+      'search_query.json': handle_search_query,
+      'multi_select_enabled.json': handle_multi_select_enabled,
+      'select_between_enabled.json': handle_select_between_enabled
+    }
+    let new_current_mode, new_previous_mode, new_search_query, new_multi_select_enabled, new_select_between_enabled
 
-    paths.forEach((path, i) => {
-      const value = parse_json_data(data[i], path)
-      if (value === null) return
-
-      if (path.endsWith('current_mode.json')) new_current_mode = value
-      else if (path.endsWith('previous_mode.json')) new_previous_mode = value
-      else if (path.endsWith('search_query.json')) new_search_query = value
-    })
+    paths.forEach((path, i) => mode_handler(path, data[i]))
 
     if (typeof new_search_query === 'string') search_query = new_search_query
     if (new_previous_mode) previous_mode = new_previous_mode
+    if (typeof new_multi_select_enabled === 'boolean') {
+      multi_select_enabled = new_multi_select_enabled
+      render_menubar() // Re-render menubar to update button text
+    }
+    if (typeof new_select_between_enabled === 'boolean') {
+      select_between_enabled = new_select_between_enabled
+      if (!select_between_enabled) select_between_first_node = null
+      render_menubar()
+    }
 
     if (
       new_current_mode &&
       !['default', 'menubar', 'search'].includes(new_current_mode)
     ) {
-      return void console.warn(
-        `Invalid mode "${new_current_mode}" provided. Ignoring update.`
-      )
+      console.warn(`Invalid mode "${new_current_mode}" provided. Ignoring update.`)
+      return
     }
 
     if (new_current_mode === 'search' && !search_query) {
@@ -226,11 +479,95 @@ async function graph_explorer (opts) {
     }
     if (!new_current_mode || mode === new_current_mode) return
 
-    if (mode && new_current_mode === 'search') update_drive_state({ dataset: 'mode', name: 'previous_mode', value: mode })
+    if (mode && new_current_mode === 'search') update_drive_state({ type: 'mode/previous_mode', message: mode })
     mode = new_current_mode
     render_menubar()
+    render_searchbar()
     handle_mode_change()
     if (mode === 'search' && search_query) perform_search(search_query)
+
+    function mode_handler (path, data) {
+      const value = parse_json_data(data, path)
+      if (value === null) return
+
+      const filename = path.split('/').pop()
+      const handler = on_mode_paths[filename]
+      if (handler) {
+        const result = handler({ value })
+        if (result?.current_mode !== undefined) new_current_mode = result.current_mode
+        if (result?.previous_mode !== undefined) new_previous_mode = result.previous_mode
+        if (result?.search_query !== undefined) new_search_query = result.search_query
+        if (result?.multi_select_enabled !== undefined) new_multi_select_enabled = result.multi_select_enabled
+        if (result?.select_between_enabled !== undefined) new_select_between_enabled = result.select_between_enabled
+      }
+    }
+    function handle_current_mode ({ value }) {
+      return { current_mode: value }
+    }
+
+    function handle_previous_mode ({ value }) {
+      return { previous_mode: value }
+    }
+
+    function handle_search_query ({ value }) {
+      return { search_query: value }
+    }
+
+    function handle_multi_select_enabled ({ value }) {
+      return { multi_select_enabled: value }
+    }
+
+    function handle_select_between_enabled ({ value }) {
+      return { select_between_enabled: value }
+    }
+  }
+
+  function on_flags ({ data, paths }) {
+    const on_flags_paths = {
+      'hubs.json': handle_hubs_flag,
+      'selection.json': handle_selection_flag,
+      'recursive_collapse.json': handle_recursive_collapse_flag
+    }
+
+    paths.forEach((path, i) => flags_handler(path, data[i]))
+
+    function flags_handler (path, data) {
+      const value = parse_json_data(data, path)
+      if (value === null) return
+
+      const filename = path.split('/').pop()
+      const handler = on_flags_paths[filename]
+      if (handler) {
+        const result = handler(value)
+        if (result && result.needs_render) {
+          if (mode === 'search' && search_query) {
+            console.log('[SEARCH DEBUG] on_flags: Skipping build_and_render_view in search mode with query:', search_query)
+            perform_search(search_query)
+          } else {
+            build_and_render_view()
+          }
+        }
+      }
+    }
+
+    function handle_hubs_flag (value) {
+      if (typeof value === 'string' && ['default', 'true', 'false'].includes(value)) {
+        hubs_flag = value
+        return { needs_render: true }
+      } else {
+        console.warn('hubs flag must be one of: "default", "true", "false", ignoring.', value)
+      }
+    }
+
+    function handle_selection_flag (value) {
+      selection_flag = value
+      return { needs_render: true }
+    }
+
+    function handle_recursive_collapse_flag (value) {
+      recursive_collapse_flag = value
+      return { needs_render: false }
+    }
   }
 
   function inject_style ({ data }) {
@@ -239,12 +576,78 @@ async function graph_explorer (opts) {
     shadow.adoptedStyleSheets = [sheet]
   }
 
+  function on_keybinds ({ data }) {
+    if (!data || data[0] == null) {
+      console.error('Keybinds data is missing or empty.')
+      return
+    }
+    const parsed_data = parse_json_data(data[0])
+    if (typeof parsed_data !== 'object' || !parsed_data) {
+      console.error('Parsed keybinds data is not a valid object.')
+      return
+    }
+    keybinds = parsed_data
+  }
+
+  function on_undo ({ data }) {
+    if (!data || data[0] == null) {
+      console.error('Undo stack data is missing or empty.')
+      return
+    }
+    const parsed_data = parse_json_data(data[0])
+    if (!Array.isArray(parsed_data)) {
+      console.error('Parsed undo stack data is not a valid array.')
+      return
+    }
+    undo_stack = parsed_data
+  }
+
   // Helper to persist component state to the drive.
-  async function update_drive_state ({ dataset, name, value }) {
+  async function update_drive_state ({ type, message }) {
+    // Save current state to undo stack before updating (except for some)
+    const should_track = (
+      !drive_updated_by_undo &&
+      !type.includes('scroll') &&
+      !type.includes('last_clicked') &&
+      !type.includes('view_order_tracking') &&
+      !type.includes('select_between') &&
+      type !== 'undo/stack'
+    )
+    if (should_track) {
+      await save_to_undo_stack(type)
+    }
+
     try {
-      await drive.put(`${dataset}/${name}.json`, JSON.stringify(value))
+      await drive.put(`${type}.json`, JSON.stringify(message))
     } catch (e) {
+      const [dataset, name] = type.split('/')
       console.error(`Failed to update ${dataset} state for ${name}:`, e)
+    }
+    if (should_track) {
+      render_menubar()
+    }
+  }
+
+  async function save_to_undo_stack (type) {
+    try {
+      const current_file = await drive.get(`${type}.json`)
+      if (current_file && current_file.raw) {
+        const snapshot = {
+          type,
+          value: current_file.raw,
+          timestamp: Date.now()
+        }
+
+        // Add to stack (limit to 50 items to prevent memory issues)
+        undo_stack.push(snapshot)
+        if (undo_stack.length > 50) {
+          undo_stack.shift()
+        }
+        drive_updated_by_undo = true
+        await drive.put('undo/stack.json', JSON.stringify(undo_stack))
+      }
+    } catch (e) {
+      console.error('Failed to save to undo stack:', e)
     }
   }
 
@@ -252,17 +655,118 @@ async function graph_explorer (opts) {
     if (!states[instance_path]) {
       states[instance_path] = { expanded_subs: false, expanded_hubs: false }
     }
+    if (states[instance_path].expanded_subs === null) {
+      states[instance_path].expanded_subs = true
+    }
+
     return states[instance_path]
   }
 
+  function calculate_children_pipe_trail ({
+    depth,
+    is_hub,
+    is_last_sub,
+    is_first_hub = false,
+    parent_pipe_trail,
+    parent_base_path,
+    base_path,
+    db
+  }) {
+    const children_pipe_trail = [...parent_pipe_trail]
+    const parent_entry = db.get(parent_base_path)
+    const is_hub_on_top = base_path === parent_entry?.hubs?.[0] || base_path === '/'
+
+    if (depth > 0) {
+      if (is_hub) {
+        if (is_last_sub) {
+          children_pipe_trail.pop()
+          children_pipe_trail.push(true)
+        }
+        if (is_hub_on_top && !is_last_sub) {
+          children_pipe_trail.pop()
+          children_pipe_trail.push(true)
+        }
+        if (is_first_hub) {
+          children_pipe_trail.pop()
+          children_pipe_trail.push(false)
+        }
+      }
+      children_pipe_trail.push(is_hub || !is_last_sub)
+    }
+    return { children_pipe_trail, is_hub_on_top }
+  }
+
+  // Extracted pipe logic for reuse in both default and search modes
+  function calculate_pipe_trail ({
+    depth,
+    is_hub,
+    is_last_sub,
+    is_first_hub = false,
+    is_hub_on_top,
+    parent_pipe_trail,
+    parent_base_path,
+    base_path,
+    db
+  }) {
+    let last_pipe = null
+    const parent_entry = db.get(parent_base_path)
+    const calculated_is_hub_on_top = base_path === parent_entry?.hubs?.[0] || base_path === '/'
+    const final_is_hub_on_top = is_hub_on_top !== undefined ? is_hub_on_top : calculated_is_hub_on_top
+
+    if (depth > 0) {
+      if (is_hub) {
+        last_pipe = [...parent_pipe_trail]
+        if (is_last_sub) {
+          last_pipe.pop()
+          last_pipe.push(true)
+          if (is_first_hub) {
+            last_pipe.pop()
+            last_pipe.push(false)
+          }
+        }
+        if (final_is_hub_on_top && !is_last_sub) {
+          last_pipe.pop()
+          last_pipe.push(true)
+        }
+      }
+    }
+
+    const pipe_trail = (is_hub && is_last_sub) || (is_hub && final_is_hub_on_top) ? last_pipe : parent_pipe_trail
+    const product = { pipe_trail, is_hub_on_top: final_is_hub_on_top }
+    return product
+  }
+
   /******************************************************************************
-  3. VIEW AND RENDERING LOGIC
+  VIEW AND RENDERING LOGIC AND SCALING
     - These functions build the `view` array and render the DOM.
     - `build_and_render_view` is the main orchestrator.
     - `build_view_recursive` creates the flat `view` array from the hierarchical data.
-******************************************************************************/
+    - `calculate_mobile_scale` calculates the scale factor for mobile devices.
+  ******************************************************************************/
   function build_and_render_view (focal_instance_path, hub_toggle = false) {
-    if (Object.keys(all_entries).length === 0) return void console.warn('No entries available to render.')
+    console.log('[SEARCH DEBUG] build_and_render_view called:', {
+      focal_instance_path,
+      hub_toggle,
+      current_mode: mode,
+      search_query,
+      last_clicked_node,
+      stack_trace: new Error().stack.split('\n').slice(1, 4).map(line => line.trim())
+    })
+
+    // This fuction should'nt be called in search mode for search
+    if (mode === 'search' && search_query && !hub_toggle) {
+      console.error('[SEARCH DEBUG] build_and_render_view called inappropriately in search mode!', {
+        mode,
+        search_query,
+        focal_instance_path,
+        stack_trace: new Error().stack.split('\n').slice(1, 6).map(line => line.trim())
+      })
+    }
+
+    if (!db || db.isEmpty()) {
+      console.warn('No entries available to render.')
+      return
+    }
 
     const old_view = [...view]
     const old_scroll_top = vertical_scroll_value
@@ -279,8 +783,11 @@ async function graph_explorer (opts) {
       is_hub: false,
       parent_pipe_trail: [],
       instance_states,
-      all_entries
+      db
     })
+
+    // Recalculate duplicates after view is built
+    collect_all_duplicate_entries()
 
     const new_scroll_top = calculate_new_scroll_top({
       old_scroll_top,
@@ -303,22 +810,23 @@ async function graph_explorer (opts) {
     observer.observe(top_sentinel)
     observer.observe(bottom_sentinel)
 
-    const set_scroll_and_sync = () => {
-      container.scrollTop = new_scroll_top
-      container.scrollLeft = old_scroll_left
-      vertical_scroll_value = container.scrollTop
-    }
-
-   // Handle the spacer element used for keep entries static wrt cursor by scrolling when hubs are toggled.
+    // Handle the spacer element used for keep entries static wrt cursor by scrolling when hubs are toggled.
     handle_spacer_element({
       hub_toggle,
       existing_height: existing_spacer_height,
       new_scroll_top,
       sync_fn: set_scroll_and_sync
     })
+
+    function set_scroll_and_sync () {
+      drive_updated_by_scroll = true
+      container.scrollTop = new_scroll_top
+      container.scrollLeft = old_scroll_left
+      vertical_scroll_value = container.scrollTop
+    }
   }
 
-  // Traverses the hierarchical `all_entries` data and builds a flat `view` array for rendering.
+  // Traverses the hierarchical entries data and builds a flat `view` array for rendering.
   function build_view_recursive ({
     base_path,
     parent_instance_path,
@@ -329,47 +837,26 @@ async function graph_explorer (opts) {
     is_first_hub = false,
     parent_pipe_trail,
     instance_states,
-    all_entries
+    db
   }) {
     const instance_path = `${parent_instance_path}|${base_path}`
-    const entry = all_entries[base_path]
+    const entry = db.get(base_path)
     if (!entry) return []
 
     const state = get_or_create_state(instance_states, instance_path)
-    const is_hub_on_top =
-      base_path === all_entries[parent_base_path]?.hubs?.[0] || base_path === '/'
 
-    // Calculate the pipe trail for drawing the tree lines. Quite complex logic here.
-    const children_pipe_trail = [...parent_pipe_trail]
-    let last_pipe = null
-    if (depth > 0) {
-      if (is_hub) {
-        last_pipe = [...parent_pipe_trail]
-        if (is_last_sub) {
-          children_pipe_trail.pop()
-          children_pipe_trail.push(true)
-          last_pipe.pop()
-          last_pipe.push(true)
-          if (is_first_hub) {
-            last_pipe.pop()
-            last_pipe.push(false)
-          }
-        }
-        if (is_hub_on_top && !is_last_sub) {
-          last_pipe.pop()
-          last_pipe.push(true)
-          children_pipe_trail.pop()
-          children_pipe_trail.push(true)
-        }
-        if (is_first_hub) {
-          children_pipe_trail.pop()
-          children_pipe_trail.push(false)
-        }
-      }
-      children_pipe_trail.push(is_hub || !is_last_sub)
-    }
+    const { children_pipe_trail, is_hub_on_top } = calculate_children_pipe_trail({
+      depth,
+      is_hub,
+      is_last_sub,
+      is_first_hub,
+      parent_pipe_trail,
+      parent_base_path,
+      base_path,
+      db
+    })
 
-    let current_view = []
+    const current_view = []
     // If hubs are expanded, recursively add them to the view first (they appear above the node).
     if (state.expanded_hubs && Array.isArray(entry.hubs)) {
       entry.hubs.forEach((hub_path, i, arr) => {
@@ -384,7 +871,7 @@ async function graph_explorer (opts) {
             is_first_hub: is_hub ? is_hub_on_top : false,
             parent_pipe_trail: children_pipe_trail,
             instance_states,
-            all_entries
+            db
           })
         )
       })
@@ -396,11 +883,9 @@ async function graph_explorer (opts) {
       depth,
       is_last_sub,
       is_hub,
-      pipe_trail:
-        (is_hub && is_last_sub) || (is_hub && is_hub_on_top)
-          ? last_pipe
-          : parent_pipe_trail,
-      is_hub_on_top
+      is_first_hub,
+      parent_pipe_trail,
+      parent_base_path
     })
 
     // If subs are expanded, recursively add them to the view (they appear below the node).
@@ -410,12 +895,13 @@ async function graph_explorer (opts) {
           ...build_view_recursive({
             base_path: sub_path,
             parent_instance_path: instance_path,
+            parent_base_path: base_path,
             depth: depth + 1,
             is_last_sub: i === arr.length - 1,
             is_hub: false,
             parent_pipe_trail: children_pipe_trail,
             instance_states,
-            all_entries
+            db
           })
         )
       })
@@ -427,7 +913,7 @@ async function graph_explorer (opts) {
  4. NODE CREATION AND EVENT HANDLING
    - `create_node` generates the DOM element for a single node.
    - It sets up event handlers for user interactions like selecting or toggling.
-******************************************************************************/
+  ******************************************************************************/
 
   function create_node ({
     base_path,
@@ -435,14 +921,15 @@ async function graph_explorer (opts) {
     depth,
     is_last_sub,
     is_hub,
-    pipe_trail,
-    is_hub_on_top,
+    is_first_hub,
+    parent_pipe_trail,
+    parent_base_path,
     is_search_match,
     is_direct_match,
     is_in_original_view,
     query
   }) {
-    const entry = all_entries[base_path]
+    const entry = db.get(base_path)
     if (!entry) {
       const err_el = document.createElement('div')
       err_el.className = 'node error'
@@ -450,12 +937,33 @@ async function graph_explorer (opts) {
       return err_el
     }
 
-    const states = mode === 'search' ? search_state_instances : instance_states
+    let states
+    if (mode === 'search') {
+      if (manipulated_inside_search[instance_path]) {
+        search_entry_states[instance_path] = manipulated_inside_search[instance_path]
+        states = search_entry_states
+      } else {
+        states = search_state_instances
+      }
+    } else {
+      states = instance_states
+    }
     const state = get_or_create_state(states, instance_path)
+
+    const { pipe_trail, is_hub_on_top } = calculate_pipe_trail({
+      depth,
+      is_hub,
+      is_last_sub,
+      is_first_hub,
+      parent_pipe_trail,
+      parent_base_path,
+      base_path,
+      db
+    })
+
     const el = document.createElement('div')
     el.className = `node type-${entry.type || 'unknown'}`
     el.dataset.instance_path = instance_path
-
     if (is_search_match) {
       el.classList.add('search-result')
       if (is_direct_match) el.classList.add('direct-match')
@@ -464,44 +972,114 @@ async function graph_explorer (opts) {
 
     if (selected_instance_paths.includes(instance_path)) el.classList.add('selected')
     if (confirmed_instance_paths.includes(instance_path)) el.classList.add('confirmed')
+    if (last_clicked_node === instance_path) {
+      mode === 'search' ? el.classList.add('search-last-clicked') : el.classList.add('last-clicked')
+    }
 
-    const has_hubs = Array.isArray(entry.hubs) && entry.hubs.length > 0
+    const has_hubs = hubs_flag === 'false' ? false : Array.isArray(entry.hubs) && entry.hubs.length > 0
     const has_subs = Array.isArray(entry.subs) && entry.subs.length > 0
 
-    if (depth) el.style.paddingLeft = '17.5px'
-    el.style.height = `${node_height}px`
+    if (depth) {
+      el.classList.add('left-indent')
+    }
 
     if (base_path === '/' && instance_path === '|/') return create_root_node({ state, has_subs, instance_path })
-
     const prefix_class_name = get_prefix({ is_last_sub, has_subs, state, is_hub, is_hub_on_top })
     const pipe_html = pipe_trail.map(p => `<span class="${p ? 'pipe' : 'blank'}"></span>`).join('')
-    const prefix_class = has_subs && mode !== 'search' ? 'prefix clickable' : 'prefix'
-    const icon_class = has_hubs && base_path !== '/' && mode !== 'search' ? 'icon clickable' : 'icon'
+    const prefix_class = has_subs ? 'prefix clickable' : 'prefix'
+    const icon_class = has_hubs && base_path !== '/' ? 'icon clickable' : 'icon'
     const entry_name = entry.name || base_path
     const name_html = (is_direct_match && query)
       ? get_highlighted_name(entry_name, query)
       : entry_name
 
+    // Check if this entry appears elsewhere in the view (any duplicate)
+    let has_duplicate_entries = false
+    let is_first_occurrence = false
+    if (hubs_flag !== 'true') {
+      has_duplicate_entries = has_duplicates(base_path)
+
+      // coloring class for duplicates
+      if (has_duplicate_entries) {
+        is_first_occurrence = is_first_duplicate(base_path, instance_path)
+        if (is_first_occurrence) {
+          el.classList.add('first-matching-entry')
+        } else {
+          el.classList.add('matching-entry')
+        }
+      }
+    }
+
     el.innerHTML = `
       <span class="indent">${pipe_html}</span>
       <span class="${prefix_class} ${prefix_class_name}"></span>
       <span class="${icon_class}"></span>
-      <span class="name clickable">${name_html}</span>
+      <span class="name ${has_duplicate_entries && !is_first_occurrence ? '' : 'clickable'}">${name_html}</span>
     `
 
-    const icon_el = el.querySelector('.icon')
-    if (icon_el && has_hubs && base_path !== '/') icon_el.onclick = mode !== 'search' ? () => toggle_hubs(instance_path) : null
+    // For matching entries, disable normal event listener and add handler to whole entry to create button for jump to next duplicate
+    if (has_duplicate_entries && !is_first_occurrence && hubs_flag !== 'true') {
+      el.onclick = jump_out_to_next_duplicate
+    } else {
+      const icon_el = el.querySelector('.icon')
+      if (icon_el && has_hubs && base_path !== '/') {
+        icon_el.onclick = (mode === 'search' && search_query)
+          ? () => toggle_search_hubs(instance_path)
+          : () => toggle_hubs(instance_path)
+      }
 
-    const prefix_el = el.querySelector('.prefix')
-    if (prefix_el && has_subs) prefix_el.onclick = mode !== 'search' ? () => toggle_subs(instance_path) : null
+      // Add click event to the whole first part (indent + prefix) for expanding/collapsing subs
+      if (has_subs) {
+        const indent_el = el.querySelector('.indent')
+        const prefix_el = el.querySelector('.prefix')
 
-    el.querySelector('.name').onclick = ev => select_node(ev, instance_path)
+        const toggle_subs_handler = (mode === 'search' && search_query)
+          ? () => toggle_search_subs(instance_path)
+          : () => toggle_subs(instance_path)
 
-    if (selected_instance_paths.includes(instance_path) || confirmed_instance_paths.includes(instance_path)) {
-      el.appendChild(create_confirm_checkbox(instance_path))
+        if (indent_el) indent_el.onclick = toggle_subs_handler
+        if (prefix_el) prefix_el.onclick = toggle_subs_handler
+      }
+
+      // Special handling for first duplicate entry - it should have normal select behavior but also show jump button
+      const name_el = el.querySelector('.name')
+      if (selection_flag !== false) {
+        if (has_duplicate_entries && is_first_occurrence && hubs_flag !== 'true') {
+          name_el.onclick = ev => jump_and_select_matching_entry(ev, instance_path)
+        } else {
+          name_el.onclick = ev => mode === 'search' ? handle_search_name_click(ev, instance_path) : select_node(ev, instance_path)
+        }
+      } else {
+        name_el.onclick = () => handle_last_clicked_node(instance_path)
+      }
+
+      function handle_last_clicked_node (instance_path) {
+        last_clicked_node = instance_path
+        drive_updated_by_last_clicked = true
+        update_drive_state({ type: 'runtime/last_clicked_node', message: instance_path })
+        update_last_clicked_styling(instance_path)
+      }
     }
 
+    if (selected_instance_paths.includes(instance_path) || confirmed_instance_paths.includes(instance_path)) el.appendChild(create_confirm_checkbox(instance_path))
+
     return el
+    function jump_and_select_matching_entry (ev, instance_path) {
+      if (mode === 'search') {
+        handle_search_name_click(ev, instance_path)
+      } else {
+        select_node(ev, instance_path)
+      }
+      // Also add jump button functionality for first occurrence
+      setTimeout(() => add_jump_button_to_matching_entry(el, base_path, instance_path), 10)
+    }
+    function jump_out_to_next_duplicate () {
+      last_clicked_node = instance_path
+      drive_updated_by_match = true
+      update_drive_state({ type: 'runtime/last_clicked_node', message: instance_path })
+      update_last_clicked_styling(instance_path)
+      add_jump_button_to_matching_entry(el, base_path, instance_path)
+    }
   }
 
   // `re_render_node` updates a single node in the DOM, used when only its selection state changes.
@@ -519,82 +1097,225 @@ async function graph_explorer (opts) {
       console.error('get_prefix called with invalid state.')
       return 'middle-line'
     }
-    const { expanded_subs, expanded_hubs } = state
-    if (is_hub) {
-      if (is_hub_on_top) {
-        if (expanded_subs && expanded_hubs) return 'top-cross'
-        if (expanded_subs) return 'top-tee-down'
-        if (expanded_hubs) return 'top-tee-up'
-        return 'top-line'
-      } else {
-        if (expanded_subs && expanded_hubs) return 'middle-cross'
-        if (expanded_subs) return 'middle-tee-down'
-        if (expanded_hubs) return 'middle-tee-up'
-        return 'middle-line'
-      }
-    } else if (is_last_sub) {
-      if (expanded_subs && expanded_hubs) return 'bottom-cross'
-      if (expanded_subs) return 'bottom-tee-down'
-      if (expanded_hubs)
-        return has_subs ? 'bottom-tee-up' : 'bottom-light-tee-up'
-      return has_subs ? 'bottom-line' : 'bottom-light-line'
-    } else {
+
+    // Define handlers for different prefix types based on node position
+    const on_prefix_types = {
+      hub_on_top: get_hub_on_top_prefix,
+      hub_not_on_top: get_hub_not_on_top_prefix,
+      last_sub: get_last_sub_prefix,
+      middle_sub: get_middle_sub_prefix
+    }
+    // Determine the prefix type based on node position
+    let prefix_type
+    if (is_hub && is_hub_on_top) prefix_type = 'hub_on_top'
+    else if (is_hub && !is_hub_on_top) prefix_type = 'hub_not_on_top'
+    else if (is_last_sub) prefix_type = 'last_sub'
+    else prefix_type = 'middle_sub'
+
+    const handler = on_prefix_types[prefix_type]
+
+    return handler ? handler({ state, has_subs }) : 'middle-line'
+
+    function get_hub_on_top_prefix ({ state }) {
+      const { expanded_subs, expanded_hubs } = state
+      if (expanded_subs && expanded_hubs) return 'top-cross'
+      if (expanded_subs) return 'top-tee-down'
+      if (expanded_hubs) return 'top-tee-up'
+      return 'top-line'
+    }
+
+    function get_hub_not_on_top_prefix ({ state }) {
+      const { expanded_subs, expanded_hubs } = state
       if (expanded_subs && expanded_hubs) return 'middle-cross'
       if (expanded_subs) return 'middle-tee-down'
-      if (expanded_hubs)
-        return has_subs ? 'middle-tee-up' : 'middle-light-tee-up'
-    return has_subs ? 'middle-line' : 'middle-light-line'
+      if (expanded_hubs) return 'middle-tee-up'
+      return 'middle-line'
+    }
+
+    function get_last_sub_prefix ({ state, has_subs }) {
+      const { expanded_subs, expanded_hubs } = state
+      if (expanded_subs && expanded_hubs) return 'bottom-cross'
+      if (expanded_subs) return 'bottom-tee-down'
+      if (expanded_hubs) return has_subs ? 'bottom-tee-up' : 'bottom-light-tee-up'
+      return has_subs ? 'bottom-line' : 'bottom-light-line'
+    }
+
+    function get_middle_sub_prefix ({ state, has_subs }) {
+      const { expanded_subs, expanded_hubs } = state
+      if (expanded_subs && expanded_hubs) return 'middle-cross'
+      if (expanded_subs) return 'middle-tee-down'
+      if (expanded_hubs) return has_subs ? 'middle-tee-up' : 'middle-light-tee-up'
+      return has_subs ? 'middle-line' : 'middle-light-line'
     }
   }
 
   /******************************************************************************
-  5. MENUBAR AND SEARCH
-******************************************************************************/
+  MENUBAR AND SEARCH
+  ******************************************************************************/
   function render_menubar () {
-    const search_button = Object.assign(document.createElement('button'), {
-      textContent: 'Search',
-      onclick: toggle_search_mode
-    })
+    const search_button = document.createElement('button')
+    search_button.textContent = 'Search'
+    search_button.onclick = toggle_search_mode
 
-    if (mode !== 'search') return void menubar.replaceChildren(search_button)
+    const undo_button = document.createElement('button')
+    undo_button.textContent = `Undo (${undo_stack.length})`
+    undo_button.onclick = () => undo(1)
+    undo_button.disabled = undo_stack.length === 0
 
-    const search_input = Object.assign(document.createElement('input'), {
+    const multi_select_button = document.createElement('button')
+    multi_select_button.textContent = `Multi Select: ${multi_select_enabled}`
+    multi_select_button.onclick = toggle_multi_select
+
+    const select_between_button = document.createElement('button')
+    select_between_button.textContent = `Select Between: ${select_between_enabled}`
+    select_between_button.onclick = toggle_select_between
+
+    const hubs_button = document.createElement('button')
+    hubs_button.textContent = `Hubs: ${hubs_flag}`
+    hubs_button.onclick = toggle_hubs_flag
+
+    const selection_button = document.createElement('button')
+    selection_button.textContent = `Selection: ${selection_flag}`
+    selection_button.onclick = toggle_selection_flag
+
+    const recursive_collapse_button = document.createElement('button')
+    recursive_collapse_button.textContent = `Recursive Collapse: ${recursive_collapse_flag}`
+    recursive_collapse_button.onclick = toggle_recursive_collapse_flag
+
+    menubar.replaceChildren(search_button, undo_button, multi_select_button, select_between_button, hubs_button, selection_button, recursive_collapse_button)
+  }
+
+  function render_searchbar () {
+    if (mode !== 'search') {
+      searchbar.style.display = 'none'
+      searchbar.replaceChildren()
+      return
+    }
+
+    const search_opts = {
       type: 'text',
       placeholder: 'Search entries...',
       className: 'search-input',
       value: search_query,
       oninput: on_search_input
-    })
+    }
+    searchbar.style.display = 'flex'
+    const search_input = Object.assign(document.createElement('input'), search_opts)
 
-    menubar.replaceChildren(search_button, search_input)
+    searchbar.replaceChildren(search_input)
     requestAnimationFrame(() => search_input.focus())
   }
 
   function handle_mode_change () {
     menubar.style.display = mode === 'default' ? 'none' : 'flex'
+    render_searchbar()
     build_and_render_view()
   }
 
   function toggle_search_mode () {
+    const target_mode = mode === 'search' ? previous_mode : 'search'
+    console.log('[SEARCH DEBUG] Switching mode from', mode, 'to', target_mode)
+    send_message({ type: 'mode_toggling', data: { from: mode, to: target_mode } })
     if (mode === 'search') {
+      // When switching from search to default mode, expand selected entries
+      if (selected_instance_paths.length > 0) {
+        console.log('[SEARCH DEBUG] Expanding selected entries in default mode:', selected_instance_paths)
+        expand_selected_entries_in_default(selected_instance_paths)
+        drive_updated_by_toggle = true
+        update_drive_state({ type: 'runtime/instance_states', message: instance_states })
+      }
+      // Reset select-between mode when leaving search mode
+      if (select_between_enabled) {
+        select_between_enabled = false
+        select_between_first_node = null
+        update_drive_state({ type: 'mode/select_between_enabled', message: false })
+        console.log('[SEARCH DEBUG] Reset select-between mode when leaving search')
+      }
       search_query = ''
-      drive_updated_by_search = true
-      update_drive_state({ dataset: 'mode', name: 'search_query', value: '' })
+      update_drive_state({ type: 'mode/search_query', message: '' })
     }
-    update_drive_state({ dataset: 'mode', name: 'current_mode', value: mode === 'search' ? previous_mode : 'search' })
+    ignore_drive_updated_by_scroll = true
+    update_drive_state({ type: 'mode/current_mode', message: target_mode })
     search_state_instances = instance_states
+    send_message({ type: 'mode_changed', data: { mode: target_mode } })
+  }
+
+  function toggle_multi_select () {
+    multi_select_enabled = !multi_select_enabled
+    // Disable select between when enabling multi select
+    if (multi_select_enabled && select_between_enabled) {
+      select_between_enabled = false
+      select_between_first_node = null
+      update_drive_state({ type: 'mode/select_between_enabled', message: false })
+    }
+    update_drive_state({ type: 'mode/multi_select_enabled', message: multi_select_enabled })
+    render_menubar() // Re-render to update button text
+  }
+
+  function toggle_select_between () {
+    select_between_enabled = !select_between_enabled
+    select_between_first_node = null // Reset first node selection
+    // Disable multi select when enabling select between
+    if (select_between_enabled && multi_select_enabled) {
+      multi_select_enabled = false
+      update_drive_state({ type: 'mode/multi_select_enabled', message: false })
+    }
+    update_drive_state({ type: 'mode/select_between_enabled', message: select_between_enabled })
+    render_menubar() // Re-render to update button text
+  }
+
+  function toggle_hubs_flag () {
+    const values = ['default', 'true', 'false']
+    const current_index = values.indexOf(hubs_flag)
+    const next_index = (current_index + 1) % values.length
+    hubs_flag = values[next_index]
+    update_drive_state({ type: 'flags/hubs', message: hubs_flag })
+    render_menubar()
+  }
+
+  function toggle_selection_flag () {
+    selection_flag = !selection_flag
+    update_drive_state({ type: 'flags/selection', message: selection_flag })
+    render_menubar()
+  }
+
+  function toggle_recursive_collapse_flag () {
+    recursive_collapse_flag = !recursive_collapse_flag
+    update_drive_state({ type: 'flags/recursive_collapse', message: recursive_collapse_flag })
+    render_menubar()
   }
 
   function on_search_input (event) {
     search_query = event.target.value.trim()
     drive_updated_by_search = true
-    update_drive_state({ dataset: 'mode', name: 'search_query', value: search_query })
+    update_drive_state({ type: 'mode/search_query', message: search_query })
     if (search_query === '') search_state_instances = instance_states
     perform_search(search_query)
   }
 
   function perform_search (query) {
-    if (!query) return build_and_render_view()
+    console.log('[SEARCH DEBUG] perform_search called:', {
+      query,
+      current_mode: mode,
+      search_query_var: search_query,
+      has_search_entry_states: Object.keys(search_entry_states).length > 0,
+      last_clicked_node
+    })
+
+    // Check if we are actualy in search mode
+    if (mode !== 'search') {
+      console.error('[SEARCH DEBUG] perform_search called but not in search mode!', {
+        current_mode: mode,
+        query
+      })
+      return build_and_render_view()
+    }
+
+    if (!query) {
+      console.log('[SEARCH DEBUG] No query provided, building default view')
+      return build_and_render_view()
+    }
+
     const original_view = build_view_recursive({
       base_path: '/',
       parent_instance_path: '',
@@ -603,9 +1324,11 @@ async function graph_explorer (opts) {
       is_hub: false,
       parent_pipe_trail: [],
       instance_states,
-      all_entries
+      db
     })
+    const original_view_paths = original_view.map(n => n.instance_path)
     search_state_instances = {}
+    const search_tracking = {}
     const search_view = build_search_view_recursive({
       query,
       base_path: '/',
@@ -613,11 +1336,15 @@ async function graph_explorer (opts) {
       depth: 0,
       is_last_sub: true,
       is_hub: false,
+      is_first_hub: false,
       parent_pipe_trail: [],
-      instance_states: search_state_instances, // Use a temporary state for search
-      all_entries,
-      original_view
+      instance_states: search_state_instances,
+      db,
+      original_view_paths,
+      is_expanded_child: false,
+      search_tracking
     })
+    console.log('[SEARCH DEBUG] Search view built:', search_view.length)
     render_search_results(search_view, query)
   }
 
@@ -625,43 +1352,122 @@ async function graph_explorer (opts) {
     query,
     base_path,
     parent_instance_path,
+    parent_base_path = null,
     depth,
     is_last_sub,
     is_hub,
+    is_first_hub = false,
     parent_pipe_trail,
     instance_states,
-    all_entries,
-    original_view
+    db,
+    original_view_paths,
+    is_expanded_child = false,
+    search_tracking = {}
   }) {
-    const entry = all_entries[base_path]
+    const entry = db.get(base_path)
     if (!entry) return []
 
     const instance_path = `${parent_instance_path}|${base_path}`
     const is_direct_match = entry.name && entry.name.toLowerCase().includes(query.toLowerCase())
 
-    const children_pipe_trail = [...parent_pipe_trail]
-    if (depth > 0) children_pipe_trail.push(!is_last_sub)
+    // track instance for duplicate detection
+    if (!search_tracking[base_path]) search_tracking[base_path] = []
+    const is_first_occurrence_in_search = !search_tracking[base_path].length
+    search_tracking[base_path].push(instance_path)
 
-    const sub_results = (entry.subs || []).flatMap((sub_path, i, arr) =>
-      build_search_view_recursive({
+    // Use extracted pipe logic for consistent rendering
+    const { children_pipe_trail, is_hub_on_top } = calculate_children_pipe_trail({
+      depth,
+      is_hub,
+      is_last_sub,
+      is_first_hub,
+      parent_pipe_trail,
+      parent_base_path,
+      base_path,
+      db
+    })
+
+    // Process hubs if they should be expanded
+    const search_state = search_entry_states[instance_path]
+    const should_expand_hubs = search_state ? search_state.expanded_hubs : false
+    const should_expand_subs = search_state ? search_state.expanded_subs : false
+
+    // Process hubs: if manually expanded, show ALL hubs regardless of search match
+    const hub_results = (should_expand_hubs ? (entry.hubs || []) : []).flatMap((hub_path, i, arr) => {
+      return build_search_view_recursive({
         query,
-        base_path: sub_path,
+        base_path: hub_path,
         parent_instance_path: instance_path,
+        parent_base_path: base_path,
         depth: depth + 1,
         is_last_sub: i === arr.length - 1,
-        is_hub: false,
+        is_hub: true,
+        is_first_hub: is_hub_on_top,
         parent_pipe_trail: children_pipe_trail,
         instance_states,
-        all_entries,
-        original_view
+        db,
+        original_view_paths,
+        is_expanded_child: true,
+        search_tracking
       })
-    )
+    })
+
+    // Handle subs: if manually expanded, show ALL children; otherwise, search through them
+    let sub_results = []
+    if (should_expand_subs) {
+      // Show ALL subs when manually expanded
+      sub_results = (entry.subs || []).flatMap((sub_path, i, arr) => {
+        return build_search_view_recursive({
+          query,
+          base_path: sub_path,
+          parent_instance_path: instance_path,
+          parent_base_path: base_path,
+          depth: depth + 1,
+          is_last_sub: i === arr.length - 1,
+          is_hub: false,
+          is_first_hub: false,
+          parent_pipe_trail: children_pipe_trail,
+          instance_states,
+          db,
+          original_view_paths,
+          is_expanded_child: true,
+          search_tracking
+        })
+      })
+    } else if (!is_expanded_child && is_first_occurrence_in_search) {
+      // Only search through subs for the first occurrence of this base_path
+      sub_results = (entry.subs || []).flatMap((sub_path, i, arr) =>
+        build_search_view_recursive({
+          query,
+          base_path: sub_path,
+          parent_instance_path: instance_path,
+          parent_base_path: base_path,
+          depth: depth + 1,
+          is_last_sub: i === arr.length - 1,
+          is_hub: false,
+          is_first_hub: false,
+          parent_pipe_trail: children_pipe_trail,
+          instance_states,
+          db,
+          original_view_paths,
+          is_expanded_child: false,
+          search_tracking
+        })
+      )
+    }
 
     const has_matching_descendant = sub_results.length > 0
-    if (!is_direct_match && !has_matching_descendant) return []
 
-    instance_states[instance_path] = { expanded_subs: has_matching_descendant, expanded_hubs: false }
-    const is_in_original_view = original_view.some(node => node.instance_path === instance_path)
+    // If this is an expanded child, always include it regardless of search match
+    // only include if it's the first occurrence OR if a dirct match
+    if (!is_expanded_child && !is_direct_match && !has_matching_descendant) return []
+    if (!is_expanded_child && !is_first_occurrence_in_search && !is_direct_match) return []
+
+    const final_expand_subs = search_state ? search_state.expanded_subs : (has_matching_descendant && is_first_occurrence_in_search)
+    const final_expand_hubs = search_state ? search_state.expanded_hubs : false
+
+    instance_states[instance_path] = { expanded_subs: final_expand_subs, expanded_hubs: final_expand_hubs }
+    const is_in_original_view = original_view_paths.includes(instance_path)
 
     const current_node_view = {
       base_path,
@@ -669,14 +1475,15 @@ async function graph_explorer (opts) {
       depth,
       is_last_sub,
       is_hub,
-      pipe_trail: parent_pipe_trail,
-      is_hub_on_top: false,
+      is_first_hub,
+      parent_pipe_trail,
+      parent_base_path,
       is_search_match: true,
       is_direct_match,
       is_in_original_view
     }
 
-    return [current_node_view, ...sub_results]
+    return [...hub_results, current_node_view, ...sub_results]
   }
 
   function render_search_results (search_view, query) {
@@ -687,38 +1494,183 @@ async function graph_explorer (opts) {
       no_results_el.textContent = `No results for "${query}"`
       return container.replaceChildren(no_results_el)
     }
+
+    // temporary tracking map for search results to detect duplicates
+    const search_tracking = {}
+    search_view.forEach(node => set_search_tracking(node))
+
+    const original_tracking = view_order_tracking
+    view_order_tracking = search_tracking
+    collect_all_duplicate_entries()
+
     const fragment = document.createDocumentFragment()
     search_view.forEach(node_data => fragment.appendChild(create_node({ ...node_data, query })))
     container.replaceChildren(fragment)
+
+    view_order_tracking = original_tracking
+
+    function set_search_tracking (node) {
+      const { base_path, instance_path } = node
+      if (!search_tracking[base_path]) search_tracking[base_path] = []
+      search_tracking[base_path].push(instance_path)
+    }
   }
 
   /******************************************************************************
-  6. VIEW MANIPULATION & USER ACTIONS
+  VIEW MANIPULATION & USER ACTIONS
       - These functions handle user interactions like selecting, confirming,
         toggling, and resetting the graph.
   ******************************************************************************/
   function select_node (ev, instance_path) {
-    if (mode === 'search') {
-      let current_path = instance_path
-      // Traverse up the tree to expand all parents
-      while (current_path) {
-        const parent_path = current_path.substring(0, current_path.lastIndexOf('|'))
-        if (!parent_path) break
-        get_or_create_state(instance_states, parent_path).expanded_subs = true
-        current_path = parent_path
-      }
-      drive_updated_by_toggle = true
-      update_drive_state({ dataset: 'runtime', name: 'instance_states', value: instance_states })
-      update_drive_state({ dataset: 'mode', name: 'current_mode', value: previous_mode })
+    last_clicked_node = instance_path
+    update_drive_state({ type: 'runtime/last_clicked_node', message: instance_path })
+    send_message({ type: 'node_clicked', data: { instance_path } })
+
+    // Handle shift+click to enable select between mode temporarily
+    if (ev.shiftKey && !select_between_enabled) {
+      select_between_enabled = true
+      select_between_first_node = null
+      update_drive_state({ type: 'mode/select_between_enabled', message: true })
+      render_menubar()
     }
 
     const new_selected = new Set(selected_instance_paths)
-    if (ev.ctrlKey) {
+
+    if (select_between_enabled) {
+      handle_select_between(instance_path, new_selected)
+    } else if (ev.ctrlKey || multi_select_enabled) {
       new_selected.has(instance_path) ? new_selected.delete(instance_path) : new_selected.add(instance_path)
-      update_drive_state({ dataset: 'runtime', name: 'selected_instance_paths', value: [...new_selected] })
+      update_drive_state({ type: 'runtime/selected_instance_paths', message: [...new_selected] })
+      send_message({ type: 'selection_changed', data: { selected: [...new_selected] } })
     } else {
-      update_drive_state({ dataset: 'runtime', name: 'selected_instance_paths', value: [instance_path] })
+      update_drive_state({ type: 'runtime/selected_instance_paths', message: [instance_path] })
+      send_message({ type: 'selection_changed', data: { selected: [instance_path] } })
     }
+  }
+
+  function handle_select_between (instance_path, new_selected) {
+    if (!select_between_first_node) {
+      select_between_first_node = instance_path
+    } else {
+      const first_index = view.findIndex(n => n.instance_path === select_between_first_node)
+      const second_index = view.findIndex(n => n.instance_path === instance_path)
+
+      if (first_index !== -1 && second_index !== -1) {
+        const start_index = Math.min(first_index, second_index)
+        const end_index = Math.max(first_index, second_index)
+
+        // Toggle selection for all nodes in the range
+        for (let i = start_index; i <= end_index; i++) {
+          const node_instance_path = view[i].instance_path
+          new_selected.has(node_instance_path) ? new_selected.delete(node_instance_path) : new_selected.add(node_instance_path)
+        }
+
+        update_drive_state({ type: 'runtime/selected_instance_paths', message: [...new_selected] })
+      }
+
+      // Reset select between mode after second click
+      select_between_enabled = false
+      select_between_first_node = null
+      update_drive_state({ type: 'mode/select_between_enabled', message: false })
+      render_menubar()
+    }
+  }
+
+  // Add the clicked entry and all its parents in the default tree
+  function expand_entry_path_in_default (target_instance_path) {
+    console.log('[SEARCH DEBUG] search_expand_into_default called:', {
+      target_instance_path,
+      current_mode: mode,
+      search_query,
+      previous_mode,
+      current_search_entry_states: Object.keys(search_entry_states).length,
+      current_instance_states: Object.keys(instance_states).length
+    })
+
+    if (!target_instance_path) {
+      console.warn('[SEARCH DEBUG] No target_instance_path provided')
+      return
+    }
+
+    const parts = target_instance_path.split('|').filter(Boolean)
+    if (parts.length === 0) {
+      console.warn('[SEARCH DEBUG] No valid parts found in instance path:', target_instance_path)
+      return
+    }
+
+    console.log('[SEARCH DEBUG] Parsed instance path parts:', parts)
+
+    const root_state = get_or_create_state(instance_states, '|/')
+    root_state.expanded_subs = true
+
+    // Walk from root to target, expanding the path relative to already expanded entries
+    for (let i = 0; i < parts.length - 1; i++) {
+      const parent_base = parts[i]
+      const child_base = parts[i + 1]
+      const parent_instance_path = parts.slice(0, i + 1).map(p => '|' + p).join('')
+      const parent_state = get_or_create_state(instance_states, parent_instance_path)
+      const parent_entry = db.get(parent_base)
+
+      console.log('[SEARCH DEBUG] Processing parent-child relationship:', {
+        parent_base,
+        child_base,
+        parent_instance_path,
+        has_parent_entry: !!parent_entry
+      })
+
+      if (!parent_entry) continue
+      if (Array.isArray(parent_entry.subs) && parent_entry.subs.includes(child_base)) {
+        parent_state.expanded_subs = true
+        console.log('[SEARCH DEBUG] Expanded subs for:', parent_instance_path)
+      }
+      if (Array.isArray(parent_entry.hubs) && parent_entry.hubs.includes(child_base)) {
+        parent_state.expanded_hubs = true
+        console.log('[SEARCH DEBUG] Expanded hubs for:', parent_instance_path)
+      }
+    }
+  }
+
+  // expand multiple selected entry in the default tree
+  function expand_selected_entries_in_default (selected_paths) {
+    console.log('[SEARCH DEBUG] expand_selected_entries_in_default called:', {
+      selected_paths,
+      current_mode: mode,
+      search_query,
+      previous_mode
+    })
+
+    if (!Array.isArray(selected_paths) || selected_paths.length === 0) {
+      console.warn('[SEARCH DEBUG] No valid selected paths provided')
+      return
+    }
+
+    // expand foreach selected path
+    selected_paths.forEach(path => expand_entry_path_in_default(path))
+
+    console.log('[SEARCH DEBUG] All selected entries expanded in default mode')
+  }
+
+  // Add the clicked entry and all its parents in the default tree
+  function search_expand_into_default (target_instance_path) {
+    if (!target_instance_path) {
+      return
+    }
+
+    handle_search_node_click(target_instance_path)
+    expand_entry_path_in_default(target_instance_path)
+
+    console.log('[SEARCH DEBUG] Current mode before switch:', mode)
+    console.log('[SEARCH DEBUG] Target previous_mode:', previous_mode)
+
+    // Persist selection and expansion state
+    update_drive_state({ type: 'runtime/selected_instance_paths', message: [target_instance_path] })
+    drive_updated_by_toggle = true
+    update_drive_state({ type: 'runtime/instance_states', message: instance_states })
+    search_query = ''
+    update_drive_state({ type: 'mode/search_query', message: '' })
+
+    console.log('[SEARCH DEBUG] About to switch from search mode to:', previous_mode)
+    update_drive_state({ type: 'mode/current_mode', message: previous_mode })
   }
 
   function handle_confirm (ev, instance_path) {
@@ -726,6 +1678,14 @@ async function graph_explorer (opts) {
     const is_checked = ev.target.checked
     const new_selected = new Set(selected_instance_paths)
     const new_confirmed = new Set(confirmed_instance_paths)
+
+    // use specific logic for mode
+    if (mode === 'search') {
+      handle_search_node_click(instance_path)
+    } else {
+      last_clicked_node = instance_path
+      update_drive_state({ type: 'runtime/last_clicked_node', message: instance_path })
+    }
 
     if (is_checked) {
       new_selected.delete(instance_path)
@@ -735,49 +1695,380 @@ async function graph_explorer (opts) {
       new_confirmed.delete(instance_path)
     }
 
-    update_drive_state({ dataset: 'runtime', name: 'selected_instance_paths', value: [...new_selected] })
-    update_drive_state({ dataset: 'runtime', name: 'confirmed_selected', value: [...new_confirmed] })
+    update_drive_state({ type: 'runtime/selected_instance_paths', message: [...new_selected] })
+    update_drive_state({ type: 'runtime/confirmed_selected', message: [...new_confirmed] })
   }
 
   function toggle_subs (instance_path) {
     const state = get_or_create_state(instance_states, instance_path)
+    const was_expanded = state.expanded_subs
     state.expanded_subs = !state.expanded_subs
+
+    // Update view order tracking for the toggled subs
+    const base_path = instance_path.split('|').pop()
+    const entry = db.get(base_path)
+
+    if (entry && Array.isArray(entry.subs)) {
+      if (was_expanded && recursive_collapse_flag === true) entry.subs.forEach(sub_path => collapse_and_remove_instance(sub_path, instance_path, instance_states, db))
+      else entry.subs.forEach(sub_path => toggle_subs_instance(sub_path, instance_path, instance_states, db))
+    }
+
+    last_clicked_node = instance_path
+    update_drive_state({ type: 'runtime/last_clicked_node', message: instance_path })
+
     build_and_render_view(instance_path)
     // Set a flag to prevent the subsequent `onbatch` call from causing a render loop.
     drive_updated_by_toggle = true
-    update_drive_state({ dataset: 'runtime', name: 'instance_states', value: instance_states })
+    update_drive_state({ type: 'runtime/instance_states', message: instance_states })
+    send_message({ type: 'subs_toggled', data: { instance_path, expanded: state.expanded_subs } })
+
+    function toggle_subs_instance (sub_path, instance_path, instance_states, db) {
+      if (was_expanded) {
+        // Collapsing so
+        remove_instances_recursively(sub_path, instance_path, instance_states, db)
+      } else {
+        // Expanding so
+        add_instances_recursively(sub_path, instance_path, instance_states, db)
+      }
+    }
+
+    function collapse_and_remove_instance (sub_path, instance_path, instance_states, db) {
+      collapse_subs_recursively(sub_path, instance_path, instance_states, db)
+      remove_instances_recursively(sub_path, instance_path, instance_states, db)
+    }
   }
 
   function toggle_hubs (instance_path) {
     const state = get_or_create_state(instance_states, instance_path)
+    const was_expanded = state.expanded_hubs
     state.expanded_hubs ? hub_num-- : hub_num++
     state.expanded_hubs = !state.expanded_hubs
+
+    // Update view order tracking for the toggled hubs
+    const base_path = instance_path.split('|').pop()
+    const entry = db.get(base_path)
+
+    if (entry && Array.isArray(entry.hubs)) {
+      if (was_expanded && recursive_collapse_flag === true) {
+        // collapse all hub descendants
+        entry.hubs.forEach(hub_path => collapse_and_remove_instance(hub_path, instance_path, instance_states, db))
+      } else {
+        // only toggle direct hubs
+        entry.hubs.forEach(hub_path => toggle_hubs_instance(hub_path, instance_path, instance_states, db))
+      }
+
+      function collapse_and_remove_instance (hub_path, instance_path, instance_states, db) {
+        collapse_hubs_recursively(hub_path, instance_path, instance_states, db)
+        remove_instances_recursively(hub_path, instance_path, instance_states, db)
+      }
+    }
+
+    last_clicked_node = instance_path
+    drive_updated_by_scroll = true // Prevent onbatch interference with hub spacer
+    update_drive_state({ type: 'runtime/last_clicked_node', message: instance_path })
+
     build_and_render_view(instance_path, true)
     drive_updated_by_toggle = true
-    update_drive_state({ dataset: 'runtime', name: 'instance_states', value: instance_states })
+    update_drive_state({ type: 'runtime/instance_states', message: instance_states })
+    send_message({ type: 'hubs_toggled', data: { instance_path, expanded: state.expanded_hubs } })
+
+    function toggle_hubs_instance (hub_path, instance_path, instance_states, db) {
+      if (was_expanded) {
+        // Collapsing so
+        remove_instances_recursively(hub_path, instance_path, instance_states, db)
+      } else {
+        // Expanding so
+        add_instances_recursively(hub_path, instance_path, instance_states, db)
+      }
+    }
+  }
+
+  function toggle_search_subs (instance_path) {
+    console.log('[SEARCH DEBUG] toggle_search_subs called:', {
+      instance_path,
+      mode,
+      search_query,
+      current_state: search_entry_states[instance_path]?.expanded_subs || false,
+      recursive_collapse_flag
+    })
+
+    const state = get_or_create_state(search_entry_states, instance_path)
+    const old_expanded = state.expanded_subs
+    state.expanded_subs = !state.expanded_subs
+
+    if (old_expanded && recursive_collapse_flag === true) {
+      const base_path = instance_path.split('|').pop()
+      const entry = db.get(base_path)
+      if (entry && Array.isArray(entry.subs)) entry.subs.forEach(sub_path => collapse_search_subs_recursively(sub_path, instance_path, search_entry_states, db))
+    }
+
+    const has_matching_descendant = search_state_instances[instance_path]?.expanded_subs ? null : true
+    const has_matching_parents = manipulated_inside_search[instance_path] ? search_entry_states[instance_path]?.expanded_hubs : search_state_instances[instance_path]?.expanded_hubs
+    manipulated_inside_search[instance_path] = { expanded_hubs: has_matching_parents, expanded_subs: has_matching_descendant }
+    console.log('[SEARCH DEBUG] Toggled subs state:', {
+      instance_path,
+      old_expanded,
+      new_expanded: state.expanded_subs,
+      recursive_state: old_expanded && recursive_collapse_flag === true
+    })
+
+    handle_search_node_click(instance_path)
+
+    perform_search(search_query)
+    drive_updated_by_search = true
+    update_drive_state({ type: 'runtime/search_entry_states', message: search_entry_states })
+  }
+
+  function toggle_search_hubs (instance_path) {
+    console.log('[SEARCH DEBUG] toggle_search_hubs called:', {
+      instance_path,
+      mode,
+      search_query,
+      current_state: search_entry_states[instance_path]?.expanded_hubs || false,
+      recursive_collapse_flag
+    })
+
+    const state = get_or_create_state(search_entry_states, instance_path)
+    const old_expanded = state.expanded_hubs
+    state.expanded_hubs = !state.expanded_hubs
+
+    if (old_expanded && recursive_collapse_flag === true) {
+      const base_path = instance_path.split('|').pop()
+      const entry = db.get(base_path)
+      if (entry && Array.isArray(entry.hubs)) entry.hubs.forEach(hub_path => collapse_search_hubs_recursively(hub_path, instance_path, search_entry_states, db))
+    }
+
+    const has_matching_descendant = search_state_instances[instance_path]?.expanded_subs
+    manipulated_inside_search[instance_path] = { expanded_hubs: state.expanded_hubs, expanded_subs: has_matching_descendant }
+    console.log('[SEARCH DEBUG] Toggled hubs state:', {
+      instance_path,
+      old_expanded,
+      new_expanded: state.expanded_hubs,
+      recursive_state: old_expanded && recursive_collapse_flag === true
+    })
+
+    handle_search_node_click(instance_path)
+
+    console.log('[SEARCH DEBUG] About to perform_search after toggle_search_hubs')
+    perform_search(search_query)
+    drive_updated_by_search = true
+    update_drive_state({ type: 'runtime/search_entry_states', message: search_entry_states })
+    console.log('[SEARCH DEBUG] toggle_search_hubs completed')
+  }
+
+  function handle_search_node_click (instance_path) {
+    console.log('[SEARCH DEBUG] handle_search_node_click called:', {
+      instance_path,
+      current_mode: mode,
+      search_query,
+      previous_last_clicked: last_clicked_node
+    })
+
+    if (mode !== 'search') {
+      console.warn('[SEARCH DEBUG] handle_search_node_click called but not in search mode!', {
+        current_mode: mode,
+        instance_path
+      })
+      return
+    }
+
+    // we need to handle last_clicked_node differently
+    const old_last_clicked = last_clicked_node
+    last_clicked_node = instance_path
+
+    console.log('[SEARCH DEBUG] Updating last_clicked_node:', {
+      old_value: old_last_clicked,
+      new_value: last_clicked_node,
+      mode,
+      search_query
+    })
+
+    update_drive_state({ type: 'runtime/last_clicked_node', message: instance_path })
+
+    // Update visual styling for search mode nodes
+    update_search_last_clicked_styling(instance_path)
+  }
+
+  function update_search_last_clicked_styling (target_instance_path) {
+    console.log('[SEARCH DEBUG] update_search_last_clicked_styling called:', {
+      target_instance_path,
+      mode,
+      search_query
+    })
+
+    // Remove `last-clicked` class from all search result nodes
+    const search_nodes = container.querySelectorAll('.node.search-result')
+    console.log('[SEARCH DEBUG] Found search result nodes:', search_nodes.length)
+    search_nodes.forEach(node => remove_last_clicked_styling(node))
+
+    // Add last-clicked class to the target node if it exists in search results
+    const target_node = container.querySelector(`[data-instance_path="${target_instance_path}"].search-result`)
+    if (target_node) {
+      mode === 'search' ? target_node.classList.add('search-last-clicked') : target_node.classList.add('last-clicked')
+      console.log('[SEARCH DEBUG] Added last-clicked to target node:', target_instance_path)
+    } else {
+      console.warn('[SEARCH DEBUG] Target node not found in search results:', {
+        target_instance_path,
+        available_search_nodes: Array.from(search_nodes).map(n => n.dataset.instance_path)
+      })
+    }
+
+    function remove_last_clicked_styling (node) {
+      const was_last_clicked = node.classList.contains('last-clicked')
+      mode === 'search' ? node.classList.remove('search-last-clicked') : node.classList.remove('last-clicked')
+      if (was_last_clicked) {
+        console.log('[SEARCH DEBUG] Removed last-clicked from:', node.dataset.instance_path)
+      }
+    }
+  }
+
+  function handle_search_name_click (ev, instance_path) {
+    console.log('[SEARCH DEBUG] handle_search_name_click called:', {
+      instance_path,
+      mode,
+      search_query,
+      ctrlKey: ev.ctrlKey,
+      metaKey: ev.metaKey,
+      shiftKey: ev.shiftKey,
+      multi_select_enabled,
+      current_selected: selected_instance_paths.length
+    })
+
+    if (mode !== 'search') {
+      console.error('[SEARCH DEBUG] handle_search_name_click called but not in search mode!', {
+        current_mode: mode,
+        instance_path
+      })
+      return
+    }
+
+    handle_search_node_click(instance_path)
+
+    if (ev.ctrlKey || ev.metaKey || multi_select_enabled) {
+      search_select_node(ev, instance_path)
+    } else if (ev.shiftKey) {
+      search_select_node(ev, instance_path)
+    } else if (select_between_enabled) {
+      // Handle select-between mode when button is enabled
+      search_select_node(ev, instance_path)
+    } else {
+      // Regular click
+      search_expand_into_default(instance_path)
+    }
+  }
+
+  function search_select_node (ev, instance_path) {
+    console.log('[SEARCH DEBUG] search_select_node called:', {
+      instance_path,
+      mode,
+      search_query,
+      shiftKey: ev.shiftKey,
+      ctrlKey: ev.ctrlKey,
+      metaKey: ev.metaKey,
+      multi_select_enabled,
+      select_between_enabled,
+      select_between_first_node,
+      current_selected: selected_instance_paths
+    })
+
+    const new_selected = new Set(selected_instance_paths)
+
+    if (select_between_enabled) {
+      if (!select_between_first_node) {
+        select_between_first_node = instance_path
+        console.log('[SEARCH DEBUG] Set first node for select between:', instance_path)
+      } else {
+        console.log('[SEARCH DEBUG] Completing select between range:', {
+          first: select_between_first_node,
+          second: instance_path
+        })
+        const first_index = view.findIndex(n => n.instance_path === select_between_first_node)
+        const second_index = view.findIndex(n => n.instance_path === instance_path)
+
+        if (first_index !== -1 && second_index !== -1) {
+          const start_index = Math.min(first_index, second_index)
+          const end_index = Math.max(first_index, second_index)
+
+          // Toggle selection for all nodes in between
+          for (let i = start_index; i <= end_index; i++) {
+            const node_instance_path = view[i].instance_path
+            if (new_selected.has(node_instance_path)) {
+              new_selected.delete(node_instance_path)
+            } else {
+              new_selected.add(node_instance_path)
+            }
+          }
+        }
+
+        // Reset select between mode after completing the selection
+        select_between_enabled = false
+        select_between_first_node = null
+        update_drive_state({ type: 'mode/select_between_enabled', message: false })
+        render_menubar()
+        console.log('[SEARCH DEBUG] Reset select between mode')
+      }
+    } else if (ev.shiftKey) {
+      // Enable select between mode on shift click
+      select_between_enabled = true
+      select_between_first_node = instance_path
+      update_drive_state({ type: 'mode/select_between_enabled', message: true })
+      render_menubar()
+      console.log('[SEARCH DEBUG] Enabled select between mode with first node:', instance_path)
+      return
+    } else if (multi_select_enabled || ev.ctrlKey || ev.metaKey) {
+      if (new_selected.has(instance_path)) {
+        console.log('[SEARCH DEBUG] Deselecting node:', instance_path)
+        new_selected.delete(instance_path)
+      } else {
+        console.log('[SEARCH DEBUG] Selecting node:', instance_path)
+        new_selected.add(instance_path)
+      }
+    } else {
+      // Single selection mode
+      new_selected.clear()
+      new_selected.add(instance_path)
+      console.log('[SEARCH DEBUG] Single selecting node:', instance_path)
+    }
+
+    const new_selection_array = [...new_selected]
+    update_drive_state({ type: 'runtime/selected_instance_paths', message: new_selection_array })
+    console.log('[SEARCH DEBUG] search_select_node completed, new selection:', new_selection_array)
   }
 
   function reset () {
+    // reset all of the manual expansions made
+    instance_states = {}
+    view_order_tracking = {} // Clear view order tracking on reset
+    drive_updated_by_tracking = true
+    update_drive_state({ type: 'runtime/view_order_tracking', message: view_order_tracking })
+    if (mode === 'search') {
+      search_entry_states = {}
+      drive_updated_by_toggle = true
+      update_drive_state({ type: 'runtime/search_entry_states', message: search_entry_states })
+      perform_search(search_query)
+      return
+    }
     const root_instance_path = '|/'
     const new_instance_states = {
       [root_instance_path]: { expanded_subs: true, expanded_hubs: false }
     }
-    update_drive_state({ dataset: 'runtime', name: 'vertical_scroll_value', value: 0 })
-    update_drive_state({ dataset: 'runtime', name: 'horizontal_scroll_value', value: 0 })
-    update_drive_state({ dataset: 'runtime', name: 'selected_instance_paths', value: [] })
-    update_drive_state({ dataset: 'runtime', name: 'confirmed_selected', value: [] })
-    update_drive_state({ dataset: 'runtime', name: 'instance_states', value: new_instance_states })
+    update_drive_state({ type: 'runtime/vertical_scroll_value', message: 0 })
+    update_drive_state({ type: 'runtime/horizontal_scroll_value', message: 0 })
+    update_drive_state({ type: 'runtime/selected_instance_paths', message: [] })
+    update_drive_state({ type: 'runtime/confirmed_selected', message: [] })
+    update_drive_state({ type: 'runtime/instance_states', message: new_instance_states })
   }
 
   /******************************************************************************
-  7. VIRTUAL SCROLLING
+  VIRTUAL SCROLLING
     - These functions implement virtual scrolling to handle large graphs
       efficiently using an IntersectionObserver.
-******************************************************************************/
+  ******************************************************************************/
   function onscroll () {
     if (scroll_update_pending) return
     scroll_update_pending = true
-    requestAnimationFrame(() => {
+    requestAnimationFrame(scroll_frames)
+    function scroll_frames () {
       const scroll_delta = vertical_scroll_value - container.scrollTop
       // Handle removal of the scroll spacer.
       if (spacer_element && scroll_delta > 0 && container.scrollTop === 0) {
@@ -790,7 +2081,7 @@ async function graph_explorer (opts) {
       vertical_scroll_value = update_scroll_state({ current_value: vertical_scroll_value, new_value: container.scrollTop, name: 'vertical_scroll_value' })
       horizontal_scroll_value = update_scroll_state({ current_value: horizontal_scroll_value, new_value: container.scrollLeft, name: 'horizontal_scroll_value' })
       scroll_update_pending = false
-    })
+    }
   }
 
   async function fill_viewport_downwards () {
@@ -820,20 +2111,21 @@ async function graph_explorer (opts) {
   }
 
   function handle_sentinel_intersection (entries) {
-    entries.forEach(entry => {
-      if (entry.isIntersecting) {
-        if (entry.target === top_sentinel) fill_viewport_upwards()
-        else if (entry.target === bottom_sentinel) fill_viewport_downwards()
-      }
-    })
+    entries.forEach(entry => fill_downwards_or_upwards(entry))
+  }
+
+  function fill_downwards_or_upwards (entry) {
+    if (entry.isIntersecting) {
+      if (entry.target === top_sentinel) fill_viewport_upwards()
+      else if (entry.target === bottom_sentinel) fill_viewport_downwards()
+    }
   }
 
   function render_next_chunk () {
     if (end_index >= view.length) return
     const fragment = document.createDocumentFragment()
     const next_end = Math.min(view.length, end_index + chunk_size)
-    for (let i = end_index; i < next_end; i++)
-      if (view[i]) fragment.appendChild(create_node(view[i]))
+    for (let i = end_index; i < next_end; i++) { if (view[i]) fragment.appendChild(create_node(view[i])) }
     container.insertBefore(fragment, bottom_sentinel)
     end_index = next_end
     bottom_sentinel.style.height = `${(view.length - end_index) * node_height}px`
@@ -873,32 +2165,430 @@ async function graph_explorer (opts) {
   }
 
   /******************************************************************************
-  8. HELPER FUNCTIONS
+  ENTRY DUPLICATION PREVENTION
   ******************************************************************************/
-function get_highlighted_name (name, query) {
+
+  function collect_all_duplicate_entries () {
+    duplicate_entries_map = {}
+    // Use view_order_tracking for duplicate detection
+    for (const [base_path, instance_paths] of Object.entries(view_order_tracking)) {
+      if (instance_paths.length > 1) {
+        duplicate_entries_map[base_path] = {
+          instances: instance_paths,
+          first_instance: instance_paths[0] // First occurrence in view order
+        }
+      }
+    }
+  }
+
+  function initialize_tracking_from_current_state () {
+    const root_path = '/'
+    const root_instance_path = '|/'
+    if (db.has(root_path)) {
+      add_instance_to_view_tracking(root_path, root_instance_path)
+      // Add initially expanded subs if any
+      const root_entry = db.get(root_path)
+      if (root_entry && Array.isArray(root_entry.subs)) {
+        root_entry.subs.forEach(sub_path => add_instances_recursively(sub_path, root_instance_path, instance_states, db))
+      }
+    }
+  }
+
+  function add_instance_to_view_tracking (base_path, instance_path) {
+    if (!view_order_tracking[base_path]) view_order_tracking[base_path] = []
+    if (!view_order_tracking[base_path].includes(instance_path)) {
+      view_order_tracking[base_path].push(instance_path)
+
+      // Only save to drive if not currently loading from drive
+      if (!is_loading_from_drive) {
+        drive_updated_by_tracking = true
+        update_drive_state({ type: 'runtime/view_order_tracking', message: view_order_tracking })
+      }
+    }
+  }
+
+  function remove_instance_from_view_tracking (base_path, instance_path) {
+    if (view_order_tracking[base_path]) {
+      const index = view_order_tracking[base_path].indexOf(instance_path)
+      if (index !== -1) {
+        view_order_tracking[base_path].splice(index, 1)
+        // Clean up empty arrays
+        if (view_order_tracking[base_path].length === 0) {
+          delete view_order_tracking[base_path]
+        }
+
+        // Only save to drive if not currently loading from drive
+        if (!is_loading_from_drive) {
+          drive_updated_by_tracking = true
+          update_drive_state({ type: 'runtime/view_order_tracking', message: view_order_tracking })
+        }
+      }
+    }
+  }
+
+  // Recursively add instances to tracking when expanding
+  function add_instances_recursively (base_path, parent_instance_path, instance_states, db) {
+    const instance_path = `${parent_instance_path}|${base_path}`
+    const entry = db.get(base_path)
+    if (!entry) return
+
+    const state = get_or_create_state(instance_states, instance_path)
+
+    if (state.expanded_hubs && Array.isArray(entry.hubs)) {
+      entry.hubs.forEach(hub_path => add_instances_recursively(hub_path, instance_path, instance_states, db))
+    }
+
+    if (state.expanded_subs && Array.isArray(entry.subs)) {
+      entry.subs.forEach(sub_path => add_instances_recursively(sub_path, instance_path, instance_states, db))
+    }
+
+    // Add the instance itself
+    add_instance_to_view_tracking(base_path, instance_path)
+  }
+
+  // Recursively remove instances from tracking when collapsing
+  function remove_instances_recursively (base_path, parent_instance_path, instance_states, db) {
+    const instance_path = `${parent_instance_path}|${base_path}`
+    const entry = db.get(base_path)
+    if (!entry) return
+
+    const state = get_or_create_state(instance_states, instance_path)
+
+    if (state.expanded_hubs && Array.isArray(entry.hubs)) entry.hubs.forEach(hub_path => remove_instances_recursively(hub_path, instance_path, instance_states, db))
+    if (state.expanded_subs && Array.isArray(entry.subs)) entry.subs.forEach(sub_path => remove_instances_recursively(sub_path, instance_path, instance_states, db))
+
+    // Remove the instance itself
+    remove_instance_from_view_tracking(base_path, instance_path)
+  }
+
+  // Recursively hubs all subs in default mode
+  function collapse_subs_recursively (base_path, parent_instance_path, instance_states, db) {
+    const instance_path = `${parent_instance_path}|${base_path}`
+    const entry = db.get(base_path)
+    if (!entry) return
+
+    const state = get_or_create_state(instance_states, instance_path)
+
+    if (state.expanded_subs && Array.isArray(entry.subs)) {
+      state.expanded_subs = false
+      entry.subs.forEach(sub_path => collapse_and_remove_instance(sub_path, instance_path, instance_states, db))
+    }
+
+    if (state.expanded_hubs && Array.isArray(entry.hubs)) {
+      state.expanded_hubs = false
+      hub_num = Math.max(0, hub_num - 1) // Decrement hub counter
+      entry.hubs.forEach(hub_path => collapse_and_remove_instance(hub_path, instance_path, instance_states, db))
+    }
+    function collapse_and_remove_instance (base_path, instance_path, instance_states, db) {
+      collapse_subs_recursively(base_path, instance_path, instance_states, db)
+      remove_instances_recursively(base_path, instance_path, instance_states, db)
+    }
+  }
+
+  // Recursively hubs all hubs in default mode
+  function collapse_hubs_recursively (base_path, parent_instance_path, instance_states, db) {
+    const instance_path = `${parent_instance_path}|${base_path}`
+    const entry = db.get(base_path)
+    if (!entry) return
+
+    const state = get_or_create_state(instance_states, instance_path)
+
+    if (state.expanded_hubs && Array.isArray(entry.hubs)) {
+      state.expanded_hubs = false
+      hub_num = Math.max(0, hub_num - 1)
+      entry.hubs.forEach(hub_path => collapse_and_remove_instance(hub_path, instance_path, instance_states, db))
+    }
+
+    if (state.expanded_subs && Array.isArray(entry.subs)) {
+      state.expanded_subs = false
+      entry.subs.forEach(sub_path => collapse_and_remove_instance(sub_path, instance_path, instance_states, db))
+    }
+    function collapse_and_remove_instance (base_path, instance_path, instance_states, db) {
+      collapse_all_recursively(base_path, instance_path, instance_states, db)
+      remove_instances_recursively(base_path, instance_path, instance_states, db)
+    }
+  }
+
+  // Recursively collapse in default mode
+  function collapse_all_recursively (base_path, parent_instance_path, instance_states, db) {
+    const instance_path = `${parent_instance_path}|${base_path}`
+    const entry = db.get(base_path)
+    if (!entry) return
+
+    const state = get_or_create_state(instance_states, instance_path)
+
+    if (state.expanded_subs && Array.isArray(entry.subs)) {
+      state.expanded_subs = false
+      entry.subs.forEach(sub_path => collapse_and_remove_instance_recursively(sub_path, instance_path, instance_states, db))
+    }
+
+    if (state.expanded_hubs && Array.isArray(entry.hubs)) {
+      state.expanded_hubs = false
+      hub_num = Math.max(0, hub_num - 1)
+      entry.hubs.forEach(hub_path => collapse_and_remove_instance_recursively(hub_path, instance_path, instance_states, db))
+    }
+
+    function collapse_and_remove_instance_recursively (base_path, instance_path, instance_states, db) {
+      collapse_all_recursively(base_path, instance_path, instance_states, db)
+      remove_instances_recursively(base_path, instance_path, instance_states, db)
+    }
+  }
+
+  // Recursively subs all hubs in search mode
+  function collapse_search_subs_recursively (base_path, parent_instance_path, search_entry_states, db) {
+    const instance_path = `${parent_instance_path}|${base_path}`
+    const entry = db.get(base_path)
+    if (!entry) return
+
+    const state = get_or_create_state(search_entry_states, instance_path)
+
+    if (state.expanded_subs && Array.isArray(entry.subs)) {
+      state.expanded_subs = false
+      entry.subs.forEach(sub_path => collapse_search_all_recursively(sub_path, instance_path, search_entry_states, db))
+    }
+
+    if (state.expanded_hubs && Array.isArray(entry.hubs)) {
+      state.expanded_hubs = false
+      entry.hubs.forEach(hub_path => collapse_search_all_recursively(hub_path, instance_path, search_entry_states, db))
+    }
+  }
+
+  // Recursively hubs all hubs in search mode
+  function collapse_search_hubs_recursively (base_path, parent_instance_path, search_entry_states, db) {
+    const instance_path = `${parent_instance_path}|${base_path}`
+    const entry = db.get(base_path)
+    if (!entry) return
+
+    const state = get_or_create_state(search_entry_states, instance_path)
+
+    if (state.expanded_hubs && Array.isArray(entry.hubs)) {
+      state.expanded_hubs = false
+      entry.hubs.forEach(hub_path => collapse_search_all_recursively(hub_path, instance_path, search_entry_states, db))
+    }
+
+    if (state.expanded_subs && Array.isArray(entry.subs)) {
+      state.expanded_subs = false
+      entry.subs.forEach(sub_path => collapse_search_all_recursively(sub_path, instance_path, search_entry_states, db))
+    }
+  }
+
+  // Recursively collapse in search mode
+  function collapse_search_all_recursively (base_path, parent_instance_path, search_entry_states, db) {
+    const instance_path = `${parent_instance_path}|${base_path}`
+    const entry = db.get(base_path)
+    if (!entry) return
+
+    const state = get_or_create_state(search_entry_states, instance_path)
+
+    if (state.expanded_subs && Array.isArray(entry.subs)) {
+      state.expanded_subs = false
+      entry.subs.forEach(sub_path => collapse_search_all_recursively(sub_path, instance_path, search_entry_states, db))
+    }
+
+    if (state.expanded_hubs && Array.isArray(entry.hubs)) {
+      state.expanded_hubs = false
+      entry.hubs.forEach(hub_path => collapse_search_all_recursively(hub_path, instance_path, search_entry_states, db))
+    }
+  }
+
+  function get_next_duplicate_instance (base_path, current_instance_path) {
+    const duplicates = duplicate_entries_map[base_path]
+    if (!duplicates || duplicates.instances.length <= 1) return null
+
+    const current_index = duplicates.instances.indexOf(current_instance_path)
+    if (current_index === -1) return duplicates.instances[0]
+
+    const next_index = (current_index + 1) % duplicates.instances.length
+    return duplicates.instances[next_index]
+  }
+
+  function has_duplicates (base_path) {
+    return duplicate_entries_map[base_path] && duplicate_entries_map[base_path].instances.length > 1
+  }
+
+  function is_first_duplicate (base_path, instance_path) {
+    const duplicates = duplicate_entries_map[base_path]
+    return duplicates && duplicates.first_instance === instance_path
+  }
+
+  function cycle_to_next_duplicate (base_path, current_instance_path) {
+    const next_instance_path = get_next_duplicate_instance(base_path, current_instance_path)
+    if (next_instance_path) {
+      remove_jump_button_from_entry(current_instance_path)
+
+      // First, handle the scroll and DOM updates without drive state changes
+      scroll_to_and_highlight_instance(next_instance_path, current_instance_path)
+
+      // Manually update DOM styling
+      update_last_clicked_styling(next_instance_path)
+      last_clicked_node = next_instance_path
+      drive_updated_by_scroll = true // Prevent onbatch from interfering with scroll
+      drive_updated_by_match = true
+      update_drive_state({ type: 'runtime/last_clicked_node', message: next_instance_path })
+
+      // Add jump button to the target entry (with a small delay to ensure DOM is ready)
+      setTimeout(jump_out, 10)
+      function jump_out () {
+        const target_element = shadow.querySelector(`[data-instance_path="${CSS.escape(next_instance_path)}"]`)
+        if (target_element) {
+          add_jump_button_to_matching_entry(target_element, base_path, next_instance_path)
+        }
+      }
+    }
+  }
+
+  function update_last_clicked_styling (new_instance_path) {
+    // Remove last-clicked class from all elements
+    const all_nodes = mode === 'search' ? shadow.querySelectorAll('.node.search-last-clicked') : shadow.querySelectorAll('.node.last-clicked')
+    console.log('Removing last-clicked class from all nodes', all_nodes)
+    all_nodes.forEach(node => (mode === 'search' ? node.classList.remove('search-last-clicked') : node.classList.remove('last-clicked')))
+    // Add last-clicked class to the new element
+    if (new_instance_path) {
+      const new_element = shadow.querySelector(`[data-instance_path="${CSS.escape(new_instance_path)}"]`)
+      if (new_element) {
+        mode === 'search' ? new_element.classList.add('search-last-clicked') : new_element.classList.add('last-clicked')
+      }
+    }
+  }
+
+  function remove_jump_button_from_entry (instance_path) {
+    const current_element = shadow.querySelector(`[data-instance_path="${CSS.escape(instance_path)}"]`)
+    if (current_element) {
+      // restore the wand icon
+      const node_data = view.find(n => n.instance_path === instance_path)
+      if (node_data && node_data.base_path === '/' && instance_path === '|/') {
+        const wand_el = current_element.querySelector('.wand.navigate-to-hub')
+        if (wand_el && root_wand_state) {
+          wand_el.textContent = root_wand_state.content
+          wand_el.className = root_wand_state.className
+          wand_el.onclick = root_wand_state.onclick
+
+          root_wand_state = null
+        }
+        return
+      }
+
+      // Regular behavior for non-root nodes
+      const button_container = current_element.querySelector('.indent-btn-container')
+      if (button_container) {
+        button_container.remove()
+        // Restore left-indent class
+        if (node_data && node_data.depth > 0) {
+          current_element.classList.add('left-indent')
+        }
+      }
+    }
+  }
+
+  function add_jump_button_to_matching_entry (el, base_path, instance_path) {
+    // Check if jump button already exists
+    if (el.querySelector('.navigate-to-hub')) return
+
+    // replace the wand icon temporarily
+    if (base_path === '/' && instance_path === '|/') {
+      const wand_el = el.querySelector('.wand')
+      if (wand_el) {
+        // Store original wand state in JavaScript variable
+        root_wand_state = {
+          content: wand_el.textContent,
+          className: wand_el.className,
+          onclick: wand_el.onclick
+        }
+
+        // Replace with jump button
+        wand_el.textContent = '^'
+        wand_el.className = 'wand navigate-to-hub clickable'
+        wand_el.onclick = (ev) => handle_jump_button_click(ev, instance_path)
+      }
+      return
+
+      function handle_jump_button_click (ev, instance_path) {
+        ev.stopPropagation()
+        last_clicked_node = instance_path
+        drive_updated_by_match = true
+        update_drive_state({ type: 'runtime/last_clicked_node', message: instance_path })
+
+        update_last_clicked_styling(instance_path)
+
+        cycle_to_next_duplicate(base_path, instance_path)
+      }
+    }
+
+    const indent_button_div = document.createElement('div')
+    indent_button_div.className = 'indent-btn-container'
+
+    const navigate_button = document.createElement('span')
+    navigate_button.className = 'navigate-to-hub clickable'
+    navigate_button.textContent = '^'
+    navigate_button.onclick = (ev) => handle_navigate_button_click(ev, instance_path)
+
+    indent_button_div.appendChild(navigate_button)
+
+    // Remove left padding
+    el.classList.remove('left-indent')
+    el.insertBefore(indent_button_div, el.firstChild)
+
+    function handle_navigate_button_click (ev, instance_path) {
+      ev.stopPropagation() // Prevent triggering the whole entry click again
+      // Manually update last clicked node for jump button
+      last_clicked_node = instance_path
+      drive_updated_by_match = true
+      update_drive_state({ type: 'runtime/last_clicked_node', message: instance_path })
+
+      // Manually update DOM classes for last-clicked styling
+      update_last_clicked_styling(instance_path)
+
+      cycle_to_next_duplicate(base_path, instance_path)
+    }
+  }
+
+  function scroll_to_and_highlight_instance (target_instance_path, source_instance_path = null) {
+    const target_index = view.findIndex(n => n.instance_path === target_instance_path)
+    if (target_index === -1) return
+
+    // Calculate scroll position
+    let target_scroll_top = target_index * node_height
+
+    if (source_instance_path) {
+      const source_index = view.findIndex(n => n.instance_path === source_instance_path)
+      if (source_index !== -1) {
+        const source_scroll_top = source_index * node_height
+        const current_scroll_top = container.scrollTop
+        const source_visible_offset = source_scroll_top - current_scroll_top
+        target_scroll_top = target_scroll_top - source_visible_offset
+      }
+    }
+
+    container.scrollTop = target_scroll_top
+  }
+
+  /******************************************************************************
+  HELPER FUNCTIONS
+  ******************************************************************************/
+  function get_highlighted_name (name, query) {
   // Creates a new regular expression.
   // `escape_regex(query)` sanitizes the query string to treat special regex characters literally.
   // `(...)` creates a capturing group for the escaped query.
   // 'gi' flags: 'g' for global (all occurrences), 'i' for case-insensitive.
-  const regex = new RegExp(`(${escape_regex(query)})`, 'gi')
-  // Replaces all matches of the regex in 'name' with the matched text wrapped in <b> tags.
-  // '$1' refers to the content of the first capturing group (the matched query).
-  return name.replace(regex, '<b>$1</b>')
-}
+    const regex = new RegExp(`(${escape_regex(query)})`, 'gi')
+    // Replaces all matches of the regex in 'name' with the matched text wrapped in search-match class.
+    // '$1' refers to the content of the first capturing group (the matched query).
+    return name.replace(regex, '<span class="search-match">$1</span>')
+  }
 
-function escape_regex (string) {
+  function escape_regex (string) {
   // Escapes special regular expression characters in a string.
   // It replaces characters like -, /, \, ^, $, *, +, ?, ., (, ), |, [, ], {, }
   // with their escaped versions (e.g., '.' becomes '\.').
   // This prevents them from being interpreted as regex metacharacters.
-  return string.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&') // Corrected: should be \\$& to escape the found char
-}
+    return string.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&') // Corrected: should be \\$& to escape the found char
+  }
 
   function check_and_reset_feedback_flags () {
-    if (drive_updated_by_scroll) {
+    if (drive_updated_by_scroll && !ignore_drive_updated_by_scroll) {
       drive_updated_by_scroll = false
       return true
-    }
+    } else ignore_drive_updated_by_scroll = false
     if (drive_updated_by_toggle) {
       drive_updated_by_toggle = false
       return true
@@ -907,6 +2597,23 @@ function escape_regex (string) {
       drive_updated_by_search = false
       return true
     }
+    if (drive_updated_by_match) {
+      drive_updated_by_match = false
+      return true
+    }
+    if (drive_updated_by_tracking) {
+      drive_updated_by_tracking = false
+      return true
+    }
+    if (drive_updated_by_last_clicked) {
+      drive_updated_by_last_clicked = false
+      return true
+    }
+    if (drive_updated_by_undo) {
+      drive_updated_by_undo = false
+      return true
+    }
+    console.log('[SEARCH DEBUG] No feedback flags set, allowing onbatch')
     return false
   }
 
@@ -959,13 +2666,7 @@ function escape_regex (string) {
       container.appendChild(spacer_element)
 
       if (hub_toggle) {
-        requestAnimationFrame(() => {
-          const max_scroll = container.scrollHeight - container.clientHeight
-          if (new_scroll_top > max_scroll) {
-            spacer_element.style.height = `${new_scroll_top - max_scroll}px`
-          }
-          sync_fn()
-        })
+        requestAnimationFrame(spacer_frames)
       } else {
         spacer_element.style.height = `${existing_height}px`
         requestAnimationFrame(sync_fn)
@@ -975,6 +2676,17 @@ function escape_regex (string) {
       spacer_initial_height = 0
       requestAnimationFrame(sync_fn)
     }
+    function spacer_frames () {
+      const container_height = container.clientHeight
+      const content_height = view.length * node_height
+      const max_scroll_top = content_height - container_height
+
+      if (new_scroll_top > max_scroll_top) {
+        spacer_initial_height = new_scroll_top - max_scroll_top
+        spacer_element.style.height = `${spacer_initial_height}px`
+      }
+      sync_fn()
+    }
   }
 
   function create_root_node ({ state, has_subs, instance_path }) {
@@ -982,16 +2694,18 @@ function escape_regex (string) {
     const el = document.createElement('div')
     el.className = 'node type-root'
     el.dataset.instance_path = instance_path
-    const prefix_class = has_subs && mode !== 'search' ? 'prefix clickable' : 'prefix'
+    const prefix_class = has_subs || (mode === 'search' && search_query) ? 'prefix clickable' : 'prefix'
     const prefix_name = state.expanded_subs ? 'tee-down' : 'line-h'
-    el.innerHTML = `<div class="wand">🪄</div><span class="${prefix_class} ${prefix_name}"></span><span class="name clickable">/🌐</span>`
+    el.innerHTML = `<div class="wand clickable">🪄</div><span class="${prefix_class} ${prefix_name}"></span><span class="name ${(mode === 'search' && search_query) ? '' : 'clickable'}">/🌐</span>`
 
     el.querySelector('.wand').onclick = reset
     if (has_subs) {
       const prefix_el = el.querySelector('.prefix')
-      if (prefix_el) prefix_el.onclick = mode !== 'search' ? () => toggle_subs(instance_path) : null
+      if (prefix_el) {
+        prefix_el.onclick = (mode === 'search' && search_query) ? null : () => toggle_subs(instance_path)
+      }
     }
-    el.querySelector('.name').onclick = ev => select_node(ev, instance_path)
+    el.querySelector('.name').onclick = ev => (mode === 'search' && search_query) ? null : select_node(ev, instance_path)
     return el
   }
 
@@ -1008,7 +2722,7 @@ function escape_regex (string) {
   function update_scroll_state ({ current_value, new_value, name }) {
     if (current_value !== new_value) {
       drive_updated_by_scroll = true // Set flag to prevent render loop.
-      update_drive_state({ dataset: 'runtime', name, value: new_value })
+      update_drive_state({ type: `runtime/${name}`, message: new_value })
       return new_value
     }
     return current_value
@@ -1021,15 +2735,233 @@ function escape_regex (string) {
       else break
     }
   }
+
+  /******************************************************************************
+  KEYBOARD NAVIGATION
+    - Handles keyboard-based navigation for the graph explorer
+    - Navigate up/down around last_clicked node
+  ******************************************************************************/
+  function handle_keyboard_navigation (event) {
+    // Don't handle keyboard events if focus is on input elements
+    if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') {
+      return
+    }
+    const on_bind = {
+      navigate_up_current_node,
+      navigate_down_current_node,
+      toggle_subs_for_current_node,
+      toggle_hubs_for_current_node,
+      multiselect_current_node,
+      select_between_current_node,
+      toggle_search_mode,
+      jump_to_next_duplicate
+
+    }
+    let key_combination = ''
+    if (event.ctrlKey) key_combination += 'Control+'
+    if (event.altKey) key_combination += 'Alt+'
+    if (event.shiftKey) key_combination += 'Shift+'
+    key_combination += event.key
+
+    const action = keybinds[key_combination] || keybinds[event.key]
+    if (!action) return
+
+    // Prevent default behavior for handled keys
+    event.preventDefault()
+    const base_path = last_clicked_node.split('|').pop()
+    const current_instance_path = last_clicked_node
+    // Execute the appropriate action
+    on_bind[action]({ base_path, current_instance_path })
+  }
+  function navigate_up_current_node () {
+    navigate_to_adjacent_node(-1)
+  }
+  function navigate_down_current_node () {
+    navigate_to_adjacent_node(1)
+  }
+  function navigate_to_adjacent_node (direction) {
+    if (view.length === 0) return
+    if (!last_clicked_node) last_clicked_node = view[0].instance_path
+    const current_index = view.findIndex(node => node.instance_path === last_clicked_node)
+    if (current_index === -1) return
+
+    const new_index = current_index + direction
+    if (new_index < 0 || new_index >= view.length) return
+
+    const new_node = view[new_index]
+    last_clicked_node = new_node.instance_path
+    drive_updated_by_last_clicked = true
+    update_drive_state({ type: 'runtime/last_clicked_node', message: last_clicked_node })
+
+    // Update visual styling
+    if (mode === 'search' && search_query) {
+      update_search_last_clicked_styling(last_clicked_node)
+    } else {
+      update_last_clicked_styling(last_clicked_node)
+    }
+    const base_path = last_clicked_node.split('|').pop()
+    const has_duplicate_entries = has_duplicates(base_path)
+    const is_first_occurrence = is_first_duplicate(base_path, last_clicked_node)
+    if (has_duplicate_entries && !is_first_occurrence) {
+      const el = shadow.querySelector(`[data-instance_path="${CSS.escape(last_clicked_node)}"]`)
+      add_jump_button_to_matching_entry(el, base_path, last_clicked_node)
+    }
+    scroll_to_node(new_node.instance_path)
+  }
+
+  function toggle_subs_for_current_node () {
+    if (!last_clicked_node) return
+
+    const base_path = last_clicked_node.split('|').pop()
+    const entry = db.get(base_path)
+    const has_subs = Array.isArray(entry?.subs) && entry.subs.length > 0
+    if (!has_subs) return
+
+    if (hubs_flag === 'default') {
+      const has_duplicate_entries = has_duplicates(base_path)
+      const is_first_occurrence = is_first_duplicate(base_path, last_clicked_node)
+      if (has_duplicate_entries && !is_first_occurrence) return
+    }
+
+    if (mode === 'search' && search_query) {
+      toggle_search_subs(last_clicked_node)
+    } else {
+      toggle_subs(last_clicked_node)
+    }
+  }
+
+  function toggle_hubs_for_current_node () {
+    if (!last_clicked_node) return
+
+    const base_path = last_clicked_node.split('|').pop()
+    const entry = db.get(base_path)
+    const has_hubs = hubs_flag === 'false' ? false : Array.isArray(entry?.hubs) && entry.hubs.length > 0
+    if (!has_hubs || base_path === '/') return
+
+    if (hubs_flag === 'default') {
+      const has_duplicate_entries = has_duplicates(base_path)
+      const is_first_occurrence = is_first_duplicate(base_path, last_clicked_node)
+
+      if (has_duplicate_entries && !is_first_occurrence) return
+    }
+
+    if (mode === 'search' && search_query) {
+      toggle_search_hubs(last_clicked_node)
+    } else {
+      toggle_hubs(last_clicked_node)
+    }
+  }
+
+  function multiselect_current_node () {
+    if (!last_clicked_node || selection_flag === false) return
+
+    // IMPORTANT FIX!!!!! : synthetic event object for compatibility with existing functions
+    const synthetic_event = { ctrlKey: true, metaKey: false, shiftKey: false }
+
+    if (mode === 'search' && search_query) {
+      search_select_node(synthetic_event, last_clicked_node)
+    } else {
+      select_node(synthetic_event, last_clicked_node)
+    }
+  }
+
+  function select_between_current_node () {
+    if (!last_clicked_node || selection_flag === false) return
+
+    if (!select_between_enabled) {
+      // Enable select between mode and set first node
+      select_between_enabled = true
+      select_between_first_node = last_clicked_node
+      update_drive_state({ type: 'mode/select_between_enabled', message: true })
+      render_menubar()
+    } else {
+      // Complete the select between operation
+      const synthetic_event = { ctrlKey: false, metaKey: false, shiftKey: true }
+
+      if (mode === 'search' && search_query) {
+        search_select_node(synthetic_event, last_clicked_node)
+      } else {
+        select_node(synthetic_event, last_clicked_node)
+      }
+    }
+  }
+
+  function scroll_to_node (instance_path) {
+    const node_index = view.findIndex(node => node.instance_path === instance_path)
+    if (node_index === -1 || !node_height) return
+
+    const target_scroll_top = node_index * node_height
+    const container_height = container.clientHeight
+    const current_scroll_top = container.scrollTop
+
+    // Only scroll if the node is not fully visible
+    if (target_scroll_top < current_scroll_top || target_scroll_top + node_height > current_scroll_top + container_height) {
+      const centered_scroll_top = target_scroll_top - (container_height / 2) + (node_height / 2)
+      container.scrollTop = Math.max(0, centered_scroll_top)
+
+      vertical_scroll_value = container.scrollTop
+      drive_updated_by_scroll = true
+      update_drive_state({ type: 'runtime/vertical_scroll_value', message: vertical_scroll_value })
+    }
+  }
+
+  function jump_to_next_duplicate ({ base_path, current_instance_path }) {
+    if (hubs_flag === 'default') {
+      cycle_to_next_duplicate(base_path, current_instance_path)
+    }
+  }
+
+  /******************************************************************************
+  UNDO FUNCTIONALITY
+    - Implements undo functionality to revert drive state changes
+  ******************************************************************************/
+  async function undo (steps = 1) {
+    if (undo_stack.length === 0) {
+      console.warn('No actions to undo')
+      return
+    }
+
+    const actions_to_undo = Math.min(steps, undo_stack.length)
+    console.log(`Undoing ${actions_to_undo} action(s)`)
+
+    // Pop the specified number of actions from the stack
+    const snapshots_to_restore = []
+    for (let i = 0; i < actions_to_undo; i++) {
+      const snapshot = undo_stack.pop()
+      if (snapshot) snapshots_to_restore.push(snapshot)
+    }
+
+    // Restore the last snapshot's state
+    if (snapshots_to_restore.length > 0) {
+      const snapshot = snapshots_to_restore[snapshots_to_restore.length - 1]
+
+      try {
+        // Restore the state WITHOUT setting drive_updated_by_undo flag
+        // This allows onbatch to process the change and update the UI
+        await drive.put(`${snapshot.type}.json`, snapshot.value)
+
+        // Update the undo stack in drive (with flag to prevent tracking this update)
+        // drive_updated_by_undo = true
+        await drive.put('undo/stack.json', JSON.stringify(undo_stack))
+
+        console.log(`Undo completed: restored ${snapshot.type} to previous state`)
+
+        // Re-render menubar to update undo button count
+        render_menubar()
+      } catch (e) {
+        console.error('Failed to undo action:', e)
+      }
+    }
+  }
 }
 
 /******************************************************************************
-  9. FALLBACK CONFIGURATION
+  FALLBACK CONFIGURATION
     - This provides the default data and API configuration for the component,
       following the pattern described in `instructions.md`.
     - It defines the default datasets (`entries`, `style`, `runtime`) and their
       initial values.
-******************************************************************************/
+  ******************************************************************************/
 function fallback_module () {
   return {
     api: fallback_instance
@@ -1042,7 +2974,7 @@ function fallback_module () {
         },
         'style/': {
           'theme.css': {
-            '$ref' : 'theme.css'
+            $ref: 'theme.css'
           }
         },
         'runtime/': {
@@ -1051,21 +2983,94 @@ function fallback_module () {
           'horizontal_scroll_value.json': { raw: '0' },
           'selected_instance_paths.json': { raw: '[]' },
           'confirmed_selected.json': { raw: '[]' },
-          'instance_states.json': { raw: '{}' }
+          'instance_states.json': { raw: '{}' },
+          'search_entry_states.json': { raw: '{}' },
+          'last_clicked_node.json': { raw: 'null' },
+          'view_order_tracking.json': { raw: '{}' }
         },
         'mode/': {
           'current_mode.json': { raw: '"menubar"' },
           'previous_mode.json': { raw: '"menubar"' },
-          'search_query.json': { raw: '""' }
+          'search_query.json': { raw: '""' },
+          'multi_select_enabled.json': { raw: 'false' },
+          'select_between_enabled.json': { raw: 'false' }
+        },
+        'flags/': {
+          'hubs.json': { raw: '"default"' },
+          'selection.json': { raw: 'true' },
+          'recursive_collapse.json': { raw: 'true' }
+        },
+        'keybinds/': {
+          'navigation.json': {
+            raw: JSON.stringify({
+              ArrowUp: 'navigate_up_current_node',
+              ArrowDown: 'navigate_down_current_node',
+              'Control+ArrowDown': 'toggle_subs_for_current_node',
+              'Control+ArrowUp': 'toggle_hubs_for_current_node',
+              'Alt+s': 'multiselect_current_node',
+              'Alt+b': 'select_between_current_node',
+              'Control+m': 'toggle_search_mode',
+              'Alt+j': 'jump_to_next_duplicate'
+            })
+          }
+        },
+        'undo/': {
+          'stack.json': { raw: '[]' }
         }
       }
     }
   }
 }
+
 }).call(this)}).call(this,"/node_modules/graph-explorer/lib/graph_explorer.js")
-},{"./STATE":1}],3:[function(require,module,exports){
+},{"./STATE":1,"./graphdb":3}],3:[function(require,module,exports){
+module.exports = graphdb
+
+function graphdb (entries) {
+  // Validate entries
+  if (!entries || typeof entries !== 'object') {
+    console.warn('[graphdb] Invalid entries provided, using empty object')
+    entries = {}
+  }
+
+  const api = {
+    get,
+    has,
+    keys,
+    isEmpty,
+    root,
+    raw
+  }
+
+  return api
+
+  function get (path) {
+    return entries[path] || null
+  }
+
+  function has (path) {
+    return path in entries
+  }
+  function keys () {
+    return Object.keys(entries)
+  }
+
+  function isEmpty () {
+    return Object.keys(entries).length === 0
+  }
+
+  function root () {
+    return entries['/'] || null
+  }
+
+  function raw () {
+    return entries
+  }
+}
+
+},{}],4:[function(require,module,exports){
 arguments[4][1][0].apply(exports,arguments)
-},{"dup":1}],4:[function(require,module,exports){
+},{"dup":1}],5:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -1419,7 +3424,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/action_bar/action_bar.js")
-},{"STATE":3,"actions":5,"quick_actions":13,"steps_wizard":16}],5:[function(require,module,exports){
+},{"STATE":4,"actions":6,"quick_actions":14,"steps_wizard":17}],6:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -1741,7 +3746,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/actions/actions.js")
-},{"STATE":3}],6:[function(require,module,exports){
+},{"STATE":4}],7:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -2076,7 +4081,7 @@ function fallback_module () {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/console_history/console_history.js")
-},{"STATE":3}],7:[function(require,module,exports){
+},{"STATE":4}],8:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -2263,7 +4268,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/form_input.js")
-},{"STATE":3}],8:[function(require,module,exports){
+},{"STATE":4}],9:[function(require,module,exports){
 module.exports = { resource }
 
 function resource (timeout = 1000) {
@@ -2286,7 +4291,7 @@ function resource (timeout = 1000) {
     }
   }
 } 
-},{}],9:[function(require,module,exports){
+},{}],10:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -2482,7 +4487,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/input_test.js")
-},{"STATE":3}],10:[function(require,module,exports){
+},{"STATE":4}],11:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -2798,7 +4803,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/manager/manager.js")
-},{"STATE":3,"action_bar":4,"program":12}],11:[function(require,module,exports){
+},{"STATE":4,"action_bar":5,"program":13}],12:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -3053,7 +5058,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/menu.js")
-},{"STATE":3}],12:[function(require,module,exports){
+},{"STATE":4}],13:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -3177,7 +5182,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/program/program.js")
-},{"STATE":3,"form_input":7,"input_test":9}],13:[function(require,module,exports){
+},{"STATE":4,"form_input":8,"input_test":10}],14:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -3617,7 +5622,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/quick_actions/quick_actions.js")
-},{"STATE":3}],14:[function(require,module,exports){
+},{"STATE":4}],15:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4050,7 +6055,7 @@ function fallback_module() {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/quick_editor.js")
-},{"STATE":3,"helpers":8}],15:[function(require,module,exports){
+},{"STATE":4,"helpers":9}],16:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4192,7 +6197,7 @@ async function component (opts, protocol) {
       func(data, type)
     }
   }
-  function fail(data, type) { throw new Error('invalid message', { cause: { data, type } }) }
+  function fail(data, type) { console.warn('invalid message', { cause: { data, type } }) }
   function inject (data) {
     style.replaceChildren((() => {
       return document.createElement('style').textContent = data[0]
@@ -4320,7 +6325,10 @@ function fallback_module () {
             'style': 'style',
             'entries': 'entries',
             'runtime': 'runtime',
-            'mode': 'mode'
+            'mode': 'mode',
+            'flags': 'flags',
+            'keybinds': 'keybinds',
+            'undo': 'undo'
           }
         }
       },
@@ -4375,14 +6383,28 @@ function fallback_module () {
               }
             `
           }
-        }
+        },
+        "flags/": {},
+        "keybinds/": {},
+        "commands/": {},
+        "icons/": {},
+        "scroll/": {},
+        "actions/": {},
+        "hardcons/": {},
+        "files/": {},
+        "highlight/": {},
+        "active_tab/": {},
+        "entries/": {},
+        "runtime/": {},
+        "mode/": {},
+        'undo/': {}
       }
     }
   }
 }
 
 }).call(this)}).call(this,"/src/node_modules/space.js")
-},{"STATE":3,"actions":5,"console_history":6,"graph-explorer":2,"tabbed_editor":17}],16:[function(require,module,exports){
+},{"STATE":4,"actions":6,"console_history":7,"graph-explorer":2,"tabbed_editor":18}],17:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4552,7 +6574,7 @@ function fallback_module () {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/steps_wizard/steps_wizard.js")
-},{"STATE":3}],17:[function(require,module,exports){
+},{"STATE":4}],18:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4946,7 +6968,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabbed_editor/tabbed_editor.js")
-},{"STATE":3}],18:[function(require,module,exports){
+},{"STATE":4}],19:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5158,7 +7180,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabs/tabs.js")
-},{"STATE":3}],19:[function(require,module,exports){
+},{"STATE":4}],20:[function(require,module,exports){
 (function (__filename){(function (){
 const state = require('STATE')
 const state_db = state(__filename)
@@ -5341,7 +7363,7 @@ function fallback_module () {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/tabsbar/tabsbar.js")
-},{"STATE":3,"tabs":18,"task_manager":20}],20:[function(require,module,exports){
+},{"STATE":4,"tabs":19,"task_manager":21}],21:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5434,7 +7456,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/task_manager.js")
-},{"STATE":3}],21:[function(require,module,exports){
+},{"STATE":4}],22:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5592,7 +7614,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/taskbar/taskbar.js")
-},{"STATE":3,"action_bar":4,"tabsbar":19}],22:[function(require,module,exports){
+},{"STATE":4,"action_bar":5,"tabsbar":20}],23:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5645,11 +7667,12 @@ async function theme_widget (opts) {
   async function onbatch(batch) {
     for (const { type, paths } of batch){
       const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
+      // console.log(data, type)
       const func = on[type] || fail
       func(data, type)
     }
   }
-  function fail(data, type) { throw new Error('invalid message', { cause: { data, type } }) }
+  function fail(data, type) { console.warn('invalid message', { cause: { data, type } }) }
   function inject (data) {
     style.replaceChildren((() => {
       return document.createElement('style').textContent = data[0]
@@ -5684,7 +7707,10 @@ function fallback_module () {
         $: ''
       },
       'taskbar': {
-        $: ''
+        $: '',
+        mapping: {
+          'style': 'style'
+        }
       },
     }
   }
@@ -5695,7 +7721,21 @@ function fallback_module () {
         'space': {
           0: '',
           mapping: {
-            'style': 'style'
+            'style': 'style',
+            'flags': 'flags',
+            "commands": "commands",
+            "icons": "icons",
+            "scroll": "scroll",
+            "actions": "actions",
+            "hardcons": "hardcons",
+            "files": "files",
+            "highlight": "highlight",
+            "active_tab": "active_tab",
+            "entries": "entries",
+            "runtime": "runtime",
+            "mode": "mode",
+            'keybinds': 'keybinds',
+            'undo': 'undo'
           }
         },
         'taskbar': {
@@ -5721,14 +7761,28 @@ function fallback_module () {
               }
             `
           }
-        }
+        },
+        'flags': {},
+        "commands/": {},
+        "icons/": {},
+        "scroll/": {},
+        "actions/": {},
+        "hardcons/": {},
+        "files/": {},
+        "highlight/": {},
+        "active_tab/": {},
+        "entries/": {},
+        "runtime/": {},
+        "mode/": {},
+        'keybinds/': {},
+        'undo/': {}
       }
     }
   }
 }
 
 }).call(this)}).call(this,"/src/node_modules/theme_widget/theme_widget.js")
-},{"STATE":3,"space":15,"taskbar":21}],23:[function(require,module,exports){
+},{"STATE":4,"space":16,"taskbar":22}],24:[function(require,module,exports){
 const prefix = 'https://raw.githubusercontent.com/alyhxn/playproject/main/'
 const init_url = location.hash === '#dev' ? 'web/init.js' : prefix + 'src/node_modules/init.js'
 const args = arguments
@@ -5749,15 +7803,16 @@ fetch(init_url, fetch_opts).then(res => res.text()).then(async source => {
   require('./page') // or whatever is otherwise the main entry of our project
 })
 
-},{"./page":24}],24:[function(require,module,exports){
+},{"./page":25}],25:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('../src/node_modules/STATE')
 const statedb = STATE(__filename)
 const admin_api = statedb.admin()
-admin_api.on(event => {
-  console.log(event)
+const admin_on = {}
+admin_api.on(({type, data}) => {
+  admin_on[type] && admin_on[type]()
 })
-const { sdb, io } = statedb(fallback_module)
+const { sdb, io, id } = statedb(fallback_module)
 const { drive, admin } = sdb
 /******************************************************************************
   PAGE
@@ -6048,7 +8103,7 @@ async function boot(opts) {
       func(data, type)
     }
   }
-  function fail (data, type) {  }
+  function fail (data, type) { throw new Error('invalid message', { cause: { data, type } }) }
   function inject(data) {
     style.innerHTML = data.join('\n')
   }
@@ -6112,6 +8167,27 @@ function fallback_module() {
       'variables': 'variables',
       'scroll': 'scroll',
       'style': 'style'
+    }
+  }
+  subs['../src/node_modules/space'] = {
+    $: '',
+    0: '',
+    mapping: {
+      'style': 'style',
+      'flags': 'flags',
+      "commands": "commands",
+      "icons": "icons",
+      "scroll": "scroll",
+      "actions": "actions",
+      "hardcons": "hardcons",
+      "files": "files",
+      "highlight": "highlight",
+      "active_tab": "active_tab",
+      "entries": "entries",
+      "runtime": "runtime",
+      "mode": "mode",
+      'keybinds': 'keybinds',
+      'undo': 'undo'
     }
   }
   subs['../src/node_modules/manager'] = {
@@ -6214,6 +8290,40 @@ function fallback_module() {
     mapping: {
       'style': 'style'
     }
+  },
+  subs['../src/node_modules/theme_widget'] = {
+    $: '',
+    0: '',
+    mapping: {
+      'style': 'style',
+      "commands": "commands",
+      "icons": "icons",
+      "scroll": "scroll",
+      "actions": "actions",
+      "hardcons": "hardcons",
+      "files": "files",
+      "highlight": "highlight",
+      "active_tab": "active_tab",
+      "entries": "entries",
+      "runtime": "runtime",
+      "mode": "mode",
+      "flags": "flags",
+      'keybinds': 'keybinds',
+      'undo': 'undo'
+    }
+  }
+  subs['graph-explorer'] = {
+    $: '',
+    0: '',
+    mapping: {
+      'style': 'style',
+      'entries': 'entries',
+      'runtime': 'runtime',
+      'mode': 'mode',
+      'flags': 'flags',
+      'keybinds': 'keybinds',
+      'undo': 'undo'
+    }
   }
   for (i = 0; i < Object.keys(subs).length - 1; i++) {
     subs['../src/node_modules/quick_editor'][i] = quick_editor$
@@ -6264,74 +8374,73 @@ function fallback_module() {
             height: 100%;
           }
           .toggle-switch {
-          position: relative;
-          display: inline-block;
-          width: 50px;
-          height: 26px;
-        }
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 26px;
+          }
 
-        .toggle-switch input {
-          opacity: 0;
-          width: 0;
-          height: 0;
-        }
+          .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+          }
 
-        .slider {
-          position: absolute;
-          cursor: pointer;
-          inset: 0;
-          background-color: #ccc;
-          border-radius: 26px;
-          transition: 0.4s;
-        }
+          .slider {
+            position: absolute;
+            cursor: pointer;
+            inset: 0;
+            background-color: #ccc;
+            border-radius: 26px;
+            transition: 0.4s;
+          }
 
-        .slider::before {
-          content: "";
-          position: absolute;
-          height: 20px;
-          width: 20px;
-          left: 3px;
-          bottom: 3px;
-          background-color: white;
-          border-radius: 50%;
-          transition: 0.4s;
-        }
+          .slider::before {
+            content: "";
+            position: absolute;
+            height: 20px;
+            width: 20px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            border-radius: 50%;
+            transition: 0.4s;
+          }
 
-        input:checked + .slider {
-          background-color: #2196F3;
-        }
+          input:checked + .slider {
+            background-color: #2196F3;
+          }
 
-        input:checked + .slider::before {
-          transform: translateX(24px);
-        }
-      .component-wrapper:hover::before {
-        content: '';
-        position: absolute;
-        width: 100%;
-        height: 100%;
-        top: 0;
-        left: 0;
-        border: 4px solid skyblue;
-        pointer-events: none;
-        z-index: 15;
-        resize: both;
-        overflow: auto;
-      }
-      .quick-editor {
-        position: absolute;
-        z-index: 100;
-        top: 0;
-        right: 0;
-      }
-      .component-wrapper:hover .quick-editor {
-        display: block;
-      }
-      .component-wrapper > .quick-editor {
-        display: none;
-        top: -5px;
-        right: -10px;
-        z-index: 16;
-      }`
+          input:checked + .slider::before {
+            transform: translateX(24px);
+          }
+          .component-wrapper:hover::before {
+            content: '';
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            border: 4px solid skyblue;
+            pointer-events: none;
+            z-index: 15;
+            resize: both;
+            overflow: auto;
+          }
+          .quick-editor {
+            position: absolute;
+            z-index: 100;
+            top: 0;
+            right: 0;
+          }
+          .component-wrapper:hover .quick-editor {
+            display: block;
+          }
+          .component-wrapper > .quick-editor {
+            display: none;
+            top: -5px;
+            right: -10px;
+          }`
         }
       },
       'icons/': {},
@@ -6342,15 +8451,18 @@ function fallback_module() {
       'hardcons/': {},
       'files/': {},
       'highlight/': {},
-      'active_tab/': {},
       'count/': {},
       'entries/': {},
+      'active_tab/': {},
       'runtime/': {},
       'mode/': {},
       'data/': {},
+      'flags/': {},
+      'keybinds/': {},
+      'undo/': {}
     }
   }
-  function quick_editor$ (args, tools, [quick_editor]){
+  function quick_editor$(args, tools, [quick_editor]) {
     const state = quick_editor()
     state.net = {
       page: {}
@@ -6369,4 +8481,4 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/web/page.js")
-},{"../src/node_modules/STATE":3,"../src/node_modules/action_bar":4,"../src/node_modules/actions":5,"../src/node_modules/console_history":6,"../src/node_modules/helpers":8,"../src/node_modules/manager":10,"../src/node_modules/menu":11,"../src/node_modules/quick_actions":13,"../src/node_modules/quick_editor":14,"../src/node_modules/space":15,"../src/node_modules/steps_wizard":16,"../src/node_modules/tabbed_editor":17,"../src/node_modules/tabs":18,"../src/node_modules/tabsbar":19,"../src/node_modules/task_manager":20,"../src/node_modules/taskbar":21,"../src/node_modules/theme_widget":22,"graph-explorer":2}]},{},[23]);
+},{"../src/node_modules/STATE":4,"../src/node_modules/action_bar":5,"../src/node_modules/actions":6,"../src/node_modules/console_history":7,"../src/node_modules/helpers":9,"../src/node_modules/manager":11,"../src/node_modules/menu":12,"../src/node_modules/quick_actions":14,"../src/node_modules/quick_editor":15,"../src/node_modules/space":16,"../src/node_modules/steps_wizard":17,"../src/node_modules/tabbed_editor":18,"../src/node_modules/tabs":19,"../src/node_modules/tabsbar":20,"../src/node_modules/task_manager":21,"../src/node_modules/taskbar":22,"../src/node_modules/theme_widget":23,"graph-explorer":2}]},{},[24]);
