@@ -22,7 +22,7 @@ const actions = require('../src/node_modules/actions')
 const tabbed_editor = require('../src/node_modules/tabbed_editor')
 const task_manager = require('../src/node_modules/task_manager')
 const quick_actions = require('../src/node_modules/quick_actions')
-const graph_explorer = require('graph-explorer')
+const graph_explorer_wrapper = require('../src/node_modules/graph_explorer_wrapper')
 const editor = require('../src/node_modules/quick_editor')
 const manager = require('../src/node_modules/manager')
 const steps_wizard = require('../src/node_modules/steps_wizard')
@@ -40,7 +40,7 @@ const imports = {
   tabbed_editor,
   task_manager,
   quick_actions,
-  graph_explorer,
+  graph_explorer_wrapper,
   manager,
   steps_wizard,
 }
@@ -345,7 +345,7 @@ function fallback_module() {
     '../src/node_modules/tabbed_editor',
     '../src/node_modules/task_manager',
     '../src/node_modules/quick_actions',
-    'graph-explorer',
+    '../src/node_modules/graph_explorer_wrapper',
     '../src/node_modules/manager',
     '../src/node_modules/steps_wizard'
   ]
@@ -461,16 +461,6 @@ function fallback_module() {
       'hardcons': 'hardcons'
     }
   }
-  subs['graph-explorer'] = {
-    $: '',
-    0: '',
-    mapping: {
-      'style': 'style',
-      'entries': 'entries',
-      'runtime': 'runtime',
-      'mode': 'mode'
-    }
-  }
   subs[menuname] = {
     $: '',
     0: '',
@@ -505,12 +495,11 @@ function fallback_module() {
       'undo': 'undo'
     }
   }
-  subs['graph-explorer'] = {
+  subs['../src/node_modules/graph_explorer_wrapper'] = {
     $: '',
     0: '',
     mapping: {
       'style': 'style',
-      'entries': 'entries',
       'runtime': 'runtime',
       'mode': 'mode',
       'flags': 'flags',
