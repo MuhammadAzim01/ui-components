@@ -9,6 +9,8 @@ const { get } = statedb(fallback_module)
 module.exports = graph_explorer
 
 async function graph_explorer (opts, protocol) {
+  console.log('[graph_explorer] init start', { sid: opts && opts.sid, has_protocol: Boolean(protocol) })
+  debugger
   /******************************************************************************
   COMPONENT INITIALIZATION
     - This sets up the initial state, variables, and the basic DOM structure.
@@ -61,11 +63,14 @@ async function graph_explorer (opts, protocol) {
   let send = null
   let graph_explorer_mid = 0 // Message ID counter for graph_explorer.js -> page.js messages
   if (protocol) {
+    console.log('[graph_explorer] protocol registering')
     send = protocol(msg => onmessage(msg))
+    debugger
   }
 
   // Create db object that communicates via protocol messages
   db = create_db()
+  console.log('[graph_explorer] db proxy created')
 
   const el = document.createElement('div')
   el.className = 'graph-explorer-wrapper'
@@ -270,12 +275,15 @@ async function graph_explorer (opts, protocol) {
     }
   }
   function send_message (msg) {
+    console.log('[graph_explorer] send_message', { msg })
     if (send) {
       send(msg)
+      debugger
     }
   }
 
   function create_db () {
+    console.log('[graph_explorer] create_db invoked')
     // Pending requests map: key is message head [by, to, mid], value is {resolve, reject}
     const pending_requests = new Map()
 
@@ -289,6 +297,7 @@ async function graph_explorer (opts, protocol) {
       raw: () => send_db_request('db_raw', {}),
       // Handle responses from page.js
       handle_response: (msg) => {
+        console.log('[graph_explorer] db.handle_response', { msg })
         if (!msg.refs || !msg.refs.cause) {
           console.warn('[graph_explorer] Response missing refs.cause:', msg)
           return
@@ -305,6 +314,7 @@ async function graph_explorer (opts, protocol) {
     }
 
     function send_db_request (operation, params) {
+      console.log('[graph_explorer] send_db_request', { operation, params })
       return new Promise((resolve, reject) => {
         const head = ['graph_explorer', 'page_js', graph_explorer_mid++]
         const head_key = JSON.stringify(head)
@@ -326,6 +336,8 @@ async function graph_explorer (opts, protocol) {
     - `onbatch` is the primary entry point.
   ******************************************************************************/
   async function onbatch (batch) {
+    console.log('[graph_explorer] onbatch triggered', { batch })
+    debugger
     console.log('[SEARCH DEBUG] onbatch caled:', {
       mode,
       search_query,
@@ -3492,7 +3504,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/action_bar/action_bar.js")
-},{"STATE":3,"actions":5,"quick_actions":14,"steps_wizard":17}],5:[function(require,module,exports){
+},{"STATE":3,"actions":5,"quick_actions":15,"steps_wizard":18}],5:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4337,85 +4349,237 @@ function fallback_module () {
 
 }).call(this)}).call(this,"/src/node_modules/form_input.js")
 },{"STATE":3}],8:[function(require,module,exports){
+module.exports = graphdb
+
+function graphdb (entries) {
+  // Validate entries
+  if (!entries || typeof entries !== 'object') {
+    console.warn('[graphdb] Invalid entries provided, using empty object')
+    entries = {}
+  }
+
+  const api = {
+    get,
+    has,
+    keys,
+    is_empty,
+    root,
+    raw
+  }
+
+  return api
+
+  function get (path) {
+    return entries[path] || null
+  }
+
+  function has (path) {
+    return path in entries
+  }
+  function keys () {
+    return Object.keys(entries)
+  }
+
+  function is_empty () {
+    return Object.keys(entries).length === 0
+  }
+
+  function root () {
+    return entries['/'] || null
+  }
+
+  function raw () {
+    return entries
+  }
+}
+
+},{}],9:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
-const { sdb, get } = statedb(fallback_module)
-
+const { get } = statedb(fallback_module)
 const graph_explorer = require('graph-explorer')
+const graphdb = require('./graphdb')
 
-module.exports = wrapper
+module.exports = graph_explorer_wrapper
 
-async function wrapper (opts, protocol) {
+async function graph_explorer_wrapper (opts) {
   const { sdb } = await get(opts.sid)
   const { drive } = sdb
-  const on = {}
 
+  let db = null
+  // Protocol
+  let send_to_graph_explorer = null
+  let page_js_mid = 0
+
+  const on = {
+    theme: inject,
+    entries: on_entries
+  }
+
+  
+  const el = document.createElement('div')
+  const shadow = el.attachShadow({ mode: 'closed' })
+  
+  const sheet = new CSSStyleSheet()
+  shadow.adoptedStyleSheets = [sheet]
+  
   const subs = await sdb.watch(onbatch)
-  
-  let send = null
-  let _ = null
-  if (protocol) {
-    send = protocol(msg => onmessage(msg))
-    _ = { up: send, graph_explorer: null }
-  }
+  const explorer_el = await graph_explorer(subs[0], graph_explorer_protocol)
+  shadow.append(explorer_el)
 
-  const el = protocol ? await graph_explorer(subs[0], graph_explorer_protocol) : await graph_explorer(subs[0])
-  
   return el
-
-  function graph_explorer_protocol (send) {
-    _.graph_explorer = send
-    return on
-    function on ({ type, data }) {
-      // graph-explorer to parent
-      _.up({ type, data })
-    }
-  }
-
-  function onmessage ({ type, data }) {
-    // parent to graph-explorer
-    if (_.graph_explorer) {
-      _.graph_explorer({ type, data })
-    }
-  }
 
   async function onbatch (batch) {
     for (const { type, paths } of batch) {
       const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
-      const func = on[type] || (() => {})
-      func(data, type)
+      on[type] && on[type](data)
+    }
+  }
+
+  function inject (data) {
+    sheet.replaceSync(data.join('\n'))
+  }
+
+  function on_entries (data) {
+    if (!data || !data[0]) {
+      console.error('Entries data is missing or empty.')
+      db = graphdb({})
+      notify_db_initialized({})
+      return
+    }
+    
+    let parsed_data
+    try {
+      parsed_data = typeof data[0] === 'string' ? JSON.parse(data[0]) : data[0]
+    } catch (e) {
+      console.error('Failed to parse entries data:', e)
+      parsed_data = {}
+    }
+
+    if (typeof parsed_data !== 'object' || !parsed_data) {
+      console.error('Parsed entries data is not a valid object.')
+      parsed_data = {}
+    }
+
+    db = graphdb(parsed_data)
+    notify_db_initialized(parsed_data)
+  }
+
+  function notify_db_initialized (entries) {
+    if (send_to_graph_explorer) {
+      send_to_graph_explorer({ type: 'db_initialized', data: { entries } })
+    }
+  }
+
+  // ---------------------------------------------------------
+  // PROTOCOL
+  // ---------------------------------------------------------
+
+  function graph_explorer_protocol (send) {
+    send_to_graph_explorer = send
+    return on_graph_explorer_message
+
+    function on_graph_explorer_message (msg) {
+      const { type } = msg
+
+      if (type.startsWith('db_')) {
+        handle_db_request(msg, send)
+      }
+    }
+
+    function handle_db_request (request_msg, send) {
+      const { head: request_head, type: operation, data: params } = request_msg
+      let result
+
+      if (!db) {
+        console.error('[graph_explorer_wrapper] Database not initialized yet')
+        send_response(request_head, null)
+        return
+      }
+
+      if (operation === 'db_get') {
+        result = db.get(params.path)
+      } else if (operation === 'db_has') {
+        result = db.has(params.path)
+      } else if (operation === 'db_is_empty') {
+        result = db.is_empty()
+      } else if (operation === 'db_root') {
+        result = db.root()
+      } else if (operation === 'db_keys') {
+        result = db.keys()
+      } else if (operation === 'db_raw') {
+        result = db.raw()
+      } else {
+        console.warn('[graph_explorer_wrapper] Unknown db operation:', operation)
+        result = null
+      }
+
+      send_response(request_head, result)
+
+      function send_response (request_head, result) {
+        // Standardized response message
+        // head: [by, to, mid]
+        const response_head = ['page_js', 'graph_explorer', page_js_mid++]
+        send({
+          head: response_head,
+          refs: { cause: request_head }, // Reference original request
+          type: 'db_response',
+          data: { result }
+        })
+      }
     }
   }
 }
-
 function fallback_module () {
   return {
-    api: fallback_instance,
     _: {
-      'graph-explorer': {
+    'graph-explorer': {
+        $: '',
+      },
+      './graphdb': {
         $: ''
       }
-    }
+    },
+    api : fallback_instance
   }
 
   function fallback_instance () {
     return {
       _: {
         'graph-explorer': {
+          $: '',
           0: '',
           mapping: {
-            'style': 'style',
-            'runtime': 'runtime',
-            'mode': 'mode',
-            'flags': 'flags',
-            'keybinds': 'keybinds',
-            'undo': 'undo'
+            style: 'theme',
+            runtime: 'runtime',
+            mode: 'mode',
+            flags: 'flags',
+            keybinds: 'keybinds',
+            undo: 'undo'
           }
+        },
+        './graphdb': {
+          $: ''
         }
       },
       drive: {
-        'style/': {},
+        'theme/': {
+          'style.css': {
+            raw: `
+              :host {
+              display: block;
+              height: 100%;
+              width: 100%;
+              }
+            `
+          }
+        },
+        'entries/': {
+          'entries.json': {
+            $ref: 'entries.json'
+          }
+        },
         'runtime/': {},
         'mode/': {},
         'flags/': {},
@@ -4425,9 +4589,8 @@ function fallback_module () {
     }
   }
 }
-
-}).call(this)}).call(this,"/src/node_modules/graph_explorer_wrapper.js")
-},{"STATE":3,"graph-explorer":2}],9:[function(require,module,exports){
+}).call(this)}).call(this,"/src/node_modules/graph_explorer_wrapper/index.js")
+},{"./graphdb":8,"STATE":3,"graph-explorer":2}],10:[function(require,module,exports){
 module.exports = { resource }
 
 function resource (timeout = 1000) {
@@ -4450,7 +4613,7 @@ function resource (timeout = 1000) {
     }
   }
 } 
-},{}],10:[function(require,module,exports){
+},{}],11:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4646,7 +4809,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/input_test.js")
-},{"STATE":3}],11:[function(require,module,exports){
+},{"STATE":3}],12:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4962,7 +5125,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/manager/manager.js")
-},{"STATE":3,"action_bar":4,"program":13}],12:[function(require,module,exports){
+},{"STATE":3,"action_bar":4,"program":14}],13:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5217,7 +5380,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/menu.js")
-},{"STATE":3}],13:[function(require,module,exports){
+},{"STATE":3}],14:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5341,7 +5504,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/program/program.js")
-},{"STATE":3,"form_input":7,"input_test":10}],14:[function(require,module,exports){
+},{"STATE":3,"form_input":7,"input_test":11}],15:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5781,7 +5944,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/quick_actions/quick_actions.js")
-},{"STATE":3}],15:[function(require,module,exports){
+},{"STATE":3}],16:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -6214,7 +6377,7 @@ function fallback_module() {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/quick_editor.js")
-},{"STATE":3,"helpers":9}],16:[function(require,module,exports){
+},{"STATE":3,"helpers":10}],17:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -6481,7 +6644,8 @@ function fallback_module () {
         'graph_explorer_wrapper': {
           0: '',
           mapping: {
-            'style': 'style',
+            'theme': 'style',
+            'entries': 'entries',
             'runtime': 'runtime',
             'mode': 'mode',
             'flags': 'flags',
@@ -6542,6 +6706,7 @@ function fallback_module () {
             `
           }
         },
+        "entries/": {},
         "flags/": {},
         "keybinds/": {},
         "commands/": {},
@@ -6562,7 +6727,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/space.js")
-},{"STATE":3,"actions":5,"console_history":6,"graph_explorer_wrapper":8,"tabbed_editor":18}],17:[function(require,module,exports){
+},{"STATE":3,"actions":5,"console_history":6,"graph_explorer_wrapper":9,"tabbed_editor":19}],18:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -6732,7 +6897,7 @@ function fallback_module () {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/steps_wizard/steps_wizard.js")
-},{"STATE":3}],18:[function(require,module,exports){
+},{"STATE":3}],19:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -7126,7 +7291,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabbed_editor/tabbed_editor.js")
-},{"STATE":3}],19:[function(require,module,exports){
+},{"STATE":3}],20:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -7338,7 +7503,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabs/tabs.js")
-},{"STATE":3}],20:[function(require,module,exports){
+},{"STATE":3}],21:[function(require,module,exports){
 (function (__filename){(function (){
 const state = require('STATE')
 const state_db = state(__filename)
@@ -7521,7 +7686,7 @@ function fallback_module () {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/tabsbar/tabsbar.js")
-},{"STATE":3,"tabs":19,"task_manager":21}],21:[function(require,module,exports){
+},{"STATE":3,"tabs":20,"task_manager":22}],22:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -7614,7 +7779,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/task_manager.js")
-},{"STATE":3}],22:[function(require,module,exports){
+},{"STATE":3}],23:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -7772,7 +7937,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/taskbar/taskbar.js")
-},{"STATE":3,"action_bar":4,"tabsbar":20}],23:[function(require,module,exports){
+},{"STATE":3,"action_bar":4,"tabsbar":21}],24:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -7940,7 +8105,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/theme_widget/theme_widget.js")
-},{"STATE":3,"space":16,"taskbar":22}],24:[function(require,module,exports){
+},{"STATE":3,"space":17,"taskbar":23}],25:[function(require,module,exports){
 const prefix = 'https://raw.githubusercontent.com/alyhxn/playproject/main/'
 const init_url = location.hash === '#dev' ? 'web/init.js' : prefix + 'src/node_modules/init.js'
 const args = arguments
@@ -7961,7 +8126,7 @@ fetch(init_url, fetch_opts).then(res => res.text()).then(async source => {
   require('./page') // or whatever is otherwise the main entry of our project
 })
 
-},{"./page":25}],25:[function(require,module,exports){
+},{"./page":26}],26:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('../src/node_modules/STATE')
 const statedb = STATE(__filename)
@@ -8464,7 +8629,8 @@ function fallback_module() {
     $: '',
     0: '',
     mapping: {
-      'style': 'style',
+      'theme': 'style',
+      'entries': 'entries',
       'runtime': 'runtime',
       'mode': 'mode',
       'flags': 'flags',
@@ -8628,4 +8794,4 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/web/page.js")
-},{"../src/node_modules/STATE":3,"../src/node_modules/action_bar":4,"../src/node_modules/actions":5,"../src/node_modules/console_history":6,"../src/node_modules/graph_explorer_wrapper":8,"../src/node_modules/helpers":9,"../src/node_modules/manager":11,"../src/node_modules/menu":12,"../src/node_modules/quick_actions":14,"../src/node_modules/quick_editor":15,"../src/node_modules/space":16,"../src/node_modules/steps_wizard":17,"../src/node_modules/tabbed_editor":18,"../src/node_modules/tabs":19,"../src/node_modules/tabsbar":20,"../src/node_modules/task_manager":21,"../src/node_modules/taskbar":22,"../src/node_modules/theme_widget":23}]},{},[24]);
+},{"../src/node_modules/STATE":3,"../src/node_modules/action_bar":4,"../src/node_modules/actions":5,"../src/node_modules/console_history":6,"../src/node_modules/graph_explorer_wrapper":9,"../src/node_modules/helpers":10,"../src/node_modules/manager":12,"../src/node_modules/menu":13,"../src/node_modules/quick_actions":15,"../src/node_modules/quick_editor":16,"../src/node_modules/space":17,"../src/node_modules/steps_wizard":18,"../src/node_modules/tabbed_editor":19,"../src/node_modules/tabs":20,"../src/node_modules/tabsbar":21,"../src/node_modules/task_manager":22,"../src/node_modules/taskbar":23,"../src/node_modules/theme_widget":24}]},{},[25]);
