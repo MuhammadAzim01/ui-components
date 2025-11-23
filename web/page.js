@@ -499,7 +499,8 @@ function fallback_module() {
     $: '',
     0: '',
     mapping: {
-      'style': 'style',
+      'theme': 'style',
+      'entries': 'entries',
       'runtime': 'runtime',
       'mode': 'mode',
       'flags': 'flags',
