@@ -9,8 +9,6 @@ const { get } = statedb(fallback_module)
 module.exports = graph_explorer
 
 async function graph_explorer (opts, protocol) {
-  console.log('[graph_explorer] init start', { sid: opts && opts.sid, has_protocol: Boolean(protocol) })
-  debugger
   /******************************************************************************
   COMPONENT INITIALIZATION
     - This sets up the initial state, variables, and the basic DOM structure.
@@ -63,14 +61,11 @@ async function graph_explorer (opts, protocol) {
   let send = null
   let graph_explorer_mid = 0 // Message ID counter for graph_explorer.js -> page.js messages
   if (protocol) {
-    console.log('[graph_explorer] protocol registering')
     send = protocol(msg => onmessage(msg))
-    debugger
   }
 
   // Create db object that communicates via protocol messages
   db = create_db()
-  console.log('[graph_explorer] db proxy created')
 
   const el = document.createElement('div')
   el.className = 'graph-explorer-wrapper'
@@ -275,15 +270,12 @@ async function graph_explorer (opts, protocol) {
     }
   }
   function send_message (msg) {
-    console.log('[graph_explorer] send_message', { msg })
     if (send) {
       send(msg)
-      debugger
     }
   }
 
   function create_db () {
-    console.log('[graph_explorer] create_db invoked')
     // Pending requests map: key is message head [by, to, mid], value is {resolve, reject}
     const pending_requests = new Map()
 
@@ -297,7 +289,6 @@ async function graph_explorer (opts, protocol) {
       raw: () => send_db_request('db_raw', {}),
       // Handle responses from page.js
       handle_response: (msg) => {
-        console.log('[graph_explorer] db.handle_response', { msg })
         if (!msg.refs || !msg.refs.cause) {
           console.warn('[graph_explorer] Response missing refs.cause:', msg)
           return
@@ -314,7 +305,6 @@ async function graph_explorer (opts, protocol) {
     }
 
     function send_db_request (operation, params) {
-      console.log('[graph_explorer] send_db_request', { operation, params })
       return new Promise((resolve, reject) => {
         const head = ['graph_explorer', 'page_js', graph_explorer_mid++]
         const head_key = JSON.stringify(head)
@@ -336,8 +326,6 @@ async function graph_explorer (opts, protocol) {
     - `onbatch` is the primary entry point.
   ******************************************************************************/
   async function onbatch (batch) {
-    console.log('[graph_explorer] onbatch triggered', { batch })
-    debugger
     console.log('[SEARCH DEBUG] onbatch caled:', {
       mode,
       search_query,
