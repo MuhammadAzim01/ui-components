@@ -1,6 +1,6 @@
 {
-  "name": "theme-wiget",
-  "version": "0.0.1",
+  "name": "ui-components",
+  "version": "0.0.2-pre-alpha",
   "description": "An app for debuging and testing website's theme. It is a simple app that allows you to change the theme of a website and see the changes in real time. It has 4 components: action-bar(action-wizard),graph-explorer,tabbed-editor,action-history",
   "homepage": "https://github.com/ddroid/ui-components#readme",
   "bugs": {
@@ -15,10 +15,8 @@
   "type": "commonjs",
   "main": "src/index.js",
   "scripts": {
-    "start": "budo web/boot.js:bundle.js --open --live",
-    "build": "browserify web/boot.js -o bundle.js",
-    "start:act": "budo web/boot.js:bundle.js  --dir ./ --live --open",
-    "build:act": "browserify web/boot.js > bundle.js",
+    "start": "budo web/page.js:bundle.js --dir . --live --open -- -i STATE",
+    "build": "browserify web/page.js -i STATE -o bundle.js",
     "lint": "standardx"
   },
   "devDependencies": {
