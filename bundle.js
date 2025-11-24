@@ -1,6 +1,8 @@
 (function(){function r(e,n,t){function o(i,f){if(!n[i]){if(!e[i]){var c="function"==typeof require&&require;if(!f&&c)return c(i,!0);if(u)return u(i,!0);var a=new Error("Cannot find module '"+i+"'");throw a.code="MODULE_NOT_FOUND",a}var p=n[i]={exports:{}};e[i][0].call(p.exports,function(r){var n=e[i][1][r];return o(n||r)},p,p.exports,r,e,n,t)}return n[i].exports}for(var u="function"==typeof require&&require,i=0;i<t.length;i++)o(t[i]);return o}return r})()({1:[function(require,module,exports){
 
 },{}],2:[function(require,module,exports){
+arguments[4][1][0].apply(exports,arguments)
+},{"dup":1}],3:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('./STATE')
 const statedb = STATE(__filename)
@@ -3136,9 +3138,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/node_modules/graph-explorer/lib/graph_explorer.js")
-},{"./STATE":1}],3:[function(require,module,exports){
-arguments[4][1][0].apply(exports,arguments)
-},{"dup":1}],4:[function(require,module,exports){
+},{"./STATE":2}],4:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -3492,7 +3492,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/action_bar/action_bar.js")
-},{"STATE":3,"actions":5,"quick_actions":15,"steps_wizard":18}],5:[function(require,module,exports){
+},{"STATE":1,"actions":5,"quick_actions":15,"steps_wizard":18}],5:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -3814,7 +3814,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/actions/actions.js")
-},{"STATE":3}],6:[function(require,module,exports){
+},{"STATE":1}],6:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4149,7 +4149,7 @@ function fallback_module () {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/console_history/console_history.js")
-},{"STATE":3}],7:[function(require,module,exports){
+},{"STATE":1}],7:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4336,7 +4336,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/form_input.js")
-},{"STATE":3}],8:[function(require,module,exports){
+},{"STATE":1}],8:[function(require,module,exports){
 module.exports = graphdb
 
 function graphdb (entries) {
@@ -4578,7 +4578,7 @@ function fallback_module () {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/graph_explorer_wrapper/index.js")
-},{"./graphdb":8,"STATE":3,"graph-explorer":2}],10:[function(require,module,exports){
+},{"./graphdb":8,"STATE":1,"graph-explorer":3}],10:[function(require,module,exports){
 module.exports = { resource }
 
 function resource (timeout = 1000) {
@@ -4797,7 +4797,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/input_test.js")
-},{"STATE":3}],12:[function(require,module,exports){
+},{"STATE":1}],12:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5113,7 +5113,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/manager/manager.js")
-},{"STATE":3,"action_bar":4,"program":14}],13:[function(require,module,exports){
+},{"STATE":1,"action_bar":4,"program":14}],13:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5368,7 +5368,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/menu.js")
-},{"STATE":3}],14:[function(require,module,exports){
+},{"STATE":1}],14:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5492,7 +5492,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/program/program.js")
-},{"STATE":3,"form_input":7,"input_test":11}],15:[function(require,module,exports){
+},{"STATE":1,"form_input":7,"input_test":11}],15:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5932,7 +5932,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/quick_actions/quick_actions.js")
-},{"STATE":3}],16:[function(require,module,exports){
+},{"STATE":1}],16:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -6365,7 +6365,7 @@ function fallback_module() {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/quick_editor.js")
-},{"STATE":3,"helpers":10}],17:[function(require,module,exports){
+},{"STATE":1,"helpers":10}],17:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -6715,7 +6715,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/space.js")
-},{"STATE":3,"actions":5,"console_history":6,"graph_explorer_wrapper":9,"tabbed_editor":19}],18:[function(require,module,exports){
+},{"STATE":1,"actions":5,"console_history":6,"graph_explorer_wrapper":9,"tabbed_editor":19}],18:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -6885,7 +6885,7 @@ function fallback_module () {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/steps_wizard/steps_wizard.js")
-},{"STATE":3}],19:[function(require,module,exports){
+},{"STATE":1}],19:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -7279,7 +7279,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabbed_editor/tabbed_editor.js")
-},{"STATE":3}],20:[function(require,module,exports){
+},{"STATE":1}],20:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -7491,7 +7491,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabs/tabs.js")
-},{"STATE":3}],21:[function(require,module,exports){
+},{"STATE":1}],21:[function(require,module,exports){
 (function (__filename){(function (){
 const state = require('STATE')
 const state_db = state(__filename)
@@ -7674,7 +7674,7 @@ function fallback_module () {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/tabsbar/tabsbar.js")
-},{"STATE":3,"tabs":20,"task_manager":22}],22:[function(require,module,exports){
+},{"STATE":1,"tabs":20,"task_manager":22}],22:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -7767,7 +7767,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/task_manager.js")
-},{"STATE":3}],23:[function(require,module,exports){
+},{"STATE":1}],23:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -7925,7 +7925,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/taskbar/taskbar.js")
-},{"STATE":3,"action_bar":4,"tabsbar":21}],24:[function(require,module,exports){
+},{"STATE":1,"action_bar":4,"tabsbar":21}],24:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -8093,30 +8093,9 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/theme_widget/theme_widget.js")
-},{"STATE":3,"space":17,"taskbar":23}],25:[function(require,module,exports){
-const prefix = 'https://raw.githubusercontent.com/alyhxn/playproject/main/'
-const init_url = location.hash === '#dev' ? 'web/init.js' : prefix + 'src/node_modules/init.js'
-const args = arguments
-
-const has_save = location.hash.includes('#save')
-const fetch_opts = has_save ? {} : { cache: 'no-store' }
-
-if (!has_save) {
-  localStorage.clear()
-}
-
-fetch(init_url, fetch_opts).then(res => res.text()).then(async source => {
-  const module = { exports: {} }
-  const f = new Function('module', 'require', source)
-  f(module, require)
-  const init = module.exports
-  await init(args, prefix)
-  require('./page') // or whatever is otherwise the main entry of our project
-})
-
-},{"./page":26}],26:[function(require,module,exports){
+},{"STATE":1,"space":17,"taskbar":23}],25:[function(require,module,exports){
 (function (__filename){(function (){
-const STATE = require('../src/node_modules/STATE')
+const STATE = require('STATE')
 const statedb = STATE(__filename)
 const admin_api = statedb.admin()
 const admin_on = {}
@@ -8435,13 +8414,13 @@ async function boot(opts) {
               const files = admin.status.db.read([root, ds_id]).files || []
               result[root][type][name][ds_id] = {}
               files.forEach(file_id => {
-                result[root][type][name][ds_id][file_id] = admin.status.db.read([root, file_id]) 
+                result[root][type][name][ds_id][file_id] = admin.status.db.read([root, file_id])
               })
             })
           })
         })
       })
-      
+
       const editor_id = admin.status.a2i[admin.status.s2i[editor_subs[0].sid]]
       const port = await item.get(editor_id)
       // await io.at(editor_id)
@@ -8639,19 +8618,19 @@ function fallback_module() {
           .components-wrapper-container {
             padding-top: 10px; /* Adjust as needed */
           }
-      
+
           .components-wrapper {
             width: 95%;
             margin: 0 auto;
             padding: 2.5%;
           }
-      
+
           .component-outer-wrapper {
             margin-bottom: 20px;
             padding: 0px 0px 10px 0px;
             transition: background-color 0.3s ease;
           }
-      
+
           .component-name-label {
             background-color:transparent;
             padding: 8px 15px;
@@ -8659,7 +8638,7 @@ function fallback_module() {
             font-weight: bold;
             color: #333;
           }
-      
+
           .component-wrapper {
             position: relative;
             padding: 15px;
@@ -8782,4 +8761,4 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/web/page.js")
-},{"../src/node_modules/STATE":3,"../src/node_modules/action_bar":4,"../src/node_modules/actions":5,"../src/node_modules/console_history":6,"../src/node_modules/graph_explorer_wrapper":9,"../src/node_modules/helpers":10,"../src/node_modules/manager":12,"../src/node_modules/menu":13,"../src/node_modules/quick_actions":15,"../src/node_modules/quick_editor":16,"../src/node_modules/space":17,"../src/node_modules/steps_wizard":18,"../src/node_modules/tabbed_editor":19,"../src/node_modules/tabs":20,"../src/node_modules/tabsbar":21,"../src/node_modules/task_manager":22,"../src/node_modules/taskbar":23,"../src/node_modules/theme_widget":24}]},{},[25]);
+},{"../src/node_modules/action_bar":4,"../src/node_modules/actions":5,"../src/node_modules/console_history":6,"../src/node_modules/graph_explorer_wrapper":9,"../src/node_modules/helpers":10,"../src/node_modules/manager":12,"../src/node_modules/menu":13,"../src/node_modules/quick_actions":15,"../src/node_modules/quick_editor":16,"../src/node_modules/space":17,"../src/node_modules/steps_wizard":18,"../src/node_modules/tabbed_editor":19,"../src/node_modules/tabs":20,"../src/node_modules/tabsbar":21,"../src/node_modules/task_manager":22,"../src/node_modules/taskbar":23,"../src/node_modules/theme_widget":24,"STATE":1}]},{},[25]);

@@ -1,4 +1,4 @@
-const STATE = require('../src/node_modules/STATE')
+const STATE = require('STATE')
 const statedb = STATE(__filename)
 const admin_api = statedb.admin()
 const admin_on = {}
@@ -317,13 +317,13 @@ async function boot(opts) {
               const files = admin.status.db.read([root, ds_id]).files || []
               result[root][type][name][ds_id] = {}
               files.forEach(file_id => {
-                result[root][type][name][ds_id][file_id] = admin.status.db.read([root, file_id]) 
+                result[root][type][name][ds_id][file_id] = admin.status.db.read([root, file_id])
               })
             })
           })
         })
       })
-      
+
       const editor_id = admin.status.a2i[admin.status.s2i[editor_subs[0].sid]]
       const port = await item.get(editor_id)
       // await io.at(editor_id)
@@ -521,19 +521,19 @@ function fallback_module() {
           .components-wrapper-container {
             padding-top: 10px; /* Adjust as needed */
           }
-      
+
           .components-wrapper {
             width: 95%;
             margin: 0 auto;
             padding: 2.5%;
           }
-      
+
           .component-outer-wrapper {
             margin-bottom: 20px;
             padding: 0px 0px 10px 0px;
             transition: background-color 0.3s ease;
           }
-      
+
           .component-name-label {
             background-color:transparent;
             padding: 8px 15px;
@@ -541,7 +541,7 @@ function fallback_module() {
             font-weight: bold;
             color: #333;
           }
-      
+
           .component-wrapper {
             position: relative;
             padding: 15px;
