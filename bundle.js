@@ -3205,6 +3205,8 @@ async function action_bar(opts, protocol) {
     _.up = send
   }
 
+  let mid = 0
+
   history_icon.innerHTML = console_icon
   history_icon.onclick = onhistory
   const element = protocol ? await quick_actions(subs[0], quick_actions_protocol) : await quick_actions(subs[0])
@@ -3245,7 +3247,9 @@ async function action_bar(opts, protocol) {
     console_icon = data[0]
   }
   function onhistory() {
-    _.up({ type: 'console_history_toggle', data: null })
+    const head = ['action_bar', 'parent', mid++]
+    const refs = {}
+    _.up({ head, refs, type: 'console_history_toggle', data: null })
   }
 
 
@@ -3273,15 +3277,20 @@ async function action_bar(opts, protocol) {
       selected_action: actions__selected_action
     }
 
-    return function on({ type, data }) {
+    return function on(msg) {
+      const { type } = msg
       const handler = actions_handlers[type] || fail
-      handler(data, type)
+      handler(msg)
     }
   }
 
-  function actions__selected_action(data, type) {
+  function actions__selected_action(msg) {
+    const { type, data } = msg
     selected_action = data?.action || null
+    const head_to_quick = ['action_bar', 'quick_actions', mid++]
     _.send_quick_actions?.({
+      head: head_to_quick,
+      refs: msg.head ? { cause: msg.head } : undefined,
       type,
       data: {
         ...data,
@@ -3289,19 +3298,24 @@ async function action_bar(opts, protocol) {
       }
     })
 
-    _.send_steps_wizard?.({ type: 'init_data', data: actions_data[selected_action] })
+    const head_to_steps = ['action_bar', 'steps_wizard', mid++]
+    _.send_steps_wizard?.({ head: head_to_steps, refs: msg.head ? { cause: msg.head } : undefined, type: 'init_data', data: actions_data[selected_action] })
+
     steps_toggle_view('block')
 
     if (actions_data[selected_action]?.length > 0) {
       const first_step = actions_data[selected_action][0]
-      _.up?.({ type: 'render_form', data: first_step })
+      const head = ['action_bar', 'parent', mid++]
+      const refs = msg.head ? { cause: msg.head } : undefined
+      _.up?.({ head, refs, type: 'render_form', data: first_step })
     }
 
     if (actions_data[selected_action][actions_data[selected_action].length - 1]?.is_completed) {
-      _?.send_quick_actions({ type: 'show_submit_btn' })
+      const head_to_quick_submit = ['action_bar', 'quick_actions', mid++]
+      _?.send_quick_actions({ head: head_to_quick_submit, refs: msg.head ? { cause: msg.head } : undefined, type: 'show_submit_btn' })
     }
 
-    _.up?.({ type, data: selected_action })
+    _.up?.({ head: msg.head, refs: msg.refs, type, data: selected_action })
     actions_toggle_view('none')
   }
 
@@ -3320,25 +3334,32 @@ async function action_bar(opts, protocol) {
     }
 
     return on
-    function on ({ type, data }) {
+    function on (msg) {
+      const { type } = msg
       const handler = quick_handlers[type] || fail
-      handler(data, type)
+      handler(msg)
       
     }
   }
   
-  function quick_actions__display_actions(data) {
+  function quick_actions__display_actions(msg) {
+    const { data } = msg
     actions_toggle_view(data)
     if (data === 'none') {
       steps_toggle_view('none')
-      _.up?.({ type: 'clean_up', data: selected_action })
+      const head = ['action_bar', 'parent', mid++]
+      const refs = msg.head ? { cause: msg.head } : undefined
+      _.up?.({ head, refs, type: 'clean_up', data: selected_action })
     }
   }
 
-  function quick_actions__action_submitted(data) {
+  function quick_actions__action_submitted(msg) {
     const result = JSON.stringify(actions_data[selected_action].map(step => step.data), null, 2)
-    _.send_quick_actions?.({ type: 'deactivate_input_field' })
-    _.up?.({ type: 'action_submitted', data: { result, selected_action } })
+    const head_to_quick = ['action_bar', 'quick_actions', mid++]
+    _.send_quick_actions?.({ head: head_to_quick, type: 'deactivate_input_field' })
+    const head = ['action_bar', 'parent', mid++]
+    const refs = msg.head ? { cause: msg.head } : undefined
+    _.up?.({ head, refs, type: 'action_submitted', data: { result, selected_action } })
   }
 
   // -------------------------------
@@ -3352,37 +3373,49 @@ async function action_bar(opts, protocol) {
       step_clicked: steps_wizard__step_clicked
     }
 
-    return function on({ type, data }) {
+    return function on(msg) {
+      const { type } = msg
       const handler = steps_handlers[type] || default_steps_handler
-      handler(data, type)
+      handler(msg)
     }
   }
 
-  function steps_wizard__step_clicked(data) {
-    _.send_quick_actions?.({ type: 'update_current_step', data })
-    _.up?.({ type: 'render_form', data })
+  function steps_wizard__step_clicked(msg) {
+    const { data } = msg
+    const head_to_quick = ['action_bar', 'quick_actions', mid++]
+    _.send_quick_actions?.({ head: head_to_quick, type: 'update_current_step', data })
+    const head = ['action_bar', 'parent', mid++]
+    const refs = msg.head ? { cause: msg.head } : undefined
+    _.up?.({ head, refs, type: 'render_form', data })
   }
 
-  function onmessage ({ type, data }) {
+  function onmessage (msg) {
+    const { type, data } = msg
     console.log('action_bar.onmessage', type, data)
-    parent_handler[type]?.(data, type)
+    parent_handler[type]?.(msg)
   }
 
-  function load_actions(data, type) {
+  function load_actions(msg) {
+    const { data, type } = msg
     actions_data = data
-    _.send_actions?.({ type, data })
+    const head_to_actions = ['action_bar', 'actions', mid++]
+    _.send_actions?.({ head: head_to_actions, type, data })
   }
-  function parent__selected_action(data, type) {
-    _.send_quick_actions?.({ type, data })
+  function parent__selected_action(msg) {
+    const head_to_quick = ['action_bar', 'quick_actions', mid++]
+    _.send_quick_actions?.({ head: head_to_quick, ...msg })
   }
-  function show_submit_btn(data, type) {
-    _.send_quick_actions?.({ type: 'show_submit_btn' })
+  function show_submit_btn(msg) {
+    const head_to_quick = ['action_bar', 'quick_actions', mid++]
+    _.send_quick_actions?.({ head: head_to_quick, type: 'show_submit_btn' })
   }
-  function hide_submit_btn(data, type) {
-    _.send_quick_actions?.({ type: 'hide_submit_btn' })
+  function hide_submit_btn(msg) {
+    const head_to_quick = ['action_bar', 'quick_actions', mid++]
+    _.send_quick_actions?.({ head: head_to_quick, type: 'hide_submit_btn' })
   }
-  function form_data(data, type) {
-    _.send_steps_wizard?.({ type: 'init_data', data: actions_data[selected_action] })
+  function form_data(msg) {
+    const head_to_steps = ['action_bar', 'steps_wizard', mid++]
+    _.send_steps_wizard?.({ head: head_to_steps, type: 'init_data', data: actions_data[selected_action] })
   }
 }
 
@@ -3525,6 +3558,7 @@ async function actions(opts, protocol) {
 
   
   let init = false
+  let mid = 0
   let actions = []
   let icons = {}
   let hardcons = {}
@@ -3539,13 +3573,14 @@ async function actions(opts, protocol) {
 
   return el
 
-  function onmessage ({ type, data }) {
+  function onmessage (msg) {
+    const { type, data } = msg
     switch (type) {
       case 'filter_actions':
         filter(data)
         break
       case 'send_selected_action':
-        send_selected_action(data)
+        send_selected_action(msg)
         break
       case 'load_actions':
         // Handle the new data format from program_protocol
@@ -3569,7 +3604,17 @@ async function actions(opts, protocol) {
   }
   
   function send_selected_action (msg) {
-    _.up({ type: 'selected_action', data: msg.data })
+    const action_data = msg.type === 'send_selected_action' ? msg.data.data : msg.data
+    
+    const head = ['actions', 'parent', mid++]
+    const refs = msg.head ? { cause: msg.head } : undefined
+    
+    _.up({ 
+      head,
+      refs,
+      type: 'selected_action', 
+      data: action_data 
+    })
   }
 
   async function onbatch(batch) {
@@ -3846,6 +3891,7 @@ async function console_history (opts, protocol) {
   
   
   let init = false
+  let mid = 0
   let commands = []
   let dricons = []
 
@@ -3858,7 +3904,8 @@ async function console_history (opts, protocol) {
   }
   return el
 
-  function onmessage ({ type, data }) {
+  function onmessage (msg) {
+    const { type, data } = msg
     console.log(`[space->console_history]`, type, data)
   }
 
@@ -3894,7 +3941,9 @@ async function console_history (opts, protocol) {
       </div>`
 
     command_el.onclick = function () {
-      _.up({ type: 'command_clicked', data: command_data })
+      const head = ['console_history', 'parent', mid++]
+      const refs = {} // since this is a user event
+      _.up({ head, refs, type: 'command_clicked', data: command_data })
     }
 
     return command_el
@@ -4167,6 +4216,7 @@ async function form_input (opts, protocol) {
 
   let current_step = null
   let input_accessible = true
+  let mid = 0
 	
 	if(protocol){
     send = protocol(msg => onmessage(msg))
@@ -4195,7 +4245,11 @@ async function form_input (opts, protocol) {
       input_field: this.value
     })
 		if (this.value.length >= 10) {
+      const head = ['form_input', 'parent', mid++]
+      const refs = {}
 			_.up({
+        head,
+        refs,
         type: 'action_submitted',
         data: {
           value: this.value,
@@ -4204,7 +4258,11 @@ async function form_input (opts, protocol) {
       })
 			console.log('mark_as_complete')
 		} else {
+      const head = ['form_input', 'parent', mid++]
+      const refs = {}
       _.up({
+        head,
+        refs,
         type: 'action_incomplete',
         data: {
           value: this.value,
@@ -4456,7 +4514,12 @@ async function graph_explorer_wrapper (opts) {
 
   function notify_db_initialized (entries) {
     if (send_to_graph_explorer) {
-      send_to_graph_explorer({ type: 'db_initialized', data: { entries } })
+      const head = ['graph_explorer_wrapper', 'graph_explorer', page_js_mid++]
+      send_to_graph_explorer({ 
+        head,
+        type: 'db_initialized', 
+        data: { entries } 
+      })
     }
   }
 
@@ -4508,7 +4571,7 @@ async function graph_explorer_wrapper (opts) {
       function send_response (request_head, result) {
         // Standardized response message
         // head: [by, to, mid]
-        const response_head = ['page_js', 'graph_explorer', page_js_mid++]
+        const response_head = ['graph_explorer_wrapper', 'graph_explorer', page_js_mid++]
         send({
           head: response_head,
           refs: { cause: request_head }, // Reference original request
@@ -4619,6 +4682,7 @@ async function input_test (opts, protocol) {
 
   let current_step = null
   let input_accessible = true
+  let mid = 0
   
 	if(protocol){
     send = protocol(msg => onmessage(msg))
@@ -4648,7 +4712,11 @@ async function input_test (opts, protocol) {
     })
 
 		if (this.value.length >= 10) {
+      const head = ['input_test', 'parent', mid++]
+      const refs = {}
 			_.up({
+        head,
+        refs,
         type: 'action_submitted',
         data: {
           value: this.value,
@@ -4657,7 +4725,11 @@ async function input_test (opts, protocol) {
       })
 			console.log('mark_as_complete')
 		} else {
+      const head = ['input_test', 'parent', mid++]
+      const refs = {}
       _.up({
+        head,
+        refs,
         type: 'action_incomplete',
         data: {
           value: this.value,
@@ -4826,6 +4898,7 @@ async function manager(opts) {
 
   let variables = []
   let selected_action = null
+  let mid = 0
 
   const _ = {
     send_actions_bar: null,
@@ -4927,14 +5000,16 @@ async function manager(opts) {
         action_incomplete: form__action_incomplete,
       }
 
-      return function on({ type, data }) {  
+      return on
+      function on(msg) {  
+        const { type, data } = msg
         const handler = form_input_handlers[type] || fail
-        handler(data, type)
+        handler(data, type, msg)
       }
     }
   }
 
-  function form__action_submitted(data, type) {
+  function form__action_submitted(data, type, msg) {
     console.log('manager.on_form_submitted', data, variables, selected_action)
     const step = variables[selected_action][data?.index]
     Object.assign(step, {
@@ -4942,15 +5017,20 @@ async function manager(opts) {
       status: 'completed',
       data: data?.value
     })
-    _.send_program?.({ type: 'update_data', data: variables })
-    _?.send_actions_bar({ type: "form_data", data: variables[selected_action] })
+    const head_to_program = ['manager', 'program', mid++]
+    const refs = msg.head ? { cause: msg.head } : {}
+    _.send_program?.({ head: head_to_program, refs, type: 'update_data', data: variables })
+    
+    const head_to_action_bar = ['manager', 'action_bar', mid++]
+    _?.send_actions_bar({ head: head_to_action_bar, refs, type: "form_data", data: variables[selected_action] })
 
     if (variables[selected_action][variables[selected_action].length - 1]?.is_completed) {
-      _.send_actions_bar({ type: 'show_submit_btn' })
+      const head_to_action_bar_submit = ['manager', 'action_bar', mid++]
+      _.send_actions_bar({ head: head_to_action_bar_submit, refs, type: 'show_submit_btn' })
     }
   }
 
-  function form__action_incomplete(data, type) {
+  function form__action_incomplete(data, type, msg) {
     console.log('manager.on_form_incomplete', data, variables, selected_action)
     const step = variables[selected_action][data?.index]
 
@@ -4961,9 +5041,15 @@ async function manager(opts) {
       status: 'error',
       data: data?.value
     })
-    _.send_program?.({ type: 'update_data', data: variables })
-    _?.send_actions_bar({ type: "form_data", data: variables[selected_action] })
-    _.send_actions_bar({ type: 'hide_submit_btn' })
+    const head_to_program = ['manager', 'program', mid++]
+    const refs = msg.head ? { cause: msg.head } : {}
+    _.send_program?.({ head: head_to_program, refs, type: 'update_data', data: variables })
+    
+    const head_to_action_bar = ['manager', 'action_bar', mid++]
+    _?.send_actions_bar({ head: head_to_action_bar, refs, type: "form_data", data: variables[selected_action] })
+    
+    const head_to_action_bar_hide = ['manager', 'action_bar', mid++]
+    _.send_actions_bar({ head: head_to_action_bar_hide, refs, type: 'hide_submit_btn' })
     
   }
   
@@ -4977,15 +5063,18 @@ async function manager(opts) {
     const program_handlers = {
       load_actions: program__load_actions
     }
-    return function on({ type, data }) {
+    return function on(msg) {
+      const { type, data } = msg
       const handler = program_handlers[type] || fail
-      handler(data, type)
+      handler(data, type, msg)
     }
   }
 
-  function program__load_actions(data, type) {
+  function program__load_actions(data, type, msg) {
     variables = data  
-    _.send_actions_bar?.({ type, data })
+    const head = ['manager', 'action_bar', mid++]
+    const refs = msg.head ? { cause: msg.head } : {}
+    _.send_actions_bar?.({ head, refs, type, data })
   }
 
   // -------------------------------
@@ -5002,42 +5091,52 @@ async function manager(opts) {
       selected_action: action_bar__selected_action
     }
 
-    return function on({ type, data }) {
+    return function on(msg) {
+      const { type, data } = msg
       const handler = action_bar_handlers[type] || fail
-      handler(data, type)
+      handler(data, type, msg)
     }
   }
 
-  function action_bar__render_form(data, type) {
+  function action_bar__render_form(data, type, msg) {
     render_form_component(data.component)
     const send = _.send_form_input[data.component]
-    if (send) send({ type: 'step_data', data })
+    if (send) {
+      const head = ['manager', data.component, mid++]
+      const refs = msg.head ? { cause: msg.head } : {}
+      send({ head, refs, type: 'step_data', data })
+    }
   }
 
-  function action_bar__action_submitted(data, type) {
-    _.send_program({ type: 'display_result', data })
+  function action_bar__action_submitted(data, type, msg) {
+    const head = ['manager', 'program', mid++]
+    const refs = msg.head ? { cause: msg.head } : {}
+    _.send_program({ head, refs, type: 'display_result', data })
   }
 
-  function action_bar__selected_action(data, type) {
+  function action_bar__selected_action(data, type, msg) {
     selected_action = data
   }
 
-  function action_bar__clean_up(data, type) {
-    data && cleanup(data)
+  function action_bar__clean_up(data, type, msg) {
+    data && cleanup(data, msg)
   }
 
-  function cleanup(selected_action) {
+  function cleanup(selected_action, msg) {
     const cleaned = variables[selected_action].map(step => ({
       ...step,
       is_completed: false,
       data: ''
     }))
     variables[selected_action] = cleaned
-    _.send_program?.({ type: 'update_data', data: variables })
+    const head_to_program = ['manager', 'program', mid++]
+    const refs = msg?.head ? { cause: msg.head } : {}
+    _.send_program?.({ head: head_to_program, refs, type: 'update_data', data: variables })
 
     for (const step of variables[selected_action]) {
       if (step.component && _.send_form_input[step.component]) {
-        _.send_form_input[step.component]({ type: 'reset_data'})
+        const head_to_input = ['manager', step.component, mid++]
+        _.send_form_input[step.component]({ head: head_to_input, refs, type: 'reset_data'})
       }
     }
 
@@ -5395,6 +5494,7 @@ async function program(opts, protocol) {
   const _ = {
     up: null,
   }
+  let mid = 0
 
   if (protocol) {
     const send = protocol((msg) => onmessage(msg))
@@ -5440,7 +5540,11 @@ async function program(opts, protocol) {
 
   function onvariables(data) {
     const vars = typeof data[0] === 'string' ? JSON.parse(data[0]) : data[0]
+    const head = ['program', 'parent', mid++]
+    const refs = {}
     _?.up({
+      head,
+      refs,
       type: 'load_actions',
       data: vars,
     })
@@ -5551,9 +5655,9 @@ async function quick_actions(opts, protocol) {
   const current_step = shadow.querySelector('.current-step')
   const total_steps = shadow.querySelector('.total-step')
   const style = shadow.querySelector('style')
-  const main = shadow.querySelector('.main')
   
   let init = false
+  let mid = 0
   let icons = {}
   let hardcons = {}
   let defaults = []
@@ -5579,10 +5683,14 @@ async function quick_actions(opts, protocol) {
   return el
 
   function onsubmit() {
-    _.up({ type: 'action_submitted'})
+    const head = ['quick_actions', 'parent', mid++]
+    const refs = {}
+    _.up({ head, refs, type: 'action_submitted' })
   }
   function oninput(e) {
-    _.up({ type: 'filter_actions', data: e.target.value })
+    const head = ['quick_actions', 'parent', mid++]
+    const refs = {}
+    _.up({ head, refs, type: 'filter_actions', data: e.target.value })
   }
 
   function update_input_display(selected_action = null) {
@@ -5614,10 +5722,13 @@ async function quick_actions(opts, protocol) {
     input_wrapper.style.display = 'flex'
     input_field.focus()
     
-    _.up({ type: 'display_actions', data: 'block' })
+    const head = ['quick_actions', 'parent', mid++]
+    const refs = {}
+    _.up({ head, refs, type: 'display_actions', data: 'block' })
   }
 
-  function onmessage({ type, data }) {
+  function onmessage(msg) {
+    const { type, data } = msg
     const message_map = {
       selected_action,
       deactivate_input_field,
@@ -5640,7 +5751,9 @@ async function quick_actions(opts, protocol) {
     input_field.value = ''
     update_input_display()
     
-    _.up({ type: 'display_actions', data: 'none' })
+    const head = ['quick_actions', 'parent', mid++]
+    const refs = {}
+    _.up({ head, refs, type: 'display_actions', data: 'none' })
   }
   
   function show_submit_btn() {
@@ -6521,60 +6634,61 @@ async function component (opts, protocol) {
   function console_history_protocol (send) {
     _.send_console_history = send
     return on
-    function on ({ type, data }) { 
-      _.up(type, data)
+    function on (msg) { 
+      _.up(msg)
     }
   }
   
   function actions_protocol (send) {
     _.send_actions = send
     return on
-    function on ({ type, data }) { 
-      _.up({ type, data })
+    function on (msg) { 
+      _.up(msg)
     }
   }
   
   function tabbed_editor_protocol (send) {
     _.send_tabbed_editor = send
     return on
-    function on ({ type, data }) { 
-      _.up({ type, data })
+    function on (msg) { 
+      _.up(msg)
     }
   }
   
   function graph_explorer_protocol (send) {
     _.send_graph_explorer = send
     return on
-    function on ({ type, data }) { 
-      _.up({ type, data })
+    function on (msg) { 
+      _.up(msg)
     }
   }
   
-  function onmessage ({ type, data }) {
+  function onmessage (msg) {
+    const { type, data } = msg
     if(type == 'console_history_toggle') console_history_toggle_view()
     else if (type == 'graph_explorer_toggle') graph_explorer_toggle_view()
     else if (type == 'display_actions') actions_toggle_view(data)
-    else if (type == 'filter_actions') _.send_actions({ type, data })
+    else if (type == 'filter_actions') _.send_actions(msg)
     else if (type == 'tab_name_clicked') {
       tabbed_editor_toggle_view(true)
       if (_.send_tabbed_editor) {
-        _.send_tabbed_editor({ type: 'toggle_tab', data })
+        _.send_tabbed_editor({ ...msg, type: 'toggle_tab' })
       }
     }
     else if (type == 'tab_close_clicked') {
       if (_.send_tabbed_editor) {
-        _.send_tabbed_editor({ type: 'close_tab', data })
+        _.send_tabbed_editor({ ...msg, type: 'close_tab' })
       }
     }
     else if (type == 'switch_tab') {
       tabbed_editor_toggle_view(true)
       if (_.send_tabbed_editor) {
-        _.send_tabbed_editor({ type, data })
+        _.send_tabbed_editor(msg)
       }
     }
     else if (type == 'entry_toggled') {
       if (_.send_graph_explorer) {
-        _.send_graph_explorer({ type, data })
+        _.send_graph_explorer(msg)
       }
     }
   }
@@ -6733,6 +6847,7 @@ async function steps_wizard (opts, protocol) {
 
   let variables = []
   let currentActiveStep = 0
+  let mid = 0
 
   let _ = null
   if(protocol){
@@ -6820,7 +6935,9 @@ async function steps_wizard (opts, protocol) {
         currentActiveStep = index
         center_step(btn)
         render_steps(steps)
-        _?.up({type: 'step_clicked', data: {...step, index, total_steps: steps.length, is_accessible: accessible}})
+        const head = ['steps_wizard', 'parent', mid++]
+        const refs = {}
+        _?.up({head, refs, type: 'step_clicked', data: {...step, index, total_steps: steps.length, is_accessible: accessible}})
       };
 
       steps_entries.appendChild(btn)
@@ -6919,6 +7036,7 @@ async function tabbed_editor(opts, protocol) {
 
   
   let init = false
+  let mid = 0
   let files = {}
   let active_tab = null
   let current_editor = null
@@ -6934,22 +7052,23 @@ async function tabbed_editor(opts, protocol) {
 
   return el
 
-  function onmessage({ type, data }) {
+  function onmessage(msg) {
+    const { type, data } = msg
     switch (type) {
       case 'switch_tab':
-        switch_to_tab(data)
+        switch_to_tab(data, msg)
         break
       case 'close_tab':
-        close_tab(data)
+        close_tab(data, msg)
         break
       case 'toggle_tab':
-        toggle_tab(data)
+        toggle_tab(data, msg)
         break
       default:
     }
   }
 
-  function switch_to_tab(tab_data) {
+  function switch_to_tab(tab_data, msg) {
     if (active_tab === tab_data.id) {
       return
     }
@@ -6958,27 +7077,41 @@ async function tabbed_editor(opts, protocol) {
     create_editor(tab_data)
     
     if (_) {
-      _.up({ type: 'tab_switched', data: tab_data })
+      const head = ['tabbed_editor', 'parent', mid++]
+      const refs = msg?.head ? { cause: msg.head } : undefined
+      _.up({ 
+        head, 
+        refs, 
+        type: 'tab_switched', 
+        data: tab_data 
+      })
     }
   }
 
-  function toggle_tab(tab_data) {
+  function toggle_tab(tab_data, msg) {
     if (active_tab === tab_data.id) {
       hide_editor()
       active_tab = null
     } else {
-      switch_to_tab(tab_data)
+      switch_to_tab(tab_data, msg)
     }
   }
 
-  function close_tab(tab_data) {
+  function close_tab(tab_data, msg) {
     if (active_tab === tab_data.id) {
       hide_editor()
       active_tab = null
     }
     
     if (_) {
-      _.up({ type: 'tab_closed', data: tab_data })
+      const head = ['tabbed_editor', 'parent', mid++]
+      const refs = msg?.head ? { cause: msg.head } : undefined
+      _.up({ 
+        head, 
+        refs, 
+        type: 'tab_closed', 
+        data: tab_data 
+      })
     }
   }
 
@@ -7037,7 +7170,9 @@ async function tabbed_editor(opts, protocol) {
     files[tab_data.id] = code_area.value
     
     if (_) {
+      const head = ['tabbed_editor', 'parent', mid++]
       _.up({ 
+        head, 
         type: 'file_changed', 
         data: { 
           id: tab_data.id, 
@@ -7307,6 +7442,7 @@ async function component (opts, protocol) {
 
   
   let init = false
+  let mid = 0
   let variables = []
   let dricons = []
   const subs = await sdb.watch(onbatch)
@@ -7368,7 +7504,8 @@ async function component (opts, protocol) {
   }
   return div
 
-  function onmessage({ type, data }) {
+  function onmessage(msg) {
+    const { type } = msg
     switch (type) {
       default:
         // Handle other message types
@@ -7393,7 +7530,9 @@ async function component (opts, protocol) {
     // Add click handler for tab name (switch/toggle tab)
     name_el.onclick = () => {
       if (_) {
-        _.up({ type: 'tab_name_clicked', data: { id, name } })
+        const head = ['tabs', 'parent', mid++]
+        const refs = {}
+        _.up({ head, refs, type: 'tab_name_clicked', data: { id, name } })
       }
     }
     
@@ -7401,7 +7540,9 @@ async function component (opts, protocol) {
     close_btn.onclick = (e) => {
       e.stopPropagation()
       if (_) {
-        _.up({ type: 'tab_close_clicked', data: { id, name } })
+        const head = ['tabs', 'parent', mid++]
+        const refs = {}
+        _.up({ head, refs, type: 'tab_close_clicked', data: { id, name } })
       }
     }
     
@@ -7558,7 +7699,8 @@ async function tabsbar (opts, protocol) {
 
   return el
 
-  function onmessage({ type, data }) {
+  function onmessage(msg) {
+    const { type } = msg
     switch (type) {
       default:
         // Handle other message types
@@ -7568,8 +7710,8 @@ async function tabsbar (opts, protocol) {
   function tabs_protocol(send) {
     _.tabs = send
     return on
-    function on({ type, data }) {
-      _.up({ type, data })
+    function on(msg) {
+      _.up(msg)
     }
   }
 
@@ -7837,28 +7979,29 @@ async function taskbar(opts, protocol) {
   function action_bar_protocol (send) {
     _.action_bar = send
     return on
-    function on ({ type, data }) { 
-      _.up({ type, data })
+    function on (msg) { 
+      _.up(msg)
     }
   }
   
   function tabsbar_protocol (send) {
     _.tabsbar = send
     return on
-    function on ({ type, data }) { 
-      _.up({ type, data })
+    function on (msg) { 
+      _.up(msg)
     }
   }
   
-  function onmessage ({ type, data }) {
+  function onmessage (msg) {
+    const { type } = msg
     switch (type) {
       case 'tab_name_clicked':
       case 'tab_close_clicked':
-        _.up({ type, data })
+        _.up(msg)
         break
       default:
         if (_.action_bar) {
-          _.action_bar({ type, data })
+          _.action_bar(msg)
         }
     }
   }
@@ -7996,16 +8139,16 @@ async function theme_widget (opts) {
   function space_protocol (send) {
     _.send_space = send
     return on
-    function on ({ type, data }) {
-      _.send_taskbar({ type, data })
+    function on (msg) {
+      _.send_taskbar(msg)
     }
   }
 
   function taskbar_protocol (send) {
     _.send_taskbar = send
     return on
-    function on ({ type, data }) {
-      _.send_space({ type, data })
+    function on (msg) {
+      _.send_space(msg)
     }
   }
 }
