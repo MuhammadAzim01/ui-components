@@ -3142,8 +3142,7 @@ function fallback_module () {
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
-const { sdb, get } = statedb(fallback_module)
-
+const { get } = statedb(fallback_module)
 
 const quick_actions = require('quick_actions')
 const actions = require('actions')
@@ -3151,9 +3150,13 @@ const steps_wizard = require('steps_wizard')
 
 module.exports = action_bar
 
-async function action_bar(opts, protocol) {
+async function action_bar (opts, protocol) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
+  const ids = opts.ids || {}
+  const by = id
+  const to = ids.up || 'parent'
+
   const on = {
     style: inject,
     icons: iconject
@@ -3161,7 +3164,7 @@ async function action_bar(opts, protocol) {
 
   const el = document.createElement('div')
   const shadow = el.attachShadow({ mode: 'closed' })
-  
+
   shadow.innerHTML = `
   <div class="container">
     <div class="actions">
@@ -3182,7 +3185,6 @@ async function action_bar(opts, protocol) {
   <style>
   </style>`
   const style = shadow.querySelector('style')
-  const main = shadow.querySelector('.main')
   const history_icon = shadow.querySelector('.icon-btn')
   const quick_placeholder = shadow.querySelector('quick-actions')
   const actions_placeholder = shadow.querySelector('actions')
@@ -3200,8 +3202,8 @@ async function action_bar(opts, protocol) {
   let actions_data = null
   let selected_action = null
 
-  if(protocol){
-    let send = protocol(msg => onmessage(msg))
+  if (protocol) {
+    const send = protocol(msg => onmessage(msg))
     _.up = send
   }
 
@@ -3209,14 +3211,14 @@ async function action_bar(opts, protocol) {
 
   history_icon.innerHTML = console_icon
   history_icon.onclick = onhistory
-  const element = protocol ? await quick_actions(subs[0], quick_actions_protocol) : await quick_actions(subs[0])
+  const element = protocol ? await quick_actions({ ...subs[0], ids: { up: id } }, quick_actions_protocol) : await quick_actions(subs[0])
   quick_placeholder.replaceWith(element)
 
-  const actions_el = await actions(subs[1], actions_protocol)
+  const actions_el = await actions({ ...subs[1], ids: { up: id } }, actions_protocol)
   actions_el.classList.add('hide')
   actions_placeholder.replaceWith(actions_el)
 
-  const steps_wizard_el = await steps_wizard(subs[2], steps_wizard_protocol)
+  const steps_wizard_el = await steps_wizard({ ...subs[2], ids: { up: id } }, steps_wizard_protocol)
   steps_wizard_el.classList.add('hide')
   steps_wizard_placeholder.replaceWith(steps_wizard_el)
 
@@ -3231,7 +3233,7 @@ async function action_bar(opts, protocol) {
   return el
 
   async function onbatch (batch) {
-    for (const { type, paths } of batch){
+    for (const { type, paths } of batch) {
       const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
       const func = on[type] || fail
       func(data, type)
@@ -3239,63 +3241,63 @@ async function action_bar(opts, protocol) {
   }
   function fail (data, type) { throw new Error('invalid message', { cause: { data, type } }) }
 
-  function inject(data) {
+  function inject (data) {
     style.innerHTML = data.join('\n')
   }
 
-  function iconject(data) {
+  function iconject (data) {
     console_icon = data[0]
   }
-  function onhistory() {
-    const head = ['action_bar', 'parent', mid++]
+  function onhistory () {
+    const head = [by, to, mid++]
     const refs = {}
-    _.up({ head: head, refs, type: 'console_history_toggle', data: null })
-    _.up({ head, refs, type: 'ui_focus', data: 'command history' })
+    _.up({ head, refs, type: 'console_history_toggle', data: null })
+    const head2 = [by, to, mid++]
+    _.up({ head: head2, refs, type: 'ui_focus', data: 'command history' })
   }
 
-
   // --- Toggle Views ---
-  function toggle_view(el, show) {
+  function toggle_view (el, show) {
     el.classList.toggle('hide', !show)
   }
 
-  function actions_toggle_view(display) {
+  function actions_toggle_view (display) {
     toggle_view(actions_el, display === 'block')
   }
 
-  function steps_toggle_view(display) {
+  function steps_toggle_view (display) {
     toggle_view(steps_wizard_el, display === 'block')
   }
 
   // -------------------------------
   // Protocol: actions
   // -------------------------------
-  
-  function actions_protocol(send) {
+
+  function actions_protocol (send) {
     _.send_actions = send
 
     const actions_handlers = {
       selected_action: actions__selected_action
     }
 
-    return function on(msg) {
+    return function on (msg) {
       const { type } = msg
       const handler = actions_handlers[type] || fail
       handler(msg)
     }
   }
 
-  function actions__selected_action(msg) {
+  function actions__selected_action (msg) {
     const { type, data } = msg
     selected_action = data?.action || null
 
     if (selected_action === 'Help') {
-      const head = ['action_bar', 'parent', mid++]
+      const head = [by, to, mid++]
       const refs = {}
       _.up({ head, refs, type: 'ui_focus', data: 'help button' })
     }
 
-    const head_to_quick = ['action_bar', 'quick_actions', mid++]
+    const head_to_quick = [by, 'quick_actions', mid++]
     _.send_quick_actions?.({
       head: head_to_quick,
       refs: msg.head ? { cause: msg.head } : undefined,
@@ -3306,20 +3308,20 @@ async function action_bar(opts, protocol) {
       }
     })
 
-    const head_to_steps = ['action_bar', 'steps_wizard', mid++]
+    const head_to_steps = [by, 'steps_wizard', mid++]
     _.send_steps_wizard?.({ head: head_to_steps, refs: msg.head ? { cause: msg.head } : undefined, type: 'init_data', data: actions_data[selected_action] })
 
     steps_toggle_view('block')
 
     if (actions_data[selected_action]?.length > 0) {
       const first_step = actions_data[selected_action][0]
-      const head = ['action_bar', 'parent', mid++]
+      const head = [by, to, mid++]
       const refs = msg.head ? { cause: msg.head } : undefined
       _.up?.({ head, refs, type: 'render_form', data: first_step })
     }
 
     if (actions_data[selected_action][actions_data[selected_action].length - 1]?.is_completed) {
-      const head_to_quick_submit = ['action_bar', 'quick_actions', mid++]
+      const head_to_quick_submit = [by, 'quick_actions', mid++]
       _?.send_quick_actions({ head: head_to_quick_submit, refs: msg.head ? { cause: msg.head } : undefined, type: 'show_submit_btn' })
     }
 
@@ -3327,11 +3329,9 @@ async function action_bar(opts, protocol) {
     actions_toggle_view('none')
   }
 
-
   // -------------------------------
   // Protocol: quick actions
   // -------------------------------
-
 
   function quick_actions_protocol (send) {
     _.send_quick_actions = send
@@ -3346,26 +3346,25 @@ async function action_bar(opts, protocol) {
       const { type } = msg
       const handler = quick_handlers[type] || fail
       handler(msg)
-      
     }
   }
-  
-  function quick_actions__display_actions(msg) {
+
+  function quick_actions__display_actions (msg) {
     const { data } = msg
     actions_toggle_view(data)
     if (data === 'none') {
       steps_toggle_view('none')
-      const head = ['action_bar', 'parent', mid++]
+      const head = [by, to, mid++]
       const refs = msg.head ? { cause: msg.head } : undefined
       _.up?.({ head, refs, type: 'clean_up', data: selected_action })
     }
   }
 
-  function quick_actions__action_submitted(msg) {
+  function quick_actions__action_submitted (msg) {
     const result = JSON.stringify(actions_data[selected_action].map(step => step.data), null, 2)
-    const head_to_quick = ['action_bar', 'quick_actions', mid++]
+    const head_to_quick = [by, 'quick_actions', mid++]
     _.send_quick_actions?.({ head: head_to_quick, type: 'deactivate_input_field' })
-    const head = ['action_bar', 'parent', mid++]
+    const head = [by, to, mid++]
     const refs = msg.head ? { cause: msg.head } : undefined
     _.up?.({ head, refs, type: 'action_submitted', data: { result, selected_action } })
   }
@@ -3374,28 +3373,29 @@ async function action_bar(opts, protocol) {
   // Protocol: steps wizard
   // -------------------------------
 
-  function steps_wizard_protocol(send) {
+  function steps_wizard_protocol (send) {
     _.send_steps_wizard = send
 
     const steps_handlers = {
       step_clicked: steps_wizard__step_clicked
     }
 
-    return function on(msg) {
+    return function on (msg) {
       const { type } = msg
-      const handler = steps_handlers[type] || default_steps_handler
+      const handler = steps_handlers[type]
       handler(msg)
     }
   }
 
-  function steps_wizard__step_clicked(msg) {
+  function steps_wizard__step_clicked (msg) {
     const { data } = msg
-    const head_to_quick = ['action_bar', 'quick_actions', mid++]
+    const head_to_quick = [by, 'quick_actions', mid++]
     _.send_quick_actions?.({ head: head_to_quick, type: 'update_current_step', data })
-    const head = ['action_bar', 'parent', mid++]
+    const head = [by, to, mid++]
     const refs = msg.head ? { cause: msg.head } : {}
     _.up?.({ head, refs, type: 'render_form', data })
-    _.up({ head, refs, type: 'ui_focus', data: 'wizard hat' })
+    const head2 = [by, to, mid++]
+    _.up({ head: head2, refs, type: 'ui_focus', data: 'wizard hat' })
   }
 
   function onmessage (msg) {
@@ -3404,72 +3404,72 @@ async function action_bar(opts, protocol) {
     parent_handler[type]?.(msg)
   }
 
-  function load_actions(msg) {
+  function load_actions (msg) {
     const { data, type } = msg
     actions_data = data
-    const head_to_actions = ['action_bar', 'actions', mid++]
+    const head_to_actions = [by, 'actions', mid++]
     _.send_actions?.({ head: head_to_actions, type, data })
   }
-  function parent__selected_action(msg) {
-    const head_to_quick = ['action_bar', 'quick_actions', mid++]
+  function parent__selected_action (msg) {
+    const head_to_quick = [by, 'quick_actions', mid++]
     _.send_quick_actions?.({ head: head_to_quick, ...msg })
   }
-  function show_submit_btn(msg) {
-    const head_to_quick = ['action_bar', 'quick_actions', mid++]
+  function show_submit_btn (msg) {
+    const head_to_quick = [by, 'quick_actions', mid++]
     _.send_quick_actions?.({ head: head_to_quick, type: 'show_submit_btn' })
   }
-  function hide_submit_btn(msg) {
-    const head_to_quick = ['action_bar', 'quick_actions', mid++]
+  function hide_submit_btn (msg) {
+    const head_to_quick = [by, 'quick_actions', mid++]
     _.send_quick_actions?.({ head: head_to_quick, type: 'hide_submit_btn' })
   }
-  function form_data(msg) {
-    const head_to_steps = ['action_bar', 'steps_wizard', mid++]
+  function form_data (msg) {
+    const head_to_steps = [by, 'steps_wizard', mid++]
     _.send_steps_wizard?.({ head: head_to_steps, type: 'init_data', data: actions_data[selected_action] })
   }
 }
 
-function fallback_module() {
+function fallback_module () {
   return {
     api: fallback_instance,
     _: {
-      'quick_actions': { $: '' },
-      'actions': { $: '' },
-      'steps_wizard': { $: '' }
+      quick_actions: { $: '' },
+      actions: { $: '' },
+      steps_wizard: { $: '' }
     }
   }
-  function fallback_instance() {
+  function fallback_instance () {
     return {
       _: {
-        'quick_actions': {
+        quick_actions: {
           0: '',
           mapping: {
-            'style': 'style',
-            'icons': 'icons',
-            'actions': 'actions',
-            'hardcons': 'hardcons'
+            style: 'style',
+            icons: 'icons',
+            actions: 'actions',
+            hardcons: 'hardcons'
           }
         },
-        'actions': {
+        actions: {
           0: '',
           mapping: {
-            'style': 'style',
-            'icons': 'icons',
-            'actions': 'actions',
-            'hardcons': 'hardcons'
+            style: 'style',
+            icons: 'icons',
+            actions: 'actions',
+            hardcons: 'hardcons'
           }
         },
-        'steps_wizard': {
+        steps_wizard: {
           0: '',
           mapping: {
-            'style': 'style',
-            'variables': 'variables'
+            style: 'style',
+            variables: 'variables'
           }
         }
       },
       drive: {
         'icons/': {
           'console.svg': {
-            '$ref': 'console.svg'
+            $ref: 'console.svg'
           }
         },
         'style/': {
@@ -3538,13 +3538,16 @@ function fallback_module() {
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
-const { sdb, get } = statedb(fallback_module)
+const { get } = statedb(fallback_module)
 module.exports = actions
 
-async function actions(opts, protocol) {
+async function actions (opts, protocol) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
-  
+  const ids = opts.ids || {}
+  const by = id
+  const to = ids.up || 'parent'
+
   const on = {
     style: inject,
     actions: onactions,
@@ -3554,7 +3557,7 @@ async function actions(opts, protocol) {
 
   const el = document.createElement('div')
   const shadow = el.attachShadow({ mode: 'closed' })
-  
+
   shadow.innerHTML = `
   <div class="actions-container main">
     <div class="actions-menu"></div>
@@ -3562,16 +3565,15 @@ async function actions(opts, protocol) {
   <style>
   </style>`
   const style = shadow.querySelector('style')
-  const main = shadow.querySelector('.main')
   const actions_menu = shadow.querySelector('.actions-menu')
 
-  
   let init = false
   let mid = 0
   let actions = []
   let icons = {}
   let hardcons = {}
 
+  // eslint-disable-next-line no-unused-vars
   const subs = await sdb.watch(onbatch)
   let send = null
   let _ = null
@@ -3585,49 +3587,49 @@ async function actions(opts, protocol) {
   function onmessage (msg) {
     const { type, data } = msg
     switch (type) {
-      case 'filter_actions':
-        filter(data)
-        break
-      case 'send_selected_action':
-        send_selected_action(msg)
-        break
-      case 'load_actions':
-        // Handle the new data format from program_protocol
-        handleLoadActions(data)
-        break
-      default:
-        fail(data, type)
+    case 'filter_actions':
+      filter(data)
+      break
+    case 'send_selected_action':
+      send_selected_action(msg)
+      break
+    case 'load_actions':
+      // Handle the new data format from program_protocol
+      handleLoadActions(data)
+      break
+    default:
+      fail(data, type)
     }
   }
 
-  function handleLoadActions(data) {   
+  function handleLoadActions (data) {
     const converted_actions = Object.keys(data).map(actionKey => ({
       action: actionKey,
       pinned: false,
       default: true,
       icon: 'file'
     }))
-    
+
     actions = converted_actions
     create_actions_menu()
   }
-  
+
   function send_selected_action (msg) {
     const action_data = msg.type === 'send_selected_action' ? msg.data.data : msg.data
-    
-    const head = ['actions', 'parent', mid++]
+
+    const head = [by, to, mid++]
     const refs = msg.head ? { cause: msg.head } : undefined
-    
-    _.up({ 
+
+    _.up({
       head,
       refs,
-      type: 'selected_action', 
-      data: action_data 
+      type: 'selected_action',
+      data: action_data
     })
   }
 
-  async function onbatch(batch) {
-    for (const { type, paths } of batch){
+  async function onbatch (batch) {
+    for (const { type, paths } of batch) {
       const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
       const func = on[type] || fail
       func(data, type)
@@ -3638,17 +3640,17 @@ async function actions(opts, protocol) {
     }
   }
 
-  function fail(data, type) { throw new Error('invalid message', { cause: { data, type } }) }
+  function fail (data, type) { throw new Error('invalid message', { cause: { data, type } }) }
 
-  function inject(data) {
+  function inject (data) {
     style.innerHTML = data.join('\n')
   }
 
-  function iconject(data) {
+  function iconject (data) {
     icons = data
   }
 
-  function onhardcons(data) {
+  function onhardcons (data) {
     hardcons = {
       pin: data[0],
       unpin: data[1],
@@ -3657,22 +3659,22 @@ async function actions(opts, protocol) {
     }
   }
 
-  function onactions(data) {
+  function onactions (data) {
     const vars = typeof data[0] === 'string' ? JSON.parse(data[0]) : data[0]
     actions = vars
   }
 
-  function create_actions_menu() {
+  function create_actions_menu () {
     actions_menu.replaceChildren()
     actions.forEach(create_action_item)
   }
 
-  function create_action_item(action_data, index) {
+  function create_action_item (action_data, index) {
     const action_item = document.createElement('div')
     action_item.classList.add('action-item')
-    
+
     const icon = icons[index]
-    
+
     action_item.innerHTML = `
     <div class="action-icon">${icon}</div>
     <div class="action-name">${action_data.action}</div>
@@ -3681,12 +3683,12 @@ async function actions(opts, protocol) {
     action_item.onclick = onaction
     actions_menu.appendChild(action_item)
 
-    function onaction() {
+    function onaction () {
       send_selected_action({ data: action_data })
     }
   }
 
-  function filter(search_term) {
+  function filter (search_term) {
     const items = shadow.querySelectorAll('.action-item')
     items.forEach(item => {
       const action_name = item.children[1].textContext.toLowerCase()
@@ -3696,12 +3698,12 @@ async function actions(opts, protocol) {
   }
 }
 
-function fallback_module() {
+function fallback_module () {
   return {
-    api: fallback_instance,
+    api: fallback_instance
   }
 
-  function fallback_instance() {
+  function fallback_instance () {
     return {
       drive: {
         'actions/': {
@@ -3754,39 +3756,39 @@ function fallback_module() {
         },
         'icons/': {
           'file.svg': {
-            '$ref': 'icon.svg'
+            $ref: 'icon.svg'
           },
           'folder.svg': {
-            '$ref': 'icon.svg'
+            $ref: 'icon.svg'
           },
           'save.svg': {
-            '$ref': 'icon.svg'
+            $ref: 'icon.svg'
           },
           'gear.svg': {
-            '$ref': 'icon.svg'
+            $ref: 'icon.svg'
           },
           'help.svg': {
-            '$ref': 'icon.svg'
+            $ref: 'icon.svg'
           },
           'terminal.svg': {
-            '$ref': 'icon.svg'
+            $ref: 'icon.svg'
           },
           'search.svg': {
-            '$ref': 'icon.svg'
+            $ref: 'icon.svg'
           }
         },
         'hardcons/': {
           'pin.svg': {
-            '$ref': 'pin.svg'
+            $ref: 'pin.svg'
           },
           'unpin.svg': {
-            '$ref': 'unpin.svg'
+            $ref: 'unpin.svg'
           },
           'default.svg': {
-            '$ref': 'default.svg'
+            $ref: 'default.svg'
           },
           'undefault.svg': {
-            '$ref': 'undefault.svg'
+            $ref: 'undefault.svg'
           }
         },
         'style/': {
@@ -3872,12 +3874,16 @@ function fallback_module() {
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
-const { sdb, get } = statedb(fallback_module)
+const { get } = statedb(fallback_module)
 module.exports = console_history
 
 async function console_history (opts, protocol) {
   const { id, sdb } = await get(opts.sid)
-  const {drive} = sdb
+  const { drive } = sdb
+  const ids = opts.ids || {}
+  const by = id
+  const to = ids.up || 'parent'
+
   const on = {
     style: inject,
     commands: oncommands,
@@ -3895,19 +3901,18 @@ async function console_history (opts, protocol) {
   <style>
   </style>`
   const style = shadow.querySelector('style')
-  const main = shadow.querySelector('.main')
   const commands_placeholder = shadow.querySelector('console-commands')
-  
-  
+
   let init = false
   let mid = 0
   let commands = []
   let dricons = []
 
+  // eslint-disable-next-line no-unused-vars
   const subs = await sdb.watch(onbatch)
   let send = null
   let _ = null
-  if(protocol){
+  if (protocol) {
     send = protocol(msg => onmessage(msg))
     _ = { up: send }
   }
@@ -3915,7 +3920,7 @@ async function console_history (opts, protocol) {
 
   function onmessage (msg) {
     const { type, data } = msg
-    console.log(`[space->console_history]`, type, data)
+    console.log('[space->console_history]', type, data)
   }
 
   function create_command_item (command_data) {
@@ -3937,41 +3942,42 @@ async function console_history (opts, protocol) {
       <div class="command-path">${command_data.name_path}</div>
     </div>
     ${command_data.linked.is
-      ? `<div class="linked-info">
+    ? `<div class="linked-info">
           <span class="command-separator">---&gt;</span>
           <div class="linked-icon">${linked_icon_html}</div>
           <div class="linked-name">${command_data.linked.name}</div>
         </div>`
-      : ''}
+    : ''}
       ${action_html
-        ? `<div class="command-actions">${action_html}</div>`
-        : ''}
+    ? `<div class="command-actions">${action_html}</div>`
+    : ''}
         <div class="command-name">${command_data.command}</div>
       </div>`
 
     command_el.onclick = function () {
-      const head = ['console_history', 'parent', mid++]
+      const head = [by, to, mid++]
       const refs = {} // since this is a user event
       _.up({ head, refs, type: 'ui_focus', data: 'command history' })
-      _.up({ head, refs, type: 'command_clicked', data: command_data })
+      const head2 = [by, to, mid++]
+      _.up({ head: head2, refs, type: 'command_clicked', data: command_data })
     }
 
     return command_el
   }
   function render_commands () {
-      const commands_container = document.createElement('div')
-      commands_container.className = 'commands-list'
-      
-      commands.forEach((command, index) => {
-        const command_item = create_command_item(command, index)
-        commands_container.appendChild(command_item)
-      })
-      
-      commands_placeholder.replaceWith(commands_container)
-      init = true
+    const commands_container = document.createElement('div')
+    commands_container.className = 'commands-list'
+
+    commands.forEach((command, index) => {
+      const command_item = create_command_item(command, index)
+      commands_container.appendChild(command_item)
+    })
+
+    commands_placeholder.replaceWith(commands_container)
+    init = true
   }
-  async function onbatch(batch) {
-    for (const { type, paths } of batch){
+  async function onbatch (batch) {
+    for (const { type, paths } of batch) {
       const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
       const func = on[type] || fail
       func(data, type)
@@ -3981,8 +3987,8 @@ async function console_history (opts, protocol) {
     }
   }
 
-  function fail (data, type) { 
-    throw new Error('invalid message', { cause: { data, type } }) 
+  function fail (data, type) {
+    throw new Error('invalid message', { cause: { data, type } })
   }
 
   function inject (data) {
@@ -3999,7 +4005,7 @@ async function console_history (opts, protocol) {
       file: data[0] || '',
       bulb: data[1] || '',
       restore: data[2] || '',
-      delete: data[3] || '' 
+      delete: data[3] || ''
     }
   }
 }
@@ -4014,7 +4020,7 @@ function fallback_module () {
       drive: {
         'commands/': {
           'list.json': {
-            '$ref': 'commands.json'
+            $ref: 'commands.json'
           }
         },
         'icons/': {
@@ -4207,18 +4213,18 @@ function fallback_module () {
     }
   }
 }
+
 }).call(this)}).call(this,"/src/node_modules/console_history/console_history.js")
 },{"STATE":1}],7:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
-const { sdb, get } = statedb(fallback_module)
+const { get } = statedb(fallback_module)
 
 module.exports = focus_tracker
 
-async function focus_tracker(opts, protocol) {
-  const { id, sdb } = await get(opts.sid)
-  const { drive } = sdb
+async function focus_tracker (opts, protocol) {
+  const { sdb } = await get(opts.sid)
 
   // Keep track of the last focused element
   let last_focused = null
@@ -4235,18 +4241,19 @@ async function focus_tracker(opts, protocol) {
 
   const el = document.createElement('div')
   const shadow = el.attachShadow({ mode: 'closed' })
-  
+
   // Hidden component
   el.style.display = 'none'
   shadow.innerHTML = `
   <div class="focus-tracker"></div>
   `
-  
-  await sdb.watch(onbatch)
+
+  // eslint-disable-next-line no-unused-vars
+  const subs = await sdb.watch(onbatch)
 
   return el
-  
-  async function onbatch(batch) {
+
+  async function onbatch (batch) {
     // @TODO
   }
 }
@@ -4267,14 +4274,17 @@ function fallback_module () {
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
-const { sdb, get } = statedb(fallback_module)
+const { get } = statedb(fallback_module)
 
 module.exports = form_input
 async function form_input (opts, protocol) {
   const { id, sdb } = await get(opts.sid)
-  const {drive} = sdb
-	
-	const on = {
+  const { drive } = sdb
+  const ids = opts.ids || {}
+  const by = id
+  const to = ids.up || 'parent'
+
+  const on = {
     style: inject,
     data: ondata
   }
@@ -4282,9 +4292,10 @@ async function form_input (opts, protocol) {
   let current_step = null
   let input_accessible = true
   let mid = 0
-	
-	if(protocol){
-    send = protocol(msg => onmessage(msg))
+
+  let _ = { up: null }
+  if (protocol) {
+    const send = protocol(msg => onmessage(msg))
     _ = { up: send }
   }
 
@@ -4300,19 +4311,19 @@ async function form_input (opts, protocol) {
   <style>
   </style>`
   const style = shadow.querySelector('style')
-  
-	const input_field_el = shadow.querySelector('.input-field')
+
+  const input_field_el = shadow.querySelector('.input-field')
   const overlay_el = shadow.querySelector('.overlay-lock')
 
-	input_field_el.oninput = async function () {
+  input_field_el.oninput = async function () {
     if (!input_accessible) return
     await drive.put('data/form_input.json', {
       input_field: this.value
     })
-		if (this.value.length >= 10) {
-      const head = ['form_input', 'parent', mid++]
+    if (this.value.length >= 10) {
+      const head = [by, to, mid++]
       const refs = {}
-			_.up({
+      _.up({
         head,
         refs,
         type: 'action_submitted',
@@ -4321,9 +4332,9 @@ async function form_input (opts, protocol) {
           index: current_step?.index || 0
         }
       })
-			console.log('mark_as_complete')
-		} else {
-      const head = ['form_input', 'parent', mid++]
+      console.log('mark_as_complete')
+    } else {
+      const head = [by, to, mid++]
       const refs = {}
       _.up({
         head,
@@ -4335,34 +4346,36 @@ async function form_input (opts, protocol) {
         }
       })
     }
-	}
+  }
 
+  // eslint-disable-next-line no-unused-vars
   const subs = await sdb.watch(onbatch)
-
   const parent_handler = {
-    step_data,  
+    step_data,
     reset_data
   }
 
   return el
 
-  async function onbatch(batch) {
-    for (const { type, paths } of batch){
+  async function onbatch (batch) {
+    for (const { type, paths } of batch) {
       const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
       const func = on[type] || fail
       func(data, type)
     }
   }
 
-  function fail(data, type) { throw new Error('invalid message', { cause: { data, type } }) }
+  function fail (data, type) { throw new Error('invalid message', { cause: { data, type } }) }
 
   function inject (data) {
     style.replaceChildren((() => {
-      return document.createElement('style').textContent = data[0]
+      const style_el = document.createElement('style')
+      style_el.textContent = data[0]
+      return style_el
     })())
   }
 
-  function ondata(data) {
+  function ondata (data) {
     if (data && data.length > 0) {
       const input_data = data[0]
       if (input_data && input_data.input_field) {
@@ -4373,16 +4386,16 @@ async function form_input (opts, protocol) {
     }
   }
 
-	function onmessage ({ type, data }) {
+  function onmessage ({ type, data }) {
     console.log('message from form_input', type, data)
     parent_handler[type]?.(data, type)
   }
-  
-  function step_data(data, type) {
-    current_step = data 
+
+  function step_data (data, type) {
+    current_step = data
 
     input_accessible = data?.is_accessible !== false
-    
+
     overlay_el.hidden = input_accessible
 
     input_field_el.placeholder = input_accessible
@@ -4390,17 +4403,16 @@ async function form_input (opts, protocol) {
       : 'Input disabled for this step'
   }
 
-  function reset_data(data, type) {
+  function reset_data (data, type) {
     input_field_el.value = ''
     drive.put('data/form_input.json', {
       input_field: ''
     })
   }
-
 }
 function fallback_module () {
   return {
-    api: fallback_instance,
+    api: fallback_instance
   }
   function fallback_instance () {
     return {
@@ -4410,46 +4422,45 @@ function fallback_module () {
             raw: `
             .input-display {
               position: relative;
-							background: #131315;
+              background: #131315;
               border-radius: 16px;
               border: 1px solid #3c3c3c;
-							display: flex;
-							flex: 1;
-							align-items: center;
-							padding: 0 12px;
-							min-height: 32px;
+              display: flex;
+              flex: 1;
+              align-items: center;
+              padding: 0 12px;
+              min-height: 32px;
             }
-						.input-display:focus-within {
-							border-color: #4285f4;
-							background: #1a1a1c;
-            }	
-						.input-field {
-							flex: 1;
-							min-height: 32px;
-							background: transparent;
-							border: none;
-							color: #e8eaed;
-							padding: 0 12px;
-							font-size: 14px;
-							outline: none;
-						}
-						.input-field::placeholder {
-							color: #a6a6a6;
-						}
+            .input-display:focus-within {
+              border-color: #4285f4;
+              background: #1a1a1c;
+            }
+            .input-field {
+              flex: 1;
+              min-height: 32px;
+              background: transparent;
+              border: none;
+              color: #e8eaed;
+              padding: 0 12px;
+              font-size: 14px;
+              outline: none;
+            }
+            .input-field::placeholder {
+              color: #a6a6a6;
+            }
             .overlay-lock {
               position: absolute;
               inset: 0;
               background: transparent;
               z-index: 10;
               cursor: not-allowed;
-            }
-						`
+            }`
           }
         },
         'data/': {
           'form_input.json': {
-            raw:  {
-              input_field: ""
+            raw: {
+              input_field: ''
             }
           }
         }
@@ -4514,27 +4525,29 @@ const graphdb = require('./graphdb')
 
 module.exports = graph_explorer_wrapper
 
-async function graph_explorer_wrapper (opts) {
-  const { sdb } = await get(opts.sid)
+async function graph_explorer_wrapper (opts, protocol) {
+  const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
+  // const ids = opts.ids || {}
+  const by = id
+  // const to = ids.up || 'parent'
 
   let db = null
   // Protocol
   let send_to_graph_explorer = null
-  let page_js_mid = 0
+  let mid = 0
 
   const on = {
     theme: inject,
     entries: on_entries
   }
 
-  
   const el = document.createElement('div')
   const shadow = el.attachShadow({ mode: 'closed' })
-  
+
   const sheet = new CSSStyleSheet()
   shadow.adoptedStyleSheets = [sheet]
-  
+
   const subs = await sdb.watch(onbatch)
   const explorer_el = await graph_explorer(subs[0], graph_explorer_protocol)
   shadow.append(explorer_el)
@@ -4559,7 +4572,7 @@ async function graph_explorer_wrapper (opts) {
       notify_db_initialized({})
       return
     }
-    
+
     let parsed_data
     try {
       parsed_data = typeof data[0] === 'string' ? JSON.parse(data[0]) : data[0]
@@ -4579,11 +4592,11 @@ async function graph_explorer_wrapper (opts) {
 
   function notify_db_initialized (entries) {
     if (send_to_graph_explorer) {
-      const head = ['graph_explorer_wrapper', 'graph_explorer', page_js_mid++]
-      send_to_graph_explorer({ 
+      const head = [by, 'graph_explorer', mid++]
+      send_to_graph_explorer({
         head,
-        type: 'db_initialized', 
-        data: { entries } 
+        type: 'db_initialized',
+        data: { entries }
       })
     }
   }
@@ -4636,7 +4649,7 @@ async function graph_explorer_wrapper (opts) {
       function send_response (request_head, result) {
         // Standardized response message
         // head: [by, to, mid]
-        const response_head = ['graph_explorer_wrapper', 'graph_explorer', page_js_mid++]
+        const response_head = [by, 'graph_explorer', mid++]
         send({
           head: response_head,
           refs: { cause: request_head }, // Reference original request
@@ -4650,14 +4663,14 @@ async function graph_explorer_wrapper (opts) {
 function fallback_module () {
   return {
     _: {
-    'graph-explorer': {
-        $: '',
+      'graph-explorer': {
+        $: ''
       },
       './graphdb': {
         $: ''
       }
     },
-    api : fallback_instance
+    api: fallback_instance
   }
 
   function fallback_instance () {
@@ -4705,6 +4718,7 @@ function fallback_module () {
     }
   }
 }
+
 }).call(this)}).call(this,"/src/node_modules/graph_explorer_wrapper/index.js")
 },{"./graphdb":9,"STATE":1,"graph-explorer":3}],11:[function(require,module,exports){
 module.exports = { resource }
@@ -4728,19 +4742,23 @@ function resource (timeout = 1000) {
       pending.push({ resolve, reject })
     }
   }
-} 
+}
+
 },{}],12:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
-const { sdb, get } = statedb(fallback_module)
+const { get } = statedb(fallback_module)
 
 module.exports = input_test
 async function input_test (opts, protocol) {
   const { id, sdb } = await get(opts.sid)
-  const {drive} = sdb
-	
-	const on = {
+  const { drive } = sdb
+  const ids = opts.ids || {}
+  const by = id
+  const to = ids.up || 'parent'
+
+  const on = {
     style: inject,
     data: ondata
   }
@@ -4748,16 +4766,16 @@ async function input_test (opts, protocol) {
   let current_step = null
   let input_accessible = true
   let mid = 0
-  
-	if(protocol){
-    send = protocol(msg => onmessage(msg))
+  let _ = { up: null }
+  if (protocol) {
+    const send = protocol(msg => onmessage(msg))
     _ = { up: send }
   }
 
   const el = document.createElement('div')
   const shadow = el.attachShadow({ mode: 'closed' })
   shadow.innerHTML = `
-	<div class='title'> Testing 2nd Type </div>
+  <div class='title'> Testing 2nd Type </div>
   <div class="input-display">
     <input class="input-field" type="text" placeholder="Type to submit">
     <div class="overlay-lock" hidden></div>
@@ -4765,21 +4783,21 @@ async function input_test (opts, protocol) {
   <style>
   </style>`
   const style = shadow.querySelector('style')
-  
-	const input_field_el = shadow.querySelector('.input-field')
+
+  const input_field_el = shadow.querySelector('.input-field')
   const overlay_el = shadow.querySelector('.overlay-lock')
 
-	input_field_el.oninput = async function () {
+  input_field_el.oninput = async function () {
     if (!input_accessible) return
 
     await drive.put('data/input_test.json', {
       input_field: this.value
     })
 
-		if (this.value.length >= 10) {
-      const head = ['input_test', 'parent', mid++]
+    if (this.value.length >= 10) {
+      const head = [by, to, mid++]
       const refs = {}
-			_.up({
+      _.up({
         head,
         refs,
         type: 'action_submitted',
@@ -4788,9 +4806,9 @@ async function input_test (opts, protocol) {
           index: current_step?.index || 0
         }
       })
-			console.log('mark_as_complete')
-		} else {
-      const head = ['input_test', 'parent', mid++]
+      console.log('mark_as_complete')
+    } else {
+      const head = [by, to, mid++]
       const refs = {}
       _.up({
         head,
@@ -4802,10 +4820,11 @@ async function input_test (opts, protocol) {
         }
       })
     }
-	}
+  }
 
+  // eslint-disable-next-line no-unused-vars
   const subs = await sdb.watch(onbatch)
-  
+
   const parent_handler = {
     step_data,
     reset_data
@@ -4813,23 +4832,25 @@ async function input_test (opts, protocol) {
 
   return el
 
-  async function onbatch(batch) {
-    for (const { type, paths } of batch){
+  async function onbatch (batch) {
+    for (const { type, paths } of batch) {
       const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
       const func = on[type] || fail
       func(data, type)
     }
   }
 
-  function fail(data, type) { throw new Error('invalid message', { cause: { data, type } }) }
+  function fail (data, type) { throw new Error('invalid message', { cause: { data, type } }) }
 
   function inject (data) {
     style.replaceChildren((() => {
-      return document.createElement('style').textContent = data[0]
+      const style_el = document.createElement('style')
+      style_el.textContent = data[0]
+      return style_el
     })())
   }
 
-  function ondata(data) {
+  function ondata (data) {
     if (data && data.length > 0) {
       const input_data = data[0]
       if (input_data && input_data.input_field) {
@@ -4844,16 +4865,16 @@ async function input_test (opts, protocol) {
   // Parent Observer
   // ------------------
 
-	function onmessage ({ type, data }) {
+  function onmessage ({ type, data }) {
     console.log('message from input_test', type, data)
     parent_handler[type]?.(data, type)
   }
 
-  function step_data(data, type) {
-    current_step = data 
+  function step_data (data, type) {
+    current_step = data
 
     input_accessible = data?.is_accessible !== false
-    
+
     overlay_el.hidden = input_accessible
 
     input_field_el.placeholder = input_accessible
@@ -4861,17 +4882,16 @@ async function input_test (opts, protocol) {
       : 'Input disabled for this step'
   }
 
-  function reset_data(data, type) {
+  function reset_data (data, type) {
     input_field_el.value = ''
     drive.put('data/input_test.json', {
       input_field: ''
     })
   }
-
 }
 function fallback_module () {
   return {
-    api: fallback_instance,
+    api: fallback_instance
   }
   function fallback_instance () {
     return {
@@ -4879,52 +4899,51 @@ function fallback_module () {
         'style/': {
           'theme.css': {
             raw: `
-						.title {
-							color: #e8eaed;
-							font-size: 18px;
-						}
+            .title {
+              color: #e8eaed;
+              font-size: 18px;
+            }
             .input-display {
               position: relative;
-							background: #131315;
+              background: #131315;
               border-radius: 16px;
               border: 1px solid #3c3c3c;
-							display: flex;
-							flex: 1;
-							align-items: center;
-							padding: 0 12px;
-							min-height: 32px;
+              display: flex;
+              flex: 1;
+              align-items: center;
+              padding: 0 12px;
+              min-height: 32px;
             }
-						.input-display:focus-within {
-							border-color: #4285f4;
-							background: #1a1a1c;
-            }	
-						.input-field {
-							flex: 1;
-							min-height: 32px;
-							background: transparent;
-							border: none;
-							color: #e8eaed;
-							padding: 0 12px;
-							font-size: 14px;
-							outline: none;
-						}
-						.input-field::placeholder {
-							color: #a6a6a6;
-						}
+            .input-display:focus-within {
+              border-color: #4285f4;
+              background: #1a1a1c;
+            }
+            .input-field {
+              flex: 1;
+              min-height: 32px;
+              background: transparent;
+              border: none;
+              color: #e8eaed;
+              padding: 0 12px;
+              font-size: 14px;
+              outline: none;
+            }
+            .input-field::placeholder {
+              color: #a6a6a6;
+            }
             .overlay-lock {
               position: absolute;
               inset: 0;
               background: transparent;
               z-index: 10;
               cursor: not-allowed;
-            }
-						`
+            }`
           }
         },
         'data/': {
           'input_test.json': {
-            raw:  {
-              input_field: ""
+            raw: {
+              input_field: ''
             }
           }
         }
@@ -4938,7 +4957,7 @@ function fallback_module () {
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
-const { sdb, get } = statedb(fallback_module)
+const { get } = statedb(fallback_module)
 
 const program = require('program')
 const action_bar = require('action_bar')
@@ -4953,12 +4972,12 @@ const component_modules = {
 
 module.exports = manager
 
-async function manager(opts) {
+async function manager (opts) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
 
   const on = {
-    style: inject,
+    style: inject
   }
 
   let variables = []
@@ -4968,7 +4987,6 @@ async function manager(opts) {
   const _ = {
     send_actions_bar: null,
     send_form_input: {},
-    send_steps_wizard: null,
     send_program: null
   }
 
@@ -4990,13 +5008,12 @@ async function manager(opts) {
 
   const subs = await sdb.watch(onbatch)
 
-  const action_bar_el = await action_bar(subs[0], actions_bar_protocol)
+  const action_bar_el = await action_bar({ ...subs[0], ids: { up: id } }, actions_bar_protocol)
   action_bar_placeholder.replaceWith(action_bar_el)
 
-  const program_el = await program(subs[1], program_protocol)
+  const program_el = await program({ ...subs[1], ids: { up: id } }, program_protocol)
   program_el.classList.add('hide')
   program_placeholder.replaceWith(program_el)
-
 
   const form_input_elements = {}
 
@@ -5004,10 +5021,10 @@ async function manager(opts) {
 
   for (const [index, [component_name, component_fn]] of Object.entries(component_modules).entries()) {
     const final_index = index + 2
-  
+
     console.log('final_index', final_index, component_name, subs[final_index])
-    
-    const el = await component_fn(subs[final_index], form_input_protocol(component_name))
+
+    const el = await component_fn({ ...subs[final_index], ids: { up: id } }, form_input_protocol(component_name))
     el.classList.add('hide')
     form_input_elements[component_name] = el
     form_input_placeholder.parentNode.insertBefore(el, form_input_placeholder)
@@ -5018,7 +5035,7 @@ async function manager(opts) {
   return el
 
   // --- Internal Functions ---
-  async function onbatch(batch) {
+  async function onbatch (batch) {
     for (const { type, paths } of batch) {
       const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
       const func = on[type] || fail
@@ -5026,47 +5043,43 @@ async function manager(opts) {
     }
   }
 
-  function fail(data, type) {
+  function fail (data, type) {
     throw new Error('invalid message', { cause: { data, type } })
   }
 
-  function inject(data) {
+  function inject (data) {
     style.replaceChildren((() => {
-      return document.createElement('style').textContent = data[0]
+      const style_el = document.createElement('style')
+      style_el.textContent = data[0]
+      return style_el
     })())
   }
 
-  function toggle_view(el, show) {
+  function toggle_view (el, show) {
     el.classList.toggle('hide', !show)
   }
 
-  function get_form_input_component_index(component) {
-    const { _: components } = fallback_module()
-    return Object.keys(components).indexOf(component)
-  }
-  
-  function render_form_component(component_name) {
+  function render_form_component (component_name) {
     for (const name in form_input_elements) {
       toggle_view(form_input_elements[name], name === component_name)
     }
   }
 
-  
   // -------------------------------
   // Protocol: form input
   // -------------------------------
 
-  function form_input_protocol(component_name) {
+  function form_input_protocol (component_name) {
     return function (send) {
       _.send_form_input[component_name] = send
-      
+
       const form_input_handlers = {
         action_submitted: form__action_submitted,
-        action_incomplete: form__action_incomplete,
+        action_incomplete: form__action_incomplete
       }
 
       return on
-      function on(msg) {  
+      function on (msg) {
         const { type, data } = msg
         const handler = form_input_handlers[type] || fail
         handler(data, type, msg)
@@ -5074,7 +5087,7 @@ async function manager(opts) {
     }
   }
 
-  function form__action_submitted(data, type, msg) {
+  function form__action_submitted (data, type, msg) {
     console.log('manager.on_form_submitted', data, variables, selected_action)
     const step = variables[selected_action][data?.index]
     Object.assign(step, {
@@ -5085,9 +5098,9 @@ async function manager(opts) {
     const head_to_program = ['manager', 'program', mid++]
     const refs = msg.head ? { cause: msg.head } : {}
     _.send_program?.({ head: head_to_program, refs, type: 'update_data', data: variables })
-    
+
     const head_to_action_bar = ['manager', 'action_bar', mid++]
-    _?.send_actions_bar({ head: head_to_action_bar, refs, type: "form_data", data: variables[selected_action] })
+    _?.send_actions_bar({ head: head_to_action_bar, refs, type: 'form_data', data: variables[selected_action] })
 
     if (variables[selected_action][variables[selected_action].length - 1]?.is_completed) {
       const head_to_action_bar_submit = ['manager', 'action_bar', mid++]
@@ -5095,7 +5108,7 @@ async function manager(opts) {
     }
   }
 
-  function form__action_incomplete(data, type, msg) {
+  function form__action_incomplete (data, type, msg) {
     console.log('manager.on_form_incomplete', data, variables, selected_action)
     const step = variables[selected_action][data?.index]
 
@@ -5109,34 +5122,33 @@ async function manager(opts) {
     const head_to_program = ['manager', 'program', mid++]
     const refs = msg.head ? { cause: msg.head } : {}
     _.send_program?.({ head: head_to_program, refs, type: 'update_data', data: variables })
-    
+
     const head_to_action_bar = ['manager', 'action_bar', mid++]
-    _?.send_actions_bar({ head: head_to_action_bar, refs, type: "form_data", data: variables[selected_action] })
-    
+    _?.send_actions_bar({ head: head_to_action_bar, refs, type: 'form_data', data: variables[selected_action] })
+
     const head_to_action_bar_hide = ['manager', 'action_bar', mid++]
     _.send_actions_bar({ head: head_to_action_bar_hide, refs, type: 'hide_submit_btn' })
-    
   }
-  
+
   // -------------------------------
   // Protocol: program
   // -------------------------------
 
-  function program_protocol(send) {
+  function program_protocol (send) {
     _.send_program = send
 
     const program_handlers = {
       load_actions: program__load_actions
     }
-    return function on(msg) {
+    return function on (msg) {
       const { type, data } = msg
       const handler = program_handlers[type] || fail
       handler(data, type, msg)
     }
   }
 
-  function program__load_actions(data, type, msg) {
-    variables = data  
+  function program__load_actions (data, type, msg) {
+    variables = data
     const head = ['manager', 'action_bar', mid++]
     const refs = msg.head ? { cause: msg.head } : {}
     _.send_actions_bar?.({ head, refs, type, data })
@@ -5146,7 +5158,7 @@ async function manager(opts) {
   // Protocol: action bar
   // -------------------------------
 
-  function actions_bar_protocol(send) {
+  function actions_bar_protocol (send) {
     _.send_actions_bar = send
 
     const action_bar_handlers = {
@@ -5156,14 +5168,14 @@ async function manager(opts) {
       selected_action: action_bar__selected_action
     }
 
-    return function on(msg) {
+    return function on (msg) {
       const { type, data } = msg
       const handler = action_bar_handlers[type] || fail
       handler(data, type, msg)
     }
   }
 
-  function action_bar__render_form(data, type, msg) {
+  function action_bar__render_form (data, type, msg) {
     render_form_component(data.component)
     const send = _.send_form_input[data.component]
     if (send) {
@@ -5173,21 +5185,21 @@ async function manager(opts) {
     }
   }
 
-  function action_bar__action_submitted(data, type, msg) {
+  function action_bar__action_submitted (data, type, msg) {
     const head = ['manager', 'program', mid++]
     const refs = msg.head ? { cause: msg.head } : {}
     _.send_program({ head, refs, type: 'display_result', data })
   }
 
-  function action_bar__selected_action(data, type, msg) {
+  function action_bar__selected_action (data, type, msg) {
     selected_action = data
   }
 
-  function action_bar__clean_up(data, type, msg) {
+  function action_bar__clean_up (data, type, msg) {
     data && cleanup(data, msg)
   }
 
-  function cleanup(selected_action, msg) {
+  function cleanup (selected_action, msg) {
     const cleaned = variables[selected_action].map(step => ({
       ...step,
       is_completed: false,
@@ -5201,7 +5213,7 @@ async function manager(opts) {
     for (const step of variables[selected_action]) {
       if (step.component && _.send_form_input[step.component]) {
         const head_to_input = ['manager', step.component, mid++]
-        _.send_form_input[step.component]({ head: head_to_input, refs, type: 'reset_data'})
+        _.send_form_input[step.component]({ head: head_to_input, refs, type: 'reset_data' })
       }
     }
 
@@ -5213,50 +5225,50 @@ async function manager(opts) {
 }
 
 // --- Fallback Module ---
-function fallback_module() {
+function fallback_module () {
   return {
     api: fallback_instance,
     _: {
-      'action_bar': { $: '' },
-      'program': { $: '' },
+      action_bar: { $: '' },
+      program: { $: '' }
     }
   }
 
-  function fallback_instance() {
+  function fallback_instance () {
     return {
       _: {
-        'action_bar': {
+        action_bar: {
           0: '',
           mapping: {
-            'icons': 'icons',
-            'style': 'style'
+            icons: 'icons',
+            style: 'style'
           }
         },
-        'program': {
+        program: {
           0: '',
           mapping: {
-            'style': 'style',
-            'variables': 'variables',
+            style: 'style',
+            variables: 'variables'
           }
         },
         'program>form_input': {
           0: '',
           mapping: {
-            'style': 'style',
-            'data': 'data',
+            style: 'style',
+            data: 'data'
           }
         },
         'program>input_test': {
           0: '',
           mapping: {
-            'style': 'style',
-            'data': 'data',
+            style: 'style',
+            data: 'data'
           }
         }
       },
       drive: {
         'style/': {
-          'manager.css': { 
+          'manager.css': {
             raw: `
               .main {
                 display: flex;
@@ -5268,7 +5280,7 @@ function fallback_module() {
               .hide {
                 display: none;
               }
-            ` 
+            `
           }
         }
       }
@@ -5281,12 +5293,12 @@ function fallback_module() {
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
-const { sdb, get } = statedb(fallback_module)
+const { get } = statedb(fallback_module)
 
 module.exports = create_component_menu
 async function create_component_menu (opts, names, inicheck, callbacks) {
-  const { id, sdb } = await get(opts.sid)
-  const {drive} = sdb
+  const { sdb } = await get(opts.sid)
+  const { drive } = sdb
   const on = {
     style: inject
   }
@@ -5319,12 +5331,10 @@ async function create_component_menu (opts, names, inicheck, callbacks) {
   <style>
   </style>`
   const style = shadow.querySelector('style')
-  const main = shadow.querySelector('.main')
   const menu = shadow.querySelector('.menu')
   const toggle_btn = shadow.querySelector('.menu-toggle-button')
   const unselect_btn = shadow.querySelector('.unselect-all-button')
   const list = shadow.querySelector('.menu-list')
-
 
   names.forEach((name, index) => {
     const is_checked = all_checked || checkobject[index] === true
@@ -5348,8 +5358,9 @@ async function create_component_menu (opts, names, inicheck, callbacks) {
       menu.classList.add('hidden')
     }
   })
-  // event listeners
+  // eslint-disable-next-line no-unused-vars
   const subs = await sdb.watch(onbatch)
+  // event listeners
   toggle_btn.onclick = on_toggle_btn
   unselect_btn.onclick = on_unselect_btn
   document.onclick = handle_document_click
@@ -5375,15 +5386,15 @@ async function create_component_menu (opts, names, inicheck, callbacks) {
     }
   }
 
-  async function onbatch(batch) {
-    for (const { type, paths } of batch){
+  async function onbatch (batch) {
+    for (const { type, paths } of batch) {
       const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
       const func = on[type] || fail
       func(data, type)
     }
   }
 
-  function fail(data, type) { throw new Error('invalid message', { cause: { data, type } }) }
+  function fail (data, type) { throw new Error('invalid message', { cause: { data, type } }) }
 
   function inject (data) {
     style.textContent = data.join('\n')
@@ -5391,7 +5402,7 @@ async function create_component_menu (opts, names, inicheck, callbacks) {
 }
 function fallback_module () {
   return {
-    api: fallback_instance,
+    api: fallback_instance
   }
   function fallback_instance () {
     return {
@@ -5536,28 +5547,30 @@ function fallback_module () {
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
-const { sdb, get } = statedb(fallback_module)
+const { get } = statedb(fallback_module)
 
 const form_input = require('form_input')
 const input_test = require('input_test')
-
 
 program.form_input = form_input
 program.input_test = input_test
 
 module.exports = program
 
-async function program(opts, protocol) {
+async function program (opts, protocol) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
-
+  const ids = opts.ids || {}
+  const by = id
+  const to = ids.up || 'parent'
+  // console.log('program-ids', by, to)
   const on = {
     style: inject,
-    variables: onvariables,
+    variables: onvariables
   }
 
   const _ = {
-    up: null,
+    up: null
   }
   let mid = 0
 
@@ -5573,9 +5586,9 @@ async function program(opts, protocol) {
   `
 
   const style = shadow.querySelector('style')
-  
+
+  // eslint-disable-next-line no-unused-vars
   const subs = await sdb.watch(onbatch)
-  console.log('program', subs)
 
   const parent_handler = {
     display_result,
@@ -5585,7 +5598,7 @@ async function program(opts, protocol) {
   return el
 
   // --- Internal Functions ---
-  async function onbatch(batch) {
+  async function onbatch (batch) {
     for (const { type, paths } of batch) {
       const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
       const func = on[type] || fail
@@ -5593,67 +5606,69 @@ async function program(opts, protocol) {
     }
   }
 
-  function fail(data, type) {
+  function fail (data, type) {
     throw new Error('invalid message', { cause: { data, type } })
   }
 
-  function inject(data) {
+  function inject (data) {
     style.replaceChildren((() => {
-      return document.createElement('style').textContent = data[0]
+      const style_el = document.createElement('style')
+      style_el.textContent = data[0]
+      return style_el
     })())
   }
 
-  function onvariables(data) {
+  function onvariables (data) {
     const vars = typeof data[0] === 'string' ? JSON.parse(data[0]) : data[0]
-    const head = ['program', 'parent', mid++]
+    const head = [by, to, mid++]
     const refs = {}
     _?.up({
       head,
       refs,
       type: 'load_actions',
-      data: vars,
+      data: vars
     })
   }
 
-  function onmessage({ type, data }) {
+  function onmessage ({ type, data }) {
     parent_handler[type]?.(data, type)
   }
-  function display_result(data) {
+  function display_result (data) {
     console.log('Display Result:', data)
     alert(`Result of action(${data?.selected_action}): ${data?.result}`)
   }
-  function update_data(data) {
+  function update_data (data) {
     drive.put('variables/program.json', data)
   }
 }
 
 // --- Fallback Module ---
-function fallback_module() {
+function fallback_module () {
   return {
     api: fallback_instance,
     _: {
-      
-      'form_input': { $: '' },
-      'input_test': { $: '' }
+
+      form_input: { $: '' },
+      input_test: { $: '' }
     }
   }
 
-  function fallback_instance() {
+  function fallback_instance () {
     return {
       drive: {
         'style/': {
-          'program.css': { 
+          'program.css': {
             raw: `
               .main {
                 display: flex;
                 flex-direction: column;
                 align-items: center;
               }
-            ` 
+            `
           }
         },
         'variables/': {
-          'program.json': { '$ref': 'program.json' }
+          'program.json': { $ref: 'program.json' }
         }
       }
     }
@@ -5665,13 +5680,16 @@ function fallback_module() {
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
-const { sdb, get } = statedb(fallback_module)
+const { get } = statedb(fallback_module)
 module.exports = quick_actions
 
-async function quick_actions(opts, protocol) {
+async function quick_actions (opts, protocol) {
   const { id, sdb } = await get(opts.sid)
-  const {drive} = sdb
-  
+  const { drive } = sdb
+  const ids = opts.ids || {}
+  const by = id
+  const to = ids.up || 'parent'
+
   const on = {
     style: inject,
     icons: iconject,
@@ -5684,8 +5702,7 @@ async function quick_actions(opts, protocol) {
   el.style.flex = 'auto'
 
   const shadow = el.attachShadow({ mode: 'closed' })
-  
-  
+
   shadow.innerHTML = `
   <div class="quick-actions-container main">
     <div class="default-actions"></div>
@@ -5720,18 +5737,18 @@ async function quick_actions(opts, protocol) {
   const current_step = shadow.querySelector('.current-step')
   const total_steps = shadow.querySelector('.total-step')
   const style = shadow.querySelector('style')
-  
+
   let init = false
   let mid = 0
   let icons = {}
   let hardcons = {}
   let defaults = []
-  
+
   let send = null
   const _ = {
     up: null
   }
-  if(protocol){
+  if (protocol) {
     send = protocol(msg => onmessage(msg))
     _.up = send
   }
@@ -5740,6 +5757,7 @@ async function quick_actions(opts, protocol) {
   submit_btn.onclick = onsubmit
   input_field.oninput = oninput
 
+  // eslint-disable-next-line no-unused-vars
   const subs = await sdb.watch(onbatch)
 
   submit_btn.innerHTML = hardcons.submit
@@ -5747,18 +5765,18 @@ async function quick_actions(opts, protocol) {
 
   return el
 
-  function onsubmit() {
-    const head = ['quick_actions', 'parent', mid++]
+  function onsubmit () {
+    const head = [by, to, mid++]
     const refs = {}
     _.up({ head, refs, type: 'action_submitted' })
   }
-  function oninput(e) {
-    const head = ['quick_actions', 'parent', mid++]
+  function oninput (e) {
+    const head = [by, to, mid++]
     const refs = {}
     _.up({ head, refs, type: 'filter_actions', data: e.target.value })
   }
 
-  function update_input_display(selected_action = null) {
+  function update_input_display (selected_action = null) {
     if (selected_action) {
       slash_prefix.style.display = 'inline'
       command_text.style.display = 'inline'
@@ -5766,7 +5784,7 @@ async function quick_actions(opts, protocol) {
       current_step.textContent = selected_action?.current_step || 1
       total_steps.textContent = selected_action.total_steps || 1
       step_display.style.display = 'inline-flex'
-      
+
       input_field.style.display = 'none'
     } else {
       slash_prefix.style.display = 'none'
@@ -5778,95 +5796,91 @@ async function quick_actions(opts, protocol) {
     }
   }
 
-  function activate_input_field() {
-    is_input_active = true
-    
+  function activate_input_field () {
     default_actions.style.display = 'none'
     text_bar.style.display = 'none'
-    
+
     input_wrapper.style.display = 'flex'
     input_field.focus()
-    
-    const head = ['quick_actions', 'parent', mid++]
+
+    const head = [by, to, mid++]
     const refs = {}
     _.up({ head, refs, type: 'display_actions', data: 'block' })
   }
 
-  function onmessage(msg) {
+  function onmessage (msg) {
     const { type, data } = msg
     const message_map = {
       selected_action,
       deactivate_input_field,
       show_submit_btn,
       update_current_step,
-      hide_submit_btn,
+      hide_submit_btn
     }
     const handler = message_map[type] || fail
     handler(data)
   }
 
-  function deactivate_input_field(data) {
-    is_input_active = false
-    
+  function deactivate_input_field (data) {
     default_actions.style.display = 'flex'
     text_bar.style.display = 'flex'
-    
+
     input_wrapper.style.display = 'none'
-    
+
     input_field.value = ''
     update_input_display()
-    
-    const head = ['quick_actions', 'parent', mid++]
+
+    const head = [by, to, mid++]
     const refs = {}
     _.up({ head, refs, type: 'display_actions', data: 'none' })
   }
-  
-  function show_submit_btn() {
+
+  function show_submit_btn () {
     submit_btn.style.display = 'flex'
   }
 
-  function hide_submit_btn() {
+  function hide_submit_btn () {
     submit_btn.style.display = 'none'
   }
 
-  function update_current_step(data) {
-    let current_step_value = data?.index + 1 || 1
+  function update_current_step (data) {
+    const current_step_value = data?.index + 1 || 1
     current_step.textContent = current_step_value
   }
 
-  function selected_action(data) {
+  function selected_action (data) {
     update_input_display(data)
   }
 
-  async function onbatch(batch) {
-    for (const { type, paths } of batch){
+  async function onbatch (batch) {
+    for (const { type, paths } of batch) {
       const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
       const func = on[type] || fail
       func(data, type)
     }
-    if(!init) {
+    if (!init) {
       create_default_actions(defaults)
       init = true
     } else {
-      //TODO: update actions
+      // TODO: update actions
     }
   }
   function fail (data, type) { throw new Error('invalid message', { cause: { data, type } }) }
 
-  function inject(data) {
+  function inject (data) {
     style.innerHTML = data.join('\n')
   }
-  function onhardcons(data) {
+  function onhardcons (data) {
     hardcons = {
       submit: data[0],
       cross: data[1]
     }
   }
-  function iconject(data) {
+  function iconject (data) {
     icons = data
   }
 
-  function onactions(data) {
+  function onactions (data) {
     const vars = typeof data[0] === 'string' ? JSON.parse(data[0]) : data[0]
     defaults = vars
   }
@@ -5879,42 +5893,42 @@ async function quick_actions(opts, protocol) {
       btn.innerHTML = icons[action.icon]
       default_actions.appendChild(btn)
     })
-    
-    close_btn.innerHTML = icons['close']
+
+    close_btn.innerHTML = icons.close
   }
 }
 
-function fallback_module() {
+function fallback_module () {
   return {
-    api: fallback_instance,
+    api: fallback_instance
   }
 
-  function fallback_instance() {
+  function fallback_instance () {
     return {
       drive: {
         'icons/': {
           '0.svg': {
-            '$ref': 'action1.svg'
+            $ref: 'action1.svg'
           },
           '1.svg': {
-            '$ref': 'action2.svg'
+            $ref: 'action2.svg'
           },
           '2.svg': {
-            '$ref': 'action1.svg'
+            $ref: 'action1.svg'
           },
           '3.svg': {
-            '$ref': 'action2.svg'
+            $ref: 'action2.svg'
           },
           '4.svg': {
-            '$ref': 'action1.svg'
+            $ref: 'action1.svg'
           }
         },
         'hardcons/': {
           'submit.svg': {
-            '$ref': 'submit.svg'
+            $ref: 'submit.svg'
           },
           'close.svg': {
-            '$ref': 'cross.svg'
+            $ref: 'cross.svg'
           }
         },
         'actions/': {
@@ -5922,23 +5936,23 @@ function fallback_module() {
             raw: JSON.stringify([
               {
                 name: 'New',
-                icon: '0',
+                icon: '0'
               },
               {
                 name: 'Settings',
-                icon: '1',
+                icon: '1'
               },
               {
                 name: 'Help',
-                icon: '2',
+                icon: '2'
               },
               {
                 name: 'About',
-                icon: '3',
+                icon: '3'
               },
               {
                 name: 'Exit',
-                icon: '4',
+                icon: '4'
               }
             ])
           }
@@ -6121,9 +6135,9 @@ module.exports = quick_editor
 let is_called
 const nesting = 0
 
-async function quick_editor(opts) {
+async function quick_editor (opts) {
   // ----------------------------------------
-  let init, data, port, labels, nesting_limit, top_first, select = []
+  let init; let data; let port; let labels; let nesting_limit; let top_first; let select = []
   const current_data = {}
 
   const { sdb, io, net } = await get(opts.sid)
@@ -6143,18 +6157,18 @@ async function quick_editor(opts) {
         <div class="quick-menu hidden">
           <div class="btn-box">
             <button class="button">Apply</button>
-            ${is_called ? '' :
-              `<button class="button import">Import</button>
+            ${is_called
+    ? ''
+    : `<button class="button import">Import</button>
               <button class="button export">Export</button>
               <input type="file" accept='.json' hidden />`
-            }
+}
           </div>
         </div>
       </div>
       <style>
       </style>
       `
-
 
   const style = shadow.querySelector('style')
   const menu_btn = shadow.querySelector('.dots-button')
@@ -6174,8 +6188,7 @@ async function quick_editor(opts) {
     labels = ['Nodes', 'Types', 'Files']
     nesting_limit = nesting + 3
     top_first = 0
-  }
-  else {
+  } else {
     apply_btn.onclick = () => {
       port.postMessage({ type: 'swtch', data: [{ name: current_data.Types.trim(), type: current_data.Names.trim() }] })
     }
@@ -6184,10 +6197,7 @@ async function quick_editor(opts) {
       input.click()
     }
     export_btn.onclick = () => {
-      if(current_data.radio.name === 'Names')
-        port.postMessage({ type: 'export_db', data: [{ name: current_data.Names.trim(), type: current_data.Types.trim() }]})
-      else
-        port.postMessage({ type: 'export_root', data: [{ name: current_data.Root.trim(), type: current_data.Nodes.trim() }]})
+      if (current_data.radio.name === 'Names') { port.postMessage({ type: 'export_db', data: [{ name: current_data.Names.trim(), type: current_data.Types.trim() }] }) } else { port.postMessage({ type: 'export_root', data: [{ name: current_data.Root.trim(), type: current_data.Nodes.trim() }] }) }
     }
     menu.classList.add('admin')
     labels = ['Root', 'Types', 'Names', 'Nodes', 'Files', 'Entries']
@@ -6206,6 +6216,7 @@ async function quick_editor(opts) {
     port.onmessage = event => {
       const txt = event.data
       const key = `[${by} -> ${to}]`
+      console.log(key)
       data = txt
       if (init) {
         menu_click(false)
@@ -6221,7 +6232,7 @@ async function quick_editor(opts) {
   // ----------------------------------------
   // FUNCTIONS
   // ----------------------------------------
-  function upload(e) {
+  function upload (e) {
     const file = e.target.files[0]
     const reader = new FileReader()
     reader.onload = event => {
@@ -6229,42 +6240,35 @@ async function quick_editor(opts) {
       try {
         data = JSON.parse(content)
         console.log(file)
-        if(current_data.radio.name === 'Names')
-          port.postMessage({ type: 'import_db', data: [data] })
-        else
-          port.postMessage({ type: 'import_root', data: [data, file.name.split('.')[0]] })
-
+        if (current_data.radio.name === 'Names') { port.postMessage({ type: 'import_db', data: [data] }) } else { port.postMessage({ type: 'import_root', data: [data, file.name.split('.')[0]] }) }
       } catch (err) {
         console.error('Invalid JSON file', err)
       }
     }
     reader.readAsText(file)
   }
-  function make_btn(name, classes, key, nesting) {
+  function make_btn (name, classes, key, nesting) {
     const btn = document.createElement('button')
-    if(select[nesting]){
-        btn.innerHTML = `
+    if (select[nesting]) {
+      btn.innerHTML = `
         <input type='radio' name='${key}' /> ${name}
       `
       const input = btn.querySelector('input')
       input.onchange = () => radio_change(input)
-    }
-    else
-      btn.textContent = name
+    } else { btn.textContent = name }
     btn.classList.add(...classes.split(' '))
     btn.setAttribute('tab', name.replaceAll(/[^A-Za-z0-9]/g, ''))
     btn.setAttribute('key', key)
     btn.setAttribute('title', name)
     return btn
   }
-  function make_tab(id, classes, sub_classes, nesting = 0) {
+  function make_tab (id, classes, sub_classes, nesting = 0) {
     const tab = document.createElement('div')
     tab.classList.add(...classes.split(' '), id.replaceAll(/[^A-Za-z0-9]/g, ''))
 
-    if (nesting % 2 === top_first)
-      var height = 565 - ((nesting + 1) * 30) + 'px'
-    else
-      tab.style.maxWidth = 700 - ((nesting + 1) * 47) + 'px'
+    let height
+    if (nesting % 2 === top_first) height = 565 - ((nesting + 1) * 30) + 'px'
+    else tab.style.maxWidth = 700 - ((nesting + 1) * 47) + 'px'
 
     tab.innerHTML = `
       <div class="${sub_classes[0]}" style="--before-content: '${labels[nesting]}'; max-height: ${height}">
@@ -6275,7 +6279,7 @@ async function quick_editor(opts) {
 
     return tab
   }
-  function make_textarea(id, classes, value, nesting) {
+  function make_textarea (id, classes, value, nesting) {
     const textarea = document.createElement('textarea')
     textarea.id = id.replaceAll(/[^A-Za-z0-9]/g, '')
     textarea.classList.add(...classes.split(' '))
@@ -6288,11 +6292,10 @@ async function quick_editor(opts) {
     current_data.radio && (current_data.radio.checked = false)
     current_data.radio = radio
   }
-  async function menu_click(call) {
+  async function menu_click (call) {
     port = await item.get(net.page.id)
     menu.classList.toggle('hidden')
-    if (init)
-      return
+    if (init) { return }
     init = true
 
     const old_box = menu.querySelector('.tab-content')
@@ -6302,36 +6305,33 @@ async function quick_editor(opts) {
     menu.append(box)
     make_tabs(box, data, nesting)
   }
-  function make_tabs(box, data, nesting) {
+  function make_tabs (box, data, nesting) {
     const local_nesting = nesting + 1
     const not_last_nest = local_nesting !== nesting_limit
     let sub = ''
-    if (local_nesting % 2 === top_first)
-      sub = ' sub'
-    const btns = box.querySelector(`.btns`)
-    const tabs = box.querySelector(`.tabs`)
+    if (local_nesting % 2 === top_first) { sub = ' sub' }
+    const btns = box.querySelector('.btns')
+    const tabs = box.querySelector('.tabs')
     Object.entries(data).forEach(([key, value], i) => {
       let first = ''
       if (!i) {
         first = ' active'
         current_data[labels[nesting]] = key
       }
-      
+
       const btn = make_btn(key, `tab-button${first}`, labels[nesting], nesting)
-      const tab = make_tab(key, `tab-content${sub+first}`, ['btns', 'tabs'], local_nesting)
+      const tab = make_tab(key, `tab-content${sub + first}`, ['btns', 'tabs'], local_nesting)
       btn.onclick = () => tab_btn_click(btn, btns, tabs, '.root-tabs > .tab-content', 'node', key)
 
       btns.append(btn)
       tabs.append(tab)
-      if(typeof(value) === 'object' && value !== null && not_last_nest && Object.keys(value).length)
-        make_tabs(tab, value, local_nesting)
-      else {
+      if (typeof (value) === 'object' && value !== null && not_last_nest && Object.keys(value).length) { make_tabs(tab, value, local_nesting) } else {
         const textarea = make_textarea(key, `subtab-textarea${first}`, value, local_nesting)
         tab.append(textarea)
       }
     })
   }
-  function tab_btn_click(btn, btns, tabs) {
+  function tab_btn_click (btn, btns, tabs) {
     btns.querySelector('.active').classList.remove('active')
     tabs.querySelector(':scope > .active').classList.remove('active')
 
@@ -6343,20 +6343,19 @@ async function quick_editor(opts) {
     recurse(tab)
     function recurse (tab) {
       const btn = tab.querySelector('.btns > .active')
-      if(!btn)
-        return
+      if (!btn) { return }
       current_data[btn.getAttribute('key')] = btn.textContent
       const sub_tab = tab.querySelector('.tabs > .active')
       recurse(sub_tab)
     }
   }
 
-  function apply() {
+  function apply () {
     let raw = shadow.querySelector('.tab-content.active .tab-content.active textarea.active').value
-    if (current_data.file.split('.')[1] === 'json')
-      raw = JSON.parse(raw)
+    if (current_data.file.split('.')[1] === 'json') { raw = JSON.parse(raw) }
     port.postMessage({
-      type: 'put', data: [
+      type: 'put',
+      data: [
         current_data.dataset + current_data.file,
         raw,
         current_data.node
@@ -6364,10 +6363,10 @@ async function quick_editor(opts) {
     })
   }
 
-  function inject(data) {
+  function inject (data) {
     style.textContent = data.join('\n')
   }
-  async function onbatch(batch) {
+  async function onbatch (batch) {
     for (const { type, paths } of batch) {
       const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
       const func = on[type] || fail
@@ -6375,16 +6374,14 @@ async function quick_editor(opts) {
     }
   }
 
-  function fail(data, type) { throw new Error('invalid message', { cause: { data, type } }) }
-
+  function fail (data, type) { throw new Error('invalid message', { cause: { data, type } }) }
 }
 
-
-function fallback_module() {
+function fallback_module () {
   return {
     api: fallback_instance
   }
-  function fallback_instance() {
+  function fallback_instance () {
     return {
       drive: {
         'style/': {
@@ -6542,12 +6539,13 @@ function fallback_module() {
     }
   }
 }
+
 }).call(this)}).call(this,"/src/node_modules/quick_editor.js")
 },{"STATE":1,"helpers":11}],18:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
-const { sdb, get } = statedb(fallback_module)
+const { get } = statedb(fallback_module)
 
 const console_history = require('console_history')
 const actions = require('actions')
@@ -6558,7 +6556,11 @@ module.exports = component
 
 async function component (opts, protocol) {
   const { id, sdb } = await get(opts.sid)
-  const {drive} = sdb
+  const { drive } = sdb
+  // const ids = opts.ids || {}
+  // const by = id
+  // const to = ids.up || 'parent'
+
   const on = {
     style: inject
   }
@@ -6575,13 +6577,11 @@ async function component (opts, protocol) {
   <style>
   </style>`
   const style = shadow.querySelector('style')
-  const main = shadow.querySelector('.main')
   const graph_explorer_placeholder = shadow.querySelector('graph-explorer-placeholder')
   const actions_placeholder = shadow.querySelector('actions-placeholder')
   const tabbed_editor_placeholder = shadow.querySelector('tabbed-editor-placeholder')
   const console_placeholder = shadow.querySelector('console-history-placeholder')
 
-  
   let console_history_el = null
   let actions_el = null
   let tabbed_editor_el = null
@@ -6590,29 +6590,28 @@ async function component (opts, protocol) {
   const subs = await sdb.watch(onbatch)
   let send = null
   let _ = null
-  if(protocol) {
+  if (protocol) {
     send = protocol(msg => onmessage(msg))
     _ = { up: send, actions: null, send_console_history: null, send_tabbed_editor: null, send_graph_explorer: null }
   }
-  
-  graph_explorer_el = protocol ? await graph_explorer_wrapper(subs[3], graph_explorer_protocol) : await graph_explorer_wrapper(subs[3])
+
+  graph_explorer_el = protocol ? await graph_explorer_wrapper({ ...subs[3], ids: { up: id } }, graph_explorer_protocol) : await graph_explorer_wrapper(subs[3])
   graph_explorer_el.classList.add('graph-explorer')
   graph_explorer_placeholder.replaceWith(graph_explorer_el)
-  
-  actions_el = protocol ? await actions(subs[1], actions_protocol) : await actions(subs[1])
+
+  actions_el = protocol ? await actions({ ...subs[1], ids: { up: id } }, actions_protocol) : await actions(subs[1])
   actions_el.classList.add('actions')
   actions_placeholder.replaceWith(actions_el)
-  
-  tabbed_editor_el = protocol ? await tabbed_editor(subs[2], tabbed_editor_protocol) : await tabbed_editor(subs[2])
+
+  tabbed_editor_el = protocol ? await tabbed_editor({ ...subs[2], ids: { up: id } }, tabbed_editor_protocol) : await tabbed_editor(subs[2])
   tabbed_editor_el.classList.add('tabbed-editor')
   tabbed_editor_placeholder.replaceWith(tabbed_editor_el)
-  
-  console_history_el = protocol ? await console_history(subs[0], console_history_protocol) : await console_history(subs[0])
+
+  console_history_el = protocol ? await console_history({ ...subs[0], ids: { up: id } }, console_history_protocol) : await console_history(subs[0])
   console_history_el.classList.add('console-history')
   console_placeholder.replaceWith(console_history_el)
   let console_view = false
   let actions_view = false
-  let tabbed_editor_view = true
   let graph_explorer_view = false
 
   if (protocol) {
@@ -6623,9 +6622,9 @@ async function component (opts, protocol) {
   }
 
   return el
-  
-  function console_history_toggle_view() { 
-    if(console_view) {
+
+  function console_history_toggle_view () {
+    if (console_view) {
       console_history_el.classList.remove('show')
       console_history_el.classList.add('hide')
     } else {
@@ -6635,8 +6634,8 @@ async function component (opts, protocol) {
     console_view = !console_view
   }
 
-  function actions_toggle_view() {
-    if(actions_view) {
+  function actions_toggle_view () {
+    if (actions_view) {
       actions_el.classList.remove('show')
       actions_el.classList.add('hide')
     } else {
@@ -6646,8 +6645,8 @@ async function component (opts, protocol) {
     actions_view = !actions_view
   }
 
-  function graph_explorer_toggle_view() {
-    if(graph_explorer_view) {
+  function graph_explorer_toggle_view () {
+    if (graph_explorer_view) {
       graph_explorer_el.classList.remove('show')
       graph_explorer_el.classList.add('hide')
     } else {
@@ -6657,7 +6656,7 @@ async function component (opts, protocol) {
     graph_explorer_view = !graph_explorer_view
   }
 
-  function tabbed_editor_toggle_view(show = true) {
+  function tabbed_editor_toggle_view (show = true) {
     if (show) {
       tabbed_editor_el.classList.remove('hide')
       tabbed_editor_el.classList.add('show')
@@ -6667,31 +6666,31 @@ async function component (opts, protocol) {
       console_history_el.classList.add('hide')
       graph_explorer_el.classList.remove('show')
       graph_explorer_el.classList.add('hide')
-      tabbed_editor_view = true
       actions_view = false
       console_view = false
       graph_explorer_view = false
     } else {
       tabbed_editor_el.classList.remove('show')
       tabbed_editor_el.classList.add('hide')
-      tabbed_editor_view = false
     }
-  } 
+  }
 
-  async function onbatch(batch) {
-    for (const { type, paths } of batch){
+  async function onbatch (batch) {
+    for (const { type, paths } of batch) {
       const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
       const func = on[type] || fail
       func(data, type)
     }
   }
-  function fail(data, type) { console.warn('invalid message', { cause: { data, type } }) }
+  function fail (data, type) { console.warn('invalid message', { cause: { data, type } }) }
   function inject (data) {
     style.replaceChildren((() => {
-      return document.createElement('style').textContent = data[0]
+      const style = document.createElement('style')
+      style.textContent = data[0]
+      return style
     })())
   }
-  
+
   // ---------
   // PROTOCOLS
   // ---------
@@ -6699,59 +6698,56 @@ async function component (opts, protocol) {
   function console_history_protocol (send) {
     _.send_console_history = send
     return on
-    function on (msg) { 
+    function on (msg) {
       _.up(msg)
     }
   }
-  
+
   function actions_protocol (send) {
     _.send_actions = send
     return on
-    function on (msg) { 
+    function on (msg) {
       _.up(msg)
     }
   }
-  
+
   function tabbed_editor_protocol (send) {
     _.send_tabbed_editor = send
     return on
-    function on (msg) { 
+    function on (msg) {
       _.up(msg)
     }
   }
-  
+
   function graph_explorer_protocol (send) {
     _.send_graph_explorer = send
     return on
-    function on (msg) { 
+    function on (msg) {
       _.up(msg)
     }
   }
-  
+
   function onmessage (msg) {
     const { type, data } = msg
-    if(type == 'console_history_toggle') console_history_toggle_view()
-    else if (type == 'graph_explorer_toggle') graph_explorer_toggle_view()
-    else if (type == 'display_actions') actions_toggle_view(data)
-    else if (type == 'filter_actions') _.send_actions(msg)
-    else if (type == 'tab_name_clicked') {
+    if (type === 'console_history_toggle') console_history_toggle_view()
+    else if (type === 'graph_explorer_toggle') graph_explorer_toggle_view()
+    else if (type === 'display_actions') actions_toggle_view(data)
+    else if (type === 'filter_actions') _.send_actions(msg)
+    else if (type === 'tab_name_clicked') {
       tabbed_editor_toggle_view(true)
       if (_.send_tabbed_editor) {
         _.send_tabbed_editor({ ...msg, type: 'toggle_tab' })
       }
-    }
-    else if (type == 'tab_close_clicked') {
+    } else if (type === 'tab_close_clicked') {
       if (_.send_tabbed_editor) {
         _.send_tabbed_editor({ ...msg, type: 'close_tab' })
       }
-    }
-    else if (type == 'switch_tab') {
+    } else if (type === 'switch_tab') {
       tabbed_editor_toggle_view(true)
       if (_.send_tabbed_editor) {
         _.send_tabbed_editor(msg)
       }
-    }
-    else if (type == 'entry_toggled') {
+    } else if (type === 'entry_toggled') {
       if (_.send_graph_explorer) {
         _.send_graph_explorer(msg)
       }
@@ -6763,16 +6759,16 @@ function fallback_module () {
   return {
     api: fallback_instance,
     _: {
-      'console_history': {
+      console_history: {
         $: ''
       },
-      'actions': {
+      actions: {
         $: ''
       },
-      'tabbed_editor': {
+      tabbed_editor: {
         $: ''
       },
-      'graph_explorer_wrapper': {
+      graph_explorer_wrapper: {
         $: ''
       }
     }
@@ -6781,43 +6777,43 @@ function fallback_module () {
   function fallback_instance () {
     return {
       _: {
-        'console_history': {
+        console_history: {
           0: '',
           mapping: {
-            'style': 'style',
-            'commands': 'commands',
-            'icons': 'icons',
-            'scroll': 'scroll'
+            style: 'style',
+            commands: 'commands',
+            icons: 'icons',
+            scroll: 'scroll'
           }
         },
-        'actions': {
+        actions: {
           0: '',
           mapping: {
-            'style': 'style',
-            'actions': 'actions',
-            'icons': 'icons',
-            'hardcons': 'hardcons'
+            style: 'style',
+            actions: 'actions',
+            icons: 'icons',
+            hardcons: 'hardcons'
           }
         },
-        'tabbed_editor': {
+        tabbed_editor: {
           0: '',
           mapping: {
-            'style': 'style',
-            'files': 'files',
-            'highlight': 'highlight',
-            'active_tab': 'active_tab'
+            style: 'style',
+            files: 'files',
+            highlight: 'highlight',
+            active_tab: 'active_tab'
           }
         },
-        'graph_explorer_wrapper': {
+        graph_explorer_wrapper: {
           0: '',
           mapping: {
-            'theme': 'style',
-            'entries': 'entries',
-            'runtime': 'runtime',
-            'mode': 'mode',
-            'flags': 'flags',
-            'keybinds': 'keybinds',
-            'undo': 'undo'
+            theme: 'style',
+            entries: 'entries',
+            runtime: 'runtime',
+            mode: 'mode',
+            flags: 'flags',
+            keybinds: 'keybinds',
+            undo: 'undo'
           }
         }
       },
@@ -6873,20 +6869,19 @@ function fallback_module () {
             `
           }
         },
-        "entries/": {},
-        "flags/": {},
-        "keybinds/": {},
-        "commands/": {},
-        "icons/": {},
-        "scroll/": {},
-        "actions/": {},
-        "hardcons/": {},
-        "files/": {},
-        "highlight/": {},
-        "active_tab/": {},
-        "entries/": {},
-        "runtime/": {},
-        "mode/": {},
+        'entries/': {},
+        'flags/': {},
+        'keybinds/': {},
+        'commands/': {},
+        'icons/': {},
+        'scroll/': {},
+        'actions/': {},
+        'hardcons/': {},
+        'files/': {},
+        'highlight/': {},
+        'active_tab/': {},
+        'runtime/': {},
+        'mode/': {},
         'undo/': {}
       }
     }
@@ -6898,14 +6893,17 @@ function fallback_module () {
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
-const { sdb, get } = statedb(fallback_module)
+const { get } = statedb(fallback_module)
 
 module.exports = steps_wizard
 
 async function steps_wizard (opts, protocol) {
   const { id, sdb } = await get(opts.sid)
-  const {drive} = sdb
-  
+  const { drive } = sdb
+  const ids = opts.ids || {}
+  const by = id
+  const to = ids.up || 'parent'
+
   const on = {
     style: inject
   }
@@ -6914,9 +6912,9 @@ async function steps_wizard (opts, protocol) {
   let currentActiveStep = 0
   let mid = 0
 
-  let _ = null
-  if(protocol){
-    send = protocol(msg => onmessage(msg))
+  let _ = { up: null }
+  if (protocol) {
+    const send = protocol(msg => onmessage(msg))
     _ = { up: send }
   }
 
@@ -6934,26 +6932,27 @@ async function steps_wizard (opts, protocol) {
 
   const style = shadow.querySelector('style')
   const steps_entries = shadow.querySelector('.steps-slot')
+  // eslint-disable-next-line no-unused-vars
   const subs = await sdb.watch(onbatch)
 
   // for demo purpose
   render_steps([
-    {name: "Optional Step", "type": "optional", "is_completed": false, "component": "form_input", "status": "default", "data": ""},
-	  {name: "Step 2 testingasadasdadasdasdaasdasdsassss", "type": "mandatory", "is_completed": false, "component": "form_input", "status": "default", "data": ""},
-    {name: "Step 3", "type": "mandatory", "is_completed": false, "component": "form_input", "status": "default", "data": ""},
-    {name: "Step 4", "type": "mandatory", "is_completed": false, "component": "form_input", "status": "default", "data": ""},
-    {name: "Step 5", "type": "mandatory", "is_completed": false, "component": "form_input", "status": "default", "data": ""},
-    {name: "Step 6", "type": "mandatory", "is_completed": false, "component": "form_input", "status": "default", "data": ""},
-    {name: "Step 7", "type": "mandatory", "is_completed": false, "component": "form_input", "status": "default", "data": ""},
-    {name: "Step 8", "type": "mandatory", "is_completed": false, "component": "form_input", "status": "default", "data": ""},
-    {name: "Step 9", "type": "mandatory", "is_completed": false, "component": "form_input", "status": "default", "data": ""},
-    {name: "Step 10", "type": "mandatory", "is_completed": false, "component": "form_input", "status": "default", "data": ""},
-    {name: "Step 11", "type": "mandatory", "is_completed": false, "component": "form_input", "status": "default", "data": ""},
-    {name: "Step 12", "type": "mandatory", "is_completed": false, "component": "form_input", "status": "default", "data": ""},
+    { name: 'Optional Step', type: 'optional', is_completed: false, component: 'form_input', status: 'default', data: '' },
+    { name: 'Step 2 testingasadasdadasdasdaasdasdsassss', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
+    { name: 'Step 3', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
+    { name: 'Step 4', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
+    { name: 'Step 5', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
+    { name: 'Step 6', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
+    { name: 'Step 7', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
+    { name: 'Step 8', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
+    { name: 'Step 9', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
+    { name: 'Step 10', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
+    { name: 'Step 11', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
+    { name: 'Step 12', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' }
   ])
 
   return el
-  
+
   function onmessage ({ type, data }) {
     console.log('steps_ data', type, data)
     if (type === 'init_data') {
@@ -6961,12 +6960,11 @@ async function steps_wizard (opts, protocol) {
       render_steps(variables)
     }
   }
-  
-  function render_steps(steps) {
-    if (!steps)
-      return;
 
-    steps_entries.innerHTML = '';
+  function render_steps (steps) {
+    if (!steps) { return }
+
+    steps_entries.innerHTML = ''
 
     steps.forEach((step, index) => {
       const btn = document.createElement('button')
@@ -7000,30 +6998,29 @@ async function steps_wizard (opts, protocol) {
         currentActiveStep = index
         center_step(btn)
         render_steps(steps)
-        const head = ['steps_wizard', 'parent', mid++]
+        const head = [by, to, mid++]
         const refs = {}
-        _?.up({head, refs, type: 'step_clicked', data: {...step, index, total_steps: steps.length, is_accessible: accessible}})
-      };
+        _?.up({ head, refs, type: 'step_clicked', data: { ...step, index, total_steps: steps.length, is_accessible: accessible } })
+      }
 
       steps_entries.appendChild(btn)
-    });
+    })
   }
 
-  
-  function center_step(step_button) {
+  function center_step (step_button) {
     const container_width = steps_entries.clientWidth
     const step_left = step_button.offsetLeft
     const step_width = step_button.offsetWidth
-    
+
     const center_position = step_left - (container_width / 2) + (step_width / 2)
-    
+
     steps_entries.scrollTo({
       left: center_position,
       behavior: 'smooth'
     })
   }
 
-  function can_access(index, steps) {
+  function can_access (index, steps) {
     for (let i = 0; i < index; i++) {
       if (!steps[i].is_completed && steps[i].type !== 'optional') {
         return false
@@ -7033,20 +7030,21 @@ async function steps_wizard (opts, protocol) {
     return true
   }
 
-  async function onbatch(batch) {
-    for (const { type, paths } of batch){
+  async function onbatch (batch) {
+    for (const { type, paths } of batch) {
       const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
       const func = on[type] || fail
       func(data, type)
     }
   }
-  function fail(data, type) { throw new Error('invalid message', { cause: { data, type } }) }
+  function fail (data, type) { throw new Error('invalid message', { cause: { data, type } }) }
   function inject (data) {
     style.replaceChildren((() => {
-      return document.createElement('style').textContent = data[0]
+      const style_el = document.createElement('style')
+      style_el.textContent = data[0]
+      return style_el
     })())
   }
- 
 }
 
 function fallback_module () {
@@ -7059,24 +7057,29 @@ function fallback_module () {
       drive: {
         'style/': {
           'stepswizard.css': {
-            '$ref': 'stepswizard.css' 
+            $ref: 'stepswizard.css'
           }
         }
       }
     }
   }
 }
+
 }).call(this)}).call(this,"/src/node_modules/steps_wizard/steps_wizard.js")
 },{"STATE":1}],20:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
-const { sdb, get } = statedb(fallback_module)
+const { get } = statedb(fallback_module)
 module.exports = tabbed_editor
 
-async function tabbed_editor(opts, protocol) {
-  const { sdb } = await get(opts.sid)
+async function tabbed_editor (opts, protocol) {
+  const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
+  const ids = opts.ids || {}
+  const by = id
+  const to = ids.up || 'parent'
+
   const on = {
     style: inject,
     files: onfiles,
@@ -7096,10 +7099,8 @@ async function tabbed_editor(opts, protocol) {
   <style>
   </style>`
   const style = shadow.querySelector('style')
-  const main = shadow.querySelector('.main')
   const editor_content = shadow.querySelector('.editor-content')
 
-  
   let init = false
   let mid = 0
   let files = {}
@@ -7112,48 +7113,46 @@ async function tabbed_editor(opts, protocol) {
     send = protocol(msg => onmessage(msg))
     _ = { up: send }
   }
-
+  // eslint-disable-next-line no-unused-vars
   const subs = await sdb.watch(onbatch)
 
-  return el
-
-  function onmessage(msg) {
+  function onmessage (msg) {
     const { type, data } = msg
     switch (type) {
-      case 'switch_tab':
-        switch_to_tab(data, msg)
-        break
-      case 'close_tab':
-        close_tab(data, msg)
-        break
-      case 'toggle_tab':
-        toggle_tab(data, msg)
-        break
-      default:
+    case 'switch_tab':
+      switch_to_tab(data, msg)
+      break
+    case 'close_tab':
+      close_tab(data, msg)
+      break
+    case 'toggle_tab':
+      toggle_tab(data, msg)
+      break
+    default:
     }
   }
 
-  function switch_to_tab(tab_data, msg) {
+  function switch_to_tab (tab_data, msg) {
     if (active_tab === tab_data.id) {
       return
     }
-    
+
     active_tab = tab_data.id
     create_editor(tab_data)
-    
+
     if (_) {
-      const head = ['tabbed_editor', 'parent', mid++]
+      const head = [by, to, mid++]
       const refs = msg?.head ? { cause: msg.head } : undefined
-      _.up({ 
-        head, 
-        refs, 
-        type: 'tab_switched', 
-        data: tab_data 
+      _.up({
+        head,
+        refs,
+        type: 'tab_switched',
+        data: tab_data
       })
     }
   }
 
-  function toggle_tab(tab_data, msg) {
+  function toggle_tab (tab_data, msg) {
     if (active_tab === tab_data.id) {
       hide_editor()
       active_tab = null
@@ -7162,26 +7161,26 @@ async function tabbed_editor(opts, protocol) {
     }
   }
 
-  function close_tab(tab_data, msg) {
+  function close_tab (tab_data, msg) {
     if (active_tab === tab_data.id) {
       hide_editor()
       active_tab = null
     }
-    
+
     if (_) {
-      const head = ['tabbed_editor', 'parent', mid++]
+      const head = [by, to, mid++]
       const refs = msg?.head ? { cause: msg.head } : undefined
-      _.up({ 
-        head, 
-        refs, 
-        type: 'tab_closed', 
-        data: tab_data 
+      _.up({
+        head,
+        refs,
+        type: 'tab_closed',
+        data: tab_data
       })
     }
   }
 
-  function create_editor(tab_data) {
-    let parsed_data = JSON.parse(tab_data[0])
+  function create_editor (tab_data) {
+    const parsed_data = JSON.parse(tab_data[0])
     const file_content = files[parsed_data.id] || ''
     // console.log('Creating editor for:', parsed_data)
 
@@ -7198,14 +7197,14 @@ async function tabbed_editor(opts, protocol) {
     const line_numbers = editor_content.querySelector('.line-numbers')
     const code_area = editor_content.querySelector('.code-area')
     current_editor = { editor, code_area, line_numbers, tab_data: parsed_data }
-    
+
     code_area.oninput = handle_code_input
     code_area.onscroll = handle_code_scroll
-    
+
     update_line_numbers()
   }
 
-  function hide_editor() {
+  function hide_editor () {
     editor_content.innerHTML = `
       <div class="editor-placeholder">
         <div class="placeholder-text">Select a file to edit</div>
@@ -7213,42 +7212,42 @@ async function tabbed_editor(opts, protocol) {
     current_editor = null
   }
 
-  function update_line_numbers() {
+  function update_line_numbers () {
     if (!current_editor) return
-    
+
     const { code_area, line_numbers } = current_editor
     const lines = code_area.value.split('\n')
     const line_count = lines.length
-    
+
     let line_html = ''
     for (let i = 1; i <= line_count; i++) {
       line_html += `<div class="line-number">${i}</div>`
     }
-    
+
     line_numbers.innerHTML = line_html
   }
 
-  function save_file_content() {
+  function save_file_content () {
     if (!current_editor) return
-    
+
     const { code_area, tab_data } = current_editor
     files[tab_data.id] = code_area.value
-    
+
     if (_) {
-      const head = ['tabbed_editor', 'parent', mid++]
-      _.up({ 
-        head, 
-        type: 'file_changed', 
-        data: { 
-          id: tab_data.id, 
-          content: code_area.value 
-        } 
+      const head = [by, to, mid++]
+      _.up({
+        head,
+        type: 'file_changed',
+        data: {
+          id: tab_data.id,
+          content: code_area.value
+        }
       })
     }
   }
 
-  async function onbatch(batch) {
-    for (const { type, paths } of batch){
+  async function onbatch (batch) {
+    for (const { type, paths } of batch) {
       const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
       const func = on[type] || fail
       func(data, type)
@@ -7258,42 +7257,42 @@ async function tabbed_editor(opts, protocol) {
     }
   }
 
-  function fail(data, type) { 
+  function fail (data, type) {
     console.warn('Invalid message', { data, type })
   }
 
-  function inject(data) {
+  function inject (data) {
     style.innerHTML = data.join('\n')
   }
 
-  function onfiles(data) {
+  function onfiles (data) {
     files = data[0]
   }
 
-  function onactivetab(data) {
+  function onactivetab (data) {
     if (data && data.id !== active_tab) {
       switch_to_tab(data)
     }
   }
 
-  function handle_code_input() {
+  function handle_code_input () {
     update_line_numbers()
     save_file_content()
   }
 
-  function handle_code_scroll() {
+  function handle_code_scroll () {
     if (!current_editor) return
     const { code_area, line_numbers } = current_editor
     line_numbers.scrollTop = code_area.scrollTop
   }
 }
 
-function fallback_module() {
+function fallback_module () {
   return {
     api: fallback_instance
   }
 
-  function fallback_instance() {
+  function fallback_instance () {
     return {
       drive: {
         'files/': {
@@ -7483,12 +7482,16 @@ function fallback_module() {
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
-const { sdb, get } = statedb(fallback_module)
+const { get } = statedb(fallback_module)
 module.exports = component
 
 async function component (opts, protocol) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
+  const ids = opts.ids || {}
+  const by = id
+  const to = ids.up || 'parent'
+
   const on = {
     variables: onvariables,
     style: inject,
@@ -7503,13 +7506,12 @@ async function component (opts, protocol) {
   </style>`
   const entries = shadow.querySelector('.tab-entries')
   const style = shadow.querySelector('style')
-  const main = shadow.querySelector('.main')
 
-  
   let init = false
   let mid = 0
   let variables = []
   let dricons = []
+  // eslint-disable-next-line no-unused-vars
   const subs = await sdb.watch(onbatch)
   let send = null
   let _ = null
@@ -7558,7 +7560,7 @@ async function component (opts, protocol) {
       start_x = e.touches[0].pageX - entries.offsetLeft
       scroll_start = entries.scrollLeft
     }
-    ;['ontouchend', 'ontouchcancel'].forEach(ev => {
+    ['ontouchend', 'ontouchcancel'].forEach(ev => {
       entries[ev] = stop
     })
 
@@ -7569,10 +7571,10 @@ async function component (opts, protocol) {
   }
   return div
 
-  function onmessage(msg) {
+  function onmessage (msg) {
     const { type } = msg
     switch (type) {
-      default:
+    default:
         // Handle other message types
     }
   }
@@ -7586,39 +7588,39 @@ async function component (opts, protocol) {
     <button class="btn">${dricons[0]}</button>`
 
     el.className = 'tabsbtn'
-    const icon_el = el.querySelector('.icon')
     const name_el = el.querySelector('.name')
     const close_btn = el.querySelector('.btn')
 
     name_el.draggable = false
-    
+
     // Add click handler for tab name (switch/toggle tab)
     name_el.onclick = () => {
       if (_) {
-        const head = ['tabs', 'parent', mid++]
+        const head = [by, to, mid++]
         const refs = {}
         _.up({ head, refs, type: 'ui_focus', data: 'tab' })
-        _.up({ head, refs, type: 'tab_name_clicked', data: { id, name } })
+        const head2 = [by, to, mid++]
+        _.up({ head: head2, refs, type: 'tab_name_clicked', data: { id, name } })
       }
     }
-    
+
     // Add click handler for close button
     close_btn.onclick = (e) => {
       e.stopPropagation()
       if (_) {
-        const head = ['tabs', 'parent', mid++]
+        const head = [by, to, mid++]
         const refs = {}
         _.up({ head, refs, type: 'ui_focus', data: 'tab' })
-        _.up({ head, refs, type: 'tab_close_clicked', data: { id, name } })
+        const head2 = [by, to, mid++]
+        _.up({ head: head2, refs, type: 'tab_close_clicked', data: { id, name } })
       }
     }
-    
+
     entries.appendChild(el)
-    return
   }
 
-  async function onbatch(batch) {
-    for (const { type, paths } of batch){
+  async function onbatch (batch) {
+    for (const { type, paths } of batch) {
       const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
       const func = on[type] || fail
       func(data, type)
@@ -7659,28 +7661,28 @@ async function component (opts, protocol) {
 
 function fallback_module () {
   return {
-    api: fallback_instance,
+    api: fallback_instance
   }
   function fallback_instance () {
     return {
       drive: {
         'icons/': {
           'cross.svg': {
-            '$ref': 'cross.svg'
+            $ref: 'cross.svg'
           },
           '1.svg': {
-            '$ref': 'icon.svg'
+            $ref: 'icon.svg'
           },
           '2.svg': {
-            '$ref': 'icon.svg'
+            $ref: 'icon.svg'
           },
           '3.svg': {
-            '$ref': 'icon.svg'
+            $ref: 'icon.svg'
           }
         },
         'variables/': {
           'tabs.json': {
-            '$ref': 'tabs.json'
+            $ref: 'tabs.json'
           }
         },
         'scroll/': {
@@ -7690,7 +7692,7 @@ function fallback_module () {
         },
         'style/': {
           'theme.css': {
-            '$ref': 'style.css'
+            $ref: 'style.css'
           }
         }
       }
@@ -7703,7 +7705,7 @@ function fallback_module () {
 (function (__filename){(function (){
 const state = require('STATE')
 const state_db = state(__filename)
-const { sdb, get } = state_db(fallback_module)
+const { get } = state_db(fallback_module)
 
 const tabs_component = require('tabs')
 const task_manager = require('task_manager')
@@ -7712,7 +7714,11 @@ module.exports = tabsbar
 
 async function tabsbar (opts, protocol) {
   const { id, sdb } = await get(opts.sid)
-  const {drive} = sdb
+  const { drive } = sdb
+  const ids = opts.ids || {}
+  const by = id
+  const to = ids.up || 'parent'
+
   const on = {
     style: inject,
     icons: inject_icons
@@ -7722,14 +7728,14 @@ async function tabsbar (opts, protocol) {
   let mid = 0
   const el = document.createElement('div')
   const shadow = el.attachShadow({ mode: 'closed' })
-  
+
   let send = null
   let _ = null
   if (protocol) {
     send = protocol(msg => onmessage(msg))
-    _ = { up: send, tabs: null }
+    _ = { up: send, tabs: null, task_manager: null }
   }
-  
+
   shadow.innerHTML = `
   <div class="tabs-bar-container main">
   <button class="hat-btn"></button>
@@ -7740,7 +7746,6 @@ async function tabsbar (opts, protocol) {
   <style>
   </style>`
   const style = shadow.querySelector('style')
-  const main = shadow.querySelector('.main')
   const hat_btn = shadow.querySelector('.hat-btn')
   const bar_btn = shadow.querySelector('.bar-btn')
 
@@ -7751,7 +7756,7 @@ async function tabsbar (opts, protocol) {
     const svgElem = doc.documentElement
     hat_btn.replaceChildren(svgElem)
     hat_btn.onclick = () => {
-      const head = ['tabsbar', 'parent', mid++]
+      const head = [by, to, mid++]
       const refs = {}
       _.up?.({ head, refs, type: 'ui_focus', data: 'wizard hat' })
     }
@@ -7762,41 +7767,41 @@ async function tabsbar (opts, protocol) {
     const svgElem = doc.documentElement
     bar_btn.replaceChildren(svgElem)
   }
-  const tabs = protocol ? await tabs_component(subs[0], tabs_protocol) : await tabs_component(subs[0])
+  const tabs = protocol ? await tabs_component({ ...subs[0], ids: { up: id } }, tabs_protocol) : await tabs_component(subs[0])
   tabs.classList.add('tabs-bar')
   shadow.querySelector('tabs').replaceWith(tabs)
 
-  const task_mgr = await task_manager(subs[1], () => {
-    console.log('Task manager clicked!')
-    const head = ['tabsbar', 'parent', mid++]
-    const refs = {}
-    _.up?.({ head, refs, type: 'ui_focus', data: 'task manager' })
-  })
+  const task_mgr = await task_manager({ ...subs[1], ids: { up: id } }, task_manager_protocol)
   task_mgr.classList.add('bar-btn')
   shadow.querySelector('task-manager').replaceWith(task_mgr)
 
   return el
 
-  function onmessage(msg) {
+  function onmessage (msg) {
     const { type } = msg
     switch (type) {
-      default:
+    default:
         // Handle other message types
     }
   }
 
-  function tabs_protocol(send) {
+  function tabs_protocol (send) {
     _.tabs = send
     return on
-    function on(msg) {
+    function on (msg) {
       _.up(msg)
     }
   }
 
-  return el
+  function task_manager_protocol (send) {
+    return on
+    function on (msg) {
+      _.up(msg)
+    }
+  }
 
-  async function onbatch(batch) {
-    for (const { type, paths } of batch){
+  async function onbatch (batch) {
+    for (const { type, paths } of batch) {
       const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
       const func = on[type] || fail
       func(data, type)
@@ -7822,7 +7827,7 @@ function fallback_module () {
       },
       task_manager: {
         $: ''
-      },
+      }
     }
   }
 
@@ -7893,18 +7898,24 @@ function fallback_module () {
     }
   }
 }
+
 }).call(this)}).call(this,"/src/node_modules/tabsbar/tabsbar.js")
 },{"STATE":1,"tabs":21,"task_manager":23}],23:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
-const { sdb, get } = statedb(fallback_module)
+const { get } = statedb(fallback_module)
 module.exports = task_manager
 
-async function task_manager (opts, callback = () => console.log('task manager clicked')) {
+async function task_manager (opts, protocol) {
   const { id, sdb } = await get(opts.sid)
-  const {drive} = sdb
-  let number = 0
+  const { drive } = sdb
+  const ids = opts.ids || {}
+  const by = id
+  const to = ids.up || 'parent'
+
+  let mid = 0
+
   const on = {
     style: inject,
     count: update_count
@@ -7920,18 +7931,34 @@ async function task_manager (opts, callback = () => console.log('task manager cl
   <style>
   </style>`
   const style = shadow.querySelector('style')
-  const main = shadow.querySelector('.main')
   const btn = shadow.querySelector('.task-count-btn')
 
-  
-  btn.onclick = callback
+  let send = null
+  let _ = null
+  if (protocol) {
+    send = protocol(msg => onmessage(msg))
+    _ = { up: send }
+  }
+
+  btn.onclick = () => {
+    if (_) {
+      const head = [by, to, mid++]
+      const refs = {}
+      _.up({ head, refs, type: 'ui_focus', data: 'task manager' })
+    }
+  }
 
   await sdb.watch(onbatch)
 
   return el
 
-  async function onbatch(batch) {
-    for (const { type, paths } of batch){
+  function onmessage (msg) {
+    // console.log(msg)
+    // const { type, data } = msg
+  }
+
+  async function onbatch (batch) {
+    for (const { type, paths } of batch) {
       const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
       const func = on[type] || fail
       func(data, type)
@@ -7944,13 +7971,12 @@ async function task_manager (opts, callback = () => console.log('task manager cl
 
   function update_count (data) {
     if (btn) btn.textContent = data.toString()
-    else number = data
   }
 }
 
 function fallback_module () {
   return {
-    api: fallback_instance,
+    api: fallback_instance
   }
 
   function fallback_instance () {
@@ -7991,15 +8017,19 @@ function fallback_module () {
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
-const { sdb, get } = statedb(fallback_module)
-const action_bar = require('action_bar')
+const { get } = statedb(fallback_module)
+const manager = require('manager')
 const tabsbar = require('tabsbar')
 
 module.exports = taskbar
 
-async function taskbar(opts, protocol) {
+async function taskbar (opts, protocol) {
   const { id, sdb } = await get(opts.sid)
-  const {drive} = sdb
+  const { drive } = sdb
+  // const ids = opts.ids || {}
+  // const by = id
+  // const to = ids.up || 'parent'
+
   const on = {
     style: inject
   }
@@ -8009,110 +8039,108 @@ async function taskbar(opts, protocol) {
 
   shadow.innerHTML = `
   <div class="taskbar-container main">
-    <div class="action-bar-slot"></div>
+    <div class="manager-slot"></div>
     <div class="tabsbar-slot"></div>
   </div>
   <style>
   </style>`
   const style = shadow.querySelector('style')
-  const main = shadow.querySelector('.main')
-  const action_bar_slot = shadow.querySelector('.action-bar-slot')
+  const manager_slot = shadow.querySelector('.manager-slot')
   const tabsbar_slot = shadow.querySelector('.tabsbar-slot')
 
-  
   const subs = await sdb.watch(onbatch)
   let send = null
   let _ = null
-  if(protocol) {
+  if (protocol) {
     send = protocol(msg => onmessage(msg))
-    _ = { up: send, action_bar: null, tabsbar: null }
+    _ = { up: send, manager: null, tabsbar: null }
   }
-  const action_bar_el = protocol ? await action_bar(subs[0], action_bar_protocol) : await action_bar(subs[0])
-  action_bar_el.classList.add('replaced-action-bar')
-  action_bar_slot.replaceWith(action_bar_el)
+  const manager_el = protocol ? await manager({ ...subs[0], ids: { up: id } }, manager_protocol) : await manager(subs[0])
+  manager_el.classList.add('replaced-manager')
+  manager_slot.replaceWith(manager_el)
 
-  const tabsbar_el = protocol ? await tabsbar(subs[1], tabsbar_protocol) : await tabsbar(subs[1])
+  const tabsbar_el = protocol ? await tabsbar({ ...subs[1], ids: { up: id } }, tabsbar_protocol) : await tabsbar(subs[1])
   tabsbar_el.classList.add('replaced-tabsbar')
   tabsbar_slot.replaceWith(tabsbar_el)
 
   return el
 
-  async function onbatch(batch) {
-    for (const { type, paths } of batch){
+  async function onbatch (batch) {
+    for (const { type, paths } of batch) {
       const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
       const func = on[type] || fail
       func(data, type)
     }
   }
 
-  function fail(data, type) { throw new Error('invalid message', { cause: { data, type } }) }
+  function fail (data, type) { throw new Error('invalid message', { cause: { data, type } }) }
 
-  function inject(data) {
+  function inject (data) {
     style.innerHTML = data.join('\n')
   }
 
   // ---------
-  // PROTOCOLS  
+  // PROTOCOLS
   // ---------
-  function action_bar_protocol (send) {
-    _.action_bar = send
+  function manager_protocol (send) {
+    _.manager = send
     return on
-    function on (msg) { 
+    function on (msg) {
       _.up(msg)
     }
   }
-  
+
   function tabsbar_protocol (send) {
     _.tabsbar = send
     return on
-    function on (msg) { 
+    function on (msg) {
       _.up(msg)
     }
   }
-  
+
   function onmessage (msg) {
     const { type } = msg
     switch (type) {
-      case 'tab_name_clicked':
-      case 'tab_close_clicked':
-        _.up(msg)
-        break
-      default:
-        if (_.action_bar) {
-          _.action_bar(msg)
-        }
+    case 'tab_name_clicked':
+    case 'tab_close_clicked':
+      _.up(msg)
+      break
+    default:
+      if (_.manager) {
+        _.manager(msg)
+      }
     }
   }
 }
 
-function fallback_module() {
+function fallback_module () {
   return {
     api: fallback_instance,
     _: {
-      'action_bar': {
+      manager: {
         $: ''
       },
-      'tabsbar': {
+      tabsbar: {
         $: ''
-      },
+      }
     }
   }
 
-  function fallback_instance() {
+  function fallback_instance () {
     return {
       _: {
-        'action_bar': {
+        manager: {
           0: '',
           mapping: {
-            'icons': 'icons',
-            'style': 'style'
+            icons: 'icons',
+            style: 'style'
           }
         },
-        'tabsbar': {
+        tabsbar: {
           0: '',
           mapping: {
-            'icons': 'icons',
-            'style': 'style'
+            icons: 'icons',
+            style: 'style'
           }
         }
       },
@@ -8129,7 +8157,7 @@ function fallback_module() {
                 display: flex;
                 flex: auto;
               }
-              .replaced-action-bar {
+              .replaced-manager {
                 display: flex;
               }
               @media (max-width: 768px) {
@@ -8146,11 +8174,11 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/taskbar/taskbar.js")
-},{"STATE":1,"action_bar":4,"tabsbar":22}],25:[function(require,module,exports){
+},{"STATE":1,"manager":13,"tabsbar":22}],25:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
-const { sdb, get } = statedb(fallback_module)
+const { get } = statedb(fallback_module)
 
 const space = require('space')
 const taskbar = require('taskbar')
@@ -8159,8 +8187,8 @@ const focus_tracker = require('focus_tracker')
 module.exports = theme_widget
 
 async function theme_widget (opts) {
-  const { id, sdb } = await get(opts.sid)
-  const {drive} = sdb
+  const { sdb } = await get(opts.sid)
+  const { drive } = sdb
   const on = {
     style: inject
   }
@@ -8178,43 +8206,43 @@ async function theme_widget (opts) {
   `
 
   const style = shadow.querySelector('style')
-  const main = shadow.querySelector('.main')
   const space_slot = shadow.querySelector('.space-slot')
   const taskbar_slot = shadow.querySelector('.taskbar-slot')
   const focus_tracker_slot = shadow.querySelector('.focus-tracker-slot')
 
-
   const subs = await sdb.watch(onbatch)
-  
+
   let space_el = null
   let taskbar_el = null
   let focus_tracker_el = null
   const _ = { send_space: null, send_taskbar: null, send_focus_tracker: null }
-  
+
   taskbar_el = await taskbar(subs[1], taskbar_protocol)
   taskbar_slot.replaceWith(taskbar_el)
-  
+
   space_el = await space(subs[0], space_protocol)
   space_el.classList.add('space')
   space_slot.replaceWith(space_el)
 
   focus_tracker_el = await focus_tracker(subs[2], focus_tracker_protocol)
   focus_tracker_slot.replaceWith(focus_tracker_el)
-  
+
   return el
-  
-  async function onbatch(batch) {
-    for (const { type, paths } of batch){
+
+  async function onbatch (batch) {
+    for (const { type, paths } of batch) {
       const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
       // console.log(data, type)
       const func = on[type] || fail
       func(data, type)
     }
   }
-  function fail(data, type) { console.warn('invalid message', { cause: { data, type } }) }
+  function fail (data, type) { console.warn('invalid message', { cause: { data, type } }) }
   function inject (data) {
     style.replaceChildren((() => {
-      return document.createElement('style').textContent = data[0]
+      const style_el = document.createElement('style')
+      style_el.textContent = data[0]
+      return style_el
     })())
   }
 
@@ -8252,16 +8280,16 @@ function fallback_module () {
   return {
     api: fallback_instance,
     _: {
-      'space': {
+      space: {
         $: ''
       },
-      'taskbar': {
+      taskbar: {
         $: '',
         mapping: {
-          'style': 'style'
+          style: 'style'
         }
       },
-      'focus_tracker': {
+      focus_tracker: {
         $: ''
       }
     }
@@ -8270,33 +8298,33 @@ function fallback_module () {
   function fallback_instance () {
     return {
       _: {
-        'space': {
+        space: {
           0: '',
           mapping: {
-            'style': 'style',
-            'flags': 'flags',
-            "commands": "commands",
-            "icons": "icons",
-            "scroll": "scroll",
-            "actions": "actions",
-            "hardcons": "hardcons",
-            "files": "files",
-            "highlight": "highlight",
-            "active_tab": "active_tab",
-            "entries": "entries",
-            "runtime": "runtime",
-            "mode": "mode",
-            'keybinds': 'keybinds',
-            'undo': 'undo'
+            style: 'style',
+            flags: 'flags',
+            commands: 'commands',
+            icons: 'icons',
+            scroll: 'scroll',
+            actions: 'actions',
+            hardcons: 'hardcons',
+            files: 'files',
+            highlight: 'highlight',
+            active_tab: 'active_tab',
+            entries: 'entries',
+            runtime: 'runtime',
+            mode: 'mode',
+            keybinds: 'keybinds',
+            undo: 'undo'
           }
         },
-        'taskbar': {
+        taskbar: {
           0: '',
           mapping: {
-            'style': 'style'
+            style: 'style'
           }
         },
-        'focus_tracker': {
+        focus_tracker: {
           0: ''
         }
       },
@@ -8317,18 +8345,18 @@ function fallback_module () {
             `
           }
         },
-        'flags': {},
-        "commands/": {},
-        "icons/": {},
-        "scroll/": {},
-        "actions/": {},
-        "hardcons/": {},
-        "files/": {},
-        "highlight/": {},
-        "active_tab/": {},
-        "entries/": {},
-        "runtime/": {},
-        "mode/": {},
+        flags: {},
+        'commands/': {},
+        'icons/': {},
+        'scroll/': {},
+        'actions/': {},
+        'hardcons/': {},
+        'files/': {},
+        'highlight/': {},
+        'active_tab/': {},
+        'entries/': {},
+        'runtime/': {},
+        'mode/': {},
         'keybinds/': {},
         'undo/': {}
       }
