@@ -17,23 +17,19 @@
   "scripts": {
     "start": "budo web/page.js:bundle.js --dir . --live --open -- -i STATE",
     "build": "browserify web/page.js -i STATE -o bundle.js",
-    "lint": "standardx"
+    "lint": "standardx --fix"
   },
   "devDependencies": {
     "browserify": "^17.0.1",
     "budo": "^11.8.4",
     "standardx": "^7.0.0"
   },
-  "standardx": {
-    "ignore": [
-      "bundle.js",
-      "web/page.js",
-      "web/boot.js",
-      "temp.js",
-      "guide"
-    ],
+  "eslintConfig": {
+    "env": {
+      "browser": true
+    },
     "rules": {
-      "camelcase": "off",
+      "camelcase": 0,
       "indent": [
         "error",
         2
