@@ -15,13 +15,8 @@
 ```html
 <!DOCTYPE html>
 <html>
-  <head>
-    <meta charset="utf-8">
-    <link rel="icon" href="data:,">
-  </head>
-  <body>
-    <script src="bundle.js#1"></script>
-  </body>
+  <head><meta charset="utf-8"><link rel="icon" href="data:,"></head>
+  <body><script src="index.js"></script></body>
 </html>
 ```
 
@@ -29,36 +24,42 @@
 ```json
 {
   "name": "example",
-  "version": "0.0.1",
+  "version": "0.0.0",
   "description": "example for using STATE",
   "type": "commonjs",
   "main": "src/example.js",
   "scripts": {
-    "start": "budo web/boot.js:bundle.js --dir . --open --live",
-    "build": "browserify web/boot.js -o bundle.js"
+    "start": "budo web/page.js:bundle.js --dir . --live --open -- -i STATE",
+    "build": "browserify web/page.js -i STATE -o bundle.js",
+    "lint": "standardx --fix"
   },
   "devDependencies": {
     "browserify": "^17.0.1",
-    "budo": "^11.8.4"
+    "budo": "^11.8.4",
+    "standardx": "^7.0.0"
+  },
+  "eslintConfig": {
+    "env": {
+      "browser": true
+    },
+    "rules": {
+      "camelcase": 0,
+      "indent": [
+        "error",
+        2
+      ]
+    }
   }
 }
 ```
 
-#### `web/boot.js`
+#### `index.js`
 ```javascript
-const hash = '895579bb57e5c57fc66e031377cba6c73a313703'
-const prefix = 'https://raw.githubusercontent.com/alyhxn/playproject/' + hash + '/'
-const init_url = 'https://raw.githubusercontent.com/alyhxn/playproject/' + hash + '/doc/state/example/init.js'
-const args = arguments
-
-fetch(init_url, { cache: 'no-store' }).then(res => res.text()).then(async source => {
-  const module = { exports: {} }
-  const f = new Function('module', 'require', source)
-  f(module, require)
-  const init = module.exports
-  await init(args, prefix)
-  require('./page')
-})
+const env = { version: 'latest' }
+const arg = { x: 321, y: 543 }
+const url = 'https://playproject.io/datashell/shim.js'
+const src = `${url}?${new URLSearchParams(env)}#${new URLSearchParams(arg)}`
+this.open ? document.body.append(Object.assign(document.createElement('script'), { src })) : importScripts(src)
 ```
 
 #### `web/page.js`
@@ -83,9 +84,11 @@ function defaults () {
     _: {
       '..': {
         $: '',
-        0: override
+        0: override,
+        mapping : {}
       }
-    }
+    },
+    drive : {}
   }
 
   function override ([example]) {
@@ -139,7 +142,7 @@ function defaults () {
 
 2. **Set up the repository**:
    - Create the boilerplate files (`index.html`, `package.json`, `web/boot.js`, `web/page.js`, `src/example.js`).
-
+   - Run `npm install` to install dependencies.
 3. **Run the development server**:
    ```bash
    npm start
@@ -160,8 +163,11 @@ function defaults () {
 - Use `onbatch` to handle updates dynamically.
 - Customize components using the `defaults` and `api` functions.
 
-## Examples Component: `action_bar.js`
+## Example Component: `tabs.js` (@TODO: Update):
 - [`module_example`](./tabs_commented.js)
 
-## Module creation Explanation:
+## Module creation Explanation (@TODO: Update):
 [`module_guide`](./deep_guide_for_modules.md)
+
+## Module Communication (Standard Protocol):
+[`standard_protocol`](./standard_protocol.md)
