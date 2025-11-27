@@ -3153,9 +3153,12 @@ module.exports = action_bar
 async function action_bar (opts, protocol) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
-  const ids = opts.ids || {}
+  const ids = opts.ids
+  if (!ids || !ids.up) {
+    throw new Error(`Component ${__filename} requires ids.up to be provided`)
+  }
   const by = id
-  const to = ids.up || 'parent'
+  const to = ids.up
 
   const on = {
     style: inject,
@@ -3211,14 +3214,14 @@ async function action_bar (opts, protocol) {
 
   history_icon.innerHTML = console_icon
   history_icon.onclick = onhistory
-  const element = protocol ? await quick_actions({ ...subs[0], ids: { up: id } }, quick_actions_protocol) : await quick_actions(subs[0])
+  const element = protocol ? await quick_actions({ ...subs[0], ids: { up: id } }, quick_actions_protocol) : await quick_actions({ ...subs[0], ids: { up: id } })
   quick_placeholder.replaceWith(element)
 
-  const actions_el = await actions({ ...subs[1], ids: { up: id } }, actions_protocol)
+  const actions_el = protocol ? await actions({ ...subs[1], ids: { up: id } }, actions_protocol) : await actions({ ...subs[1], ids: { up: id } })
   actions_el.classList.add('hide')
   actions_placeholder.replaceWith(actions_el)
 
-  const steps_wizard_el = await steps_wizard({ ...subs[2], ids: { up: id } }, steps_wizard_protocol)
+  const steps_wizard_el = protocol ? await steps_wizard({ ...subs[2], ids: { up: id } }, steps_wizard_protocol) : await steps_wizard({ ...subs[2], ids: { up: id } })
   steps_wizard_el.classList.add('hide')
   steps_wizard_placeholder.replaceWith(steps_wizard_el)
 
@@ -3544,9 +3547,12 @@ module.exports = actions
 async function actions (opts, protocol) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
-  const ids = opts.ids || {}
+  const ids = opts.ids
+  if (!ids || !ids.up) {
+    throw new Error(`Component ${__filename} requires ids.up to be provided`)
+  }
   const by = id
-  const to = ids.up || 'parent'
+  const to = ids.up
 
   const on = {
     style: inject,
@@ -3573,8 +3579,7 @@ async function actions (opts, protocol) {
   let icons = {}
   let hardcons = {}
 
-  // eslint-disable-next-line no-unused-vars
-  const subs = await sdb.watch(onbatch)
+  await sdb.watch(onbatch)
   let send = null
   let _ = null
   if (protocol) {
@@ -3880,9 +3885,12 @@ module.exports = console_history
 async function console_history (opts, protocol) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
-  const ids = opts.ids || {}
+  const ids = opts.ids
+  if (!ids || !ids.up) {
+    throw new Error(`Component ${__filename} requires ids.up to be provided`)
+  }
   const by = id
-  const to = ids.up || 'parent'
+  const to = ids.up
 
   const on = {
     style: inject,
@@ -3908,8 +3916,7 @@ async function console_history (opts, protocol) {
   let commands = []
   let dricons = []
 
-  // eslint-disable-next-line no-unused-vars
-  const subs = await sdb.watch(onbatch)
+  await sdb.watch(onbatch)
   let send = null
   let _ = null
   if (protocol) {
@@ -4225,7 +4232,10 @@ module.exports = focus_tracker
 
 async function focus_tracker (opts, protocol) {
   const { sdb } = await get(opts.sid)
-
+  const { drive } = sdb
+  const on = {
+    focused
+  }
   // Keep track of the last focused element
   let last_focused = null
 
@@ -4234,27 +4244,25 @@ async function focus_tracker (opts, protocol) {
       const { type, data } = msg
       if (type === 'ui_focus') {
         last_focused = data
-        console.log('Focus Tracker: Last focused element:', last_focused)
+        drive.put('focused/current.json', { value: last_focused })
       }
     })
   }
 
-  const el = document.createElement('div')
-  const shadow = el.attachShadow({ mode: 'closed' })
-
-  // Hidden component
-  el.style.display = 'none'
-  shadow.innerHTML = `
-  <div class="focus-tracker"></div>
-  `
-
-  // eslint-disable-next-line no-unused-vars
-  const subs = await sdb.watch(onbatch)
-
-  return el
+  await sdb.watch(onbatch)
 
   async function onbatch (batch) {
-    // @TODO
+    for (const { type, paths } of batch) {
+      const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
+      const func = on[type] || fail
+      func(data, type)
+    }
+  }
+  function fail (data, type) { console.warn('invalid message', { cause: { data, type } }) }
+  function focused (data) {
+    const tmp = typeof data[0] === 'string' ? JSON.parse(data[0]) : data[0]
+    console.log('Focus Tracker: Last focused element:', last_focused)
+    last_focused = tmp.value
   }
 }
 
@@ -4264,7 +4272,13 @@ function fallback_module () {
   }
   function fallback_instance () {
     return {
-      drive: {}
+      drive: {
+        'focused/': {
+          'current.json': {
+            raw: { value: "default" }
+          }
+        }
+      }
     }
   }
 }
@@ -4280,9 +4294,12 @@ module.exports = form_input
 async function form_input (opts, protocol) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
-  const ids = opts.ids || {}
+  const ids = opts.ids
+  if (!ids || !ids.up) {
+    throw new Error(`Component ${__filename} requires ids.up to be provided`)
+  }
   const by = id
-  const to = ids.up || 'parent'
+  const to = ids.up
 
   const on = {
     style: inject,
@@ -4348,8 +4365,7 @@ async function form_input (opts, protocol) {
     }
   }
 
-  // eslint-disable-next-line no-unused-vars
-  const subs = await sdb.watch(onbatch)
+  await sdb.watch(onbatch)
   const parent_handler = {
     step_data,
     reset_data
@@ -4528,9 +4544,12 @@ module.exports = graph_explorer_wrapper
 async function graph_explorer_wrapper (opts, protocol) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
-  // const ids = opts.ids || {}
+  const ids = opts.ids
+  if (!ids || !ids.up) {
+    throw new Error(`Component ${__filename} requires ids.up to be provided`)
+  }
   const by = id
-  // const to = ids.up || 'parent'
+  // const to = ids.up
 
   let db = null
   // Protocol
@@ -4754,9 +4773,12 @@ module.exports = input_test
 async function input_test (opts, protocol) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
-  const ids = opts.ids || {}
+  const ids = opts.ids
+  if (!ids || !ids.up) {
+    throw new Error(`Component ${__filename} requires ids.up to be provided`)
+  }
   const by = id
-  const to = ids.up || 'parent'
+  const to = ids.up
 
   const on = {
     style: inject,
@@ -4822,8 +4844,7 @@ async function input_test (opts, protocol) {
     }
   }
 
-  // eslint-disable-next-line no-unused-vars
-  const subs = await sdb.watch(onbatch)
+  await sdb.watch(onbatch)
 
   const parent_handler = {
     step_data,
@@ -4972,9 +4993,15 @@ const component_modules = {
 
 module.exports = manager
 
-async function manager (opts) {
+async function manager (opts, protocol) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
+  const ids = opts.ids
+  if (!ids || !ids.up) {
+    throw new Error(`Component ${__filename} requires ids.up to be provided`)
+  }
+  const by = id
+  // const to = ids.up
 
   const on = {
     style: inject
@@ -4984,10 +5011,12 @@ async function manager (opts) {
   let selected_action = null
   let mid = 0
 
-  const _ = {
-    send_actions_bar: null,
-    send_form_input: {},
-    send_program: null
+  let _ = null
+  if (protocol) {
+    const send = protocol(msg => onmessage(msg))
+    _ = { up: send, send_actions_bar: null, send_form_input: {}, send_program: null }
+  } else {
+    _ = { send_actions_bar: null, send_form_input: {}, send_program: null }
   }
 
   const el = document.createElement('div')
@@ -5033,6 +5062,13 @@ async function manager (opts) {
   form_input_placeholder.remove()
 
   return el
+
+  function onmessage (msg) {
+    const { type } = msg
+    switch (type) {
+    default: // @TODO Handle message types
+    }
+  }
 
   // --- Internal Functions ---
   async function onbatch (batch) {
@@ -5095,15 +5131,15 @@ async function manager (opts) {
       status: 'completed',
       data: data?.value
     })
-    const head_to_program = ['manager', 'program', mid++]
+    const head_to_program = [by, 'program', mid++]
     const refs = msg.head ? { cause: msg.head } : {}
     _.send_program?.({ head: head_to_program, refs, type: 'update_data', data: variables })
 
-    const head_to_action_bar = ['manager', 'action_bar', mid++]
+    const head_to_action_bar = [by, 'action_bar', mid++]
     _?.send_actions_bar({ head: head_to_action_bar, refs, type: 'form_data', data: variables[selected_action] })
 
     if (variables[selected_action][variables[selected_action].length - 1]?.is_completed) {
-      const head_to_action_bar_submit = ['manager', 'action_bar', mid++]
+      const head_to_action_bar_submit = [by, 'action_bar', mid++]
       _.send_actions_bar({ head: head_to_action_bar_submit, refs, type: 'show_submit_btn' })
     }
   }
@@ -5119,14 +5155,14 @@ async function manager (opts) {
       status: 'error',
       data: data?.value
     })
-    const head_to_program = ['manager', 'program', mid++]
+    const head_to_program = [by, 'program', mid++]
     const refs = msg.head ? { cause: msg.head } : {}
     _.send_program?.({ head: head_to_program, refs, type: 'update_data', data: variables })
 
-    const head_to_action_bar = ['manager', 'action_bar', mid++]
+    const head_to_action_bar = [by, 'action_bar', mid++]
     _?.send_actions_bar({ head: head_to_action_bar, refs, type: 'form_data', data: variables[selected_action] })
 
-    const head_to_action_bar_hide = ['manager', 'action_bar', mid++]
+    const head_to_action_bar_hide = [by, 'action_bar', mid++]
     _.send_actions_bar({ head: head_to_action_bar_hide, refs, type: 'hide_submit_btn' })
   }
 
@@ -5149,7 +5185,7 @@ async function manager (opts) {
 
   function program__load_actions (data, type, msg) {
     variables = data
-    const head = ['manager', 'action_bar', mid++]
+    const head = [by, 'action_bar', mid++]
     const refs = msg.head ? { cause: msg.head } : {}
     _.send_actions_bar?.({ head, refs, type, data })
   }
@@ -5179,14 +5215,14 @@ async function manager (opts) {
     render_form_component(data.component)
     const send = _.send_form_input[data.component]
     if (send) {
-      const head = ['manager', data.component, mid++]
+      const head = [by, data.component, mid++]
       const refs = msg.head ? { cause: msg.head } : {}
       send({ head, refs, type: 'step_data', data })
     }
   }
 
   function action_bar__action_submitted (data, type, msg) {
-    const head = ['manager', 'program', mid++]
+    const head = [by, 'program', mid++]
     const refs = msg.head ? { cause: msg.head } : {}
     _.send_program({ head, refs, type: 'display_result', data })
   }
@@ -5206,13 +5242,13 @@ async function manager (opts) {
       data: ''
     }))
     variables[selected_action] = cleaned
-    const head_to_program = ['manager', 'program', mid++]
+    const head_to_program = [by, 'program', mid++]
     const refs = msg?.head ? { cause: msg.head } : {}
     _.send_program?.({ head: head_to_program, refs, type: 'update_data', data: variables })
 
     for (const step of variables[selected_action]) {
       if (step.component && _.send_form_input[step.component]) {
-        const head_to_input = ['manager', step.component, mid++]
+        const head_to_input = [by, step.component, mid++]
         _.send_form_input[step.component]({ head: head_to_input, refs, type: 'reset_data' })
       }
     }
@@ -5358,8 +5394,7 @@ async function create_component_menu (opts, names, inicheck, callbacks) {
       menu.classList.add('hidden')
     }
   })
-  // eslint-disable-next-line no-unused-vars
-  const subs = await sdb.watch(onbatch)
+  await sdb.watch(onbatch)
   // event listeners
   toggle_btn.onclick = on_toggle_btn
   unselect_btn.onclick = on_unselect_btn
@@ -5560,9 +5595,12 @@ module.exports = program
 async function program (opts, protocol) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
-  const ids = opts.ids || {}
+  const ids = opts.ids
+  if (!ids || !ids.up) {
+    throw new Error(`Component ${__filename} requires ids.up to be provided`)
+  }
   const by = id
-  const to = ids.up || 'parent'
+  const to = ids.up
   // console.log('program-ids', by, to)
   const on = {
     style: inject,
@@ -5587,8 +5625,7 @@ async function program (opts, protocol) {
 
   const style = shadow.querySelector('style')
 
-  // eslint-disable-next-line no-unused-vars
-  const subs = await sdb.watch(onbatch)
+  await sdb.watch(onbatch)
 
   const parent_handler = {
     display_result,
@@ -5686,9 +5723,12 @@ module.exports = quick_actions
 async function quick_actions (opts, protocol) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
-  const ids = opts.ids || {}
+  const ids = opts.ids
+  if (!ids || !ids.up) {
+    throw new Error(`Component ${__filename} requires ids.up to be provided`)
+  }
   const by = id
-  const to = ids.up || 'parent'
+  const to = ids.up
 
   const on = {
     style: inject,
@@ -5757,8 +5797,7 @@ async function quick_actions (opts, protocol) {
   submit_btn.onclick = onsubmit
   input_field.oninput = oninput
 
-  // eslint-disable-next-line no-unused-vars
-  const subs = await sdb.watch(onbatch)
+  await sdb.watch(onbatch)
 
   submit_btn.innerHTML = hardcons.submit
   close_btn.innerHTML = hardcons.cross
@@ -6557,9 +6596,12 @@ module.exports = component
 async function component (opts, protocol) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
-  // const ids = opts.ids || {}
+  const ids = opts.ids
+  if (!ids || !ids.up) {
+    throw new Error(`Component ${__filename} requires ids.up to be provided`)
+  }
   // const by = id
-  // const to = ids.up || 'parent'
+  // const to = ids.up
 
   const on = {
     style: inject
@@ -6595,19 +6637,19 @@ async function component (opts, protocol) {
     _ = { up: send, actions: null, send_console_history: null, send_tabbed_editor: null, send_graph_explorer: null }
   }
 
-  graph_explorer_el = protocol ? await graph_explorer_wrapper({ ...subs[3], ids: { up: id } }, graph_explorer_protocol) : await graph_explorer_wrapper(subs[3])
+  graph_explorer_el = protocol ? await graph_explorer_wrapper({ ...subs[3], ids: { up: id } }, graph_explorer_protocol) : await graph_explorer_wrapper({ ...subs[3], ids: { up: id } })
   graph_explorer_el.classList.add('graph-explorer')
   graph_explorer_placeholder.replaceWith(graph_explorer_el)
 
-  actions_el = protocol ? await actions({ ...subs[1], ids: { up: id } }, actions_protocol) : await actions(subs[1])
+  actions_el = protocol ? await actions({ ...subs[1], ids: { up: id } }, actions_protocol) : await actions({ ...subs[1], ids: { up: id } })
   actions_el.classList.add('actions')
   actions_placeholder.replaceWith(actions_el)
 
-  tabbed_editor_el = protocol ? await tabbed_editor({ ...subs[2], ids: { up: id } }, tabbed_editor_protocol) : await tabbed_editor(subs[2])
+  tabbed_editor_el = protocol ? await tabbed_editor({ ...subs[2], ids: { up: id } }, tabbed_editor_protocol) : await tabbed_editor({ ...subs[2], ids: { up: id } })
   tabbed_editor_el.classList.add('tabbed-editor')
   tabbed_editor_placeholder.replaceWith(tabbed_editor_el)
 
-  console_history_el = protocol ? await console_history({ ...subs[0], ids: { up: id } }, console_history_protocol) : await console_history(subs[0])
+  console_history_el = protocol ? await console_history({ ...subs[0], ids: { up: id } }, console_history_protocol) : await console_history({ ...subs[0], ids: { up: id } })
   console_history_el.classList.add('console-history')
   console_placeholder.replaceWith(console_history_el)
   let console_view = false
@@ -6900,9 +6942,12 @@ module.exports = steps_wizard
 async function steps_wizard (opts, protocol) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
-  const ids = opts.ids || {}
+  const ids = opts.ids
+  if (!ids || !ids.up) {
+    throw new Error(`Component ${__filename} requires ids.up to be provided`)
+  }
   const by = id
-  const to = ids.up || 'parent'
+  const to = ids.up
 
   const on = {
     style: inject
@@ -6932,8 +6977,7 @@ async function steps_wizard (opts, protocol) {
 
   const style = shadow.querySelector('style')
   const steps_entries = shadow.querySelector('.steps-slot')
-  // eslint-disable-next-line no-unused-vars
-  const subs = await sdb.watch(onbatch)
+  await sdb.watch(onbatch)
 
   // for demo purpose
   render_steps([
@@ -7076,9 +7120,12 @@ module.exports = tabbed_editor
 async function tabbed_editor (opts, protocol) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
-  const ids = opts.ids || {}
+  const ids = opts.ids
+  if (!ids || !ids.up) {
+    throw new Error(`Component ${__filename} requires ids.up to be provided`)
+  }
   const by = id
-  const to = ids.up || 'parent'
+  const to = ids.up
 
   const on = {
     style: inject,
@@ -7113,8 +7160,9 @@ async function tabbed_editor (opts, protocol) {
     send = protocol(msg => onmessage(msg))
     _ = { up: send }
   }
-  // eslint-disable-next-line no-unused-vars
-  const subs = await sdb.watch(onbatch)
+  await sdb.watch(onbatch)
+
+  return el
 
   function onmessage (msg) {
     const { type, data } = msg
@@ -7488,9 +7536,12 @@ module.exports = component
 async function component (opts, protocol) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
-  const ids = opts.ids || {}
+  const ids = opts.ids
+  if (!ids || !ids.up) {
+    throw new Error(`Component ${__filename} requires ids.up to be provided`)
+  }
   const by = id
-  const to = ids.up || 'parent'
+  const to = ids.up
 
   const on = {
     variables: onvariables,
@@ -7511,8 +7562,7 @@ async function component (opts, protocol) {
   let mid = 0
   let variables = []
   let dricons = []
-  // eslint-disable-next-line no-unused-vars
-  const subs = await sdb.watch(onbatch)
+  await sdb.watch(onbatch)
   let send = null
   let _ = null
   if (protocol) {
@@ -7560,7 +7610,7 @@ async function component (opts, protocol) {
       start_x = e.touches[0].pageX - entries.offsetLeft
       scroll_start = entries.scrollLeft
     }
-    ['ontouchend', 'ontouchcancel'].forEach(ev => {
+    ;['ontouchend', 'ontouchcancel'].forEach(ev => {
       entries[ev] = stop
     })
 
@@ -7715,9 +7765,12 @@ module.exports = tabsbar
 async function tabsbar (opts, protocol) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
-  const ids = opts.ids || {}
+  const ids = opts.ids
+  if (!ids || !ids.up) {
+    throw new Error(`Component ${__filename} requires ids.up to be provided`)
+  }
   const by = id
-  const to = ids.up || 'parent'
+  const to = ids.up
 
   const on = {
     style: inject,
@@ -7767,11 +7820,11 @@ async function tabsbar (opts, protocol) {
     const svgElem = doc.documentElement
     bar_btn.replaceChildren(svgElem)
   }
-  const tabs = protocol ? await tabs_component({ ...subs[0], ids: { up: id } }, tabs_protocol) : await tabs_component(subs[0])
+  const tabs = protocol ? await tabs_component({ ...subs[0], ids: { up: id } }, tabs_protocol) : await tabs_component({ ...subs[0], ids: { up: id } })
   tabs.classList.add('tabs-bar')
   shadow.querySelector('tabs').replaceWith(tabs)
 
-  const task_mgr = await task_manager({ ...subs[1], ids: { up: id } }, task_manager_protocol)
+  const task_mgr = protocol ? await task_manager({ ...subs[1], ids: { up: id } }, task_manager_protocol) : await task_manager({ ...subs[1], ids: { up: id } })
   task_mgr.classList.add('bar-btn')
   shadow.querySelector('task-manager').replaceWith(task_mgr)
 
@@ -7910,9 +7963,12 @@ module.exports = task_manager
 async function task_manager (opts, protocol) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
-  const ids = opts.ids || {}
+  const ids = opts.ids
+  if (!ids || !ids.up) {
+    throw new Error(`Component ${__filename} requires ids.up to be provided`)
+  }
   const by = id
-  const to = ids.up || 'parent'
+  const to = ids.up
 
   let mid = 0
 
@@ -8026,9 +8082,12 @@ module.exports = taskbar
 async function taskbar (opts, protocol) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
-  // const ids = opts.ids || {}
+  const ids = opts.ids
+  if (!ids || !ids.up) {
+    throw new Error(`Component ${__filename} requires ids.up to be provided`)
+  }
   // const by = id
-  // const to = ids.up || 'parent'
+  // const to = ids.up
 
   const on = {
     style: inject
@@ -8055,11 +8114,11 @@ async function taskbar (opts, protocol) {
     send = protocol(msg => onmessage(msg))
     _ = { up: send, manager: null, tabsbar: null }
   }
-  const manager_el = protocol ? await manager({ ...subs[0], ids: { up: id } }, manager_protocol) : await manager(subs[0])
+  const manager_el = protocol ? await manager({ ...subs[0], ids: { up: id } }, manager_protocol) : await manager({ ...subs[0], ids: { up: id } })
   manager_el.classList.add('replaced-manager')
   manager_slot.replaceWith(manager_el)
 
-  const tabsbar_el = protocol ? await tabsbar({ ...subs[1], ids: { up: id } }, tabsbar_protocol) : await tabsbar(subs[1])
+  const tabsbar_el = protocol ? await tabsbar({ ...subs[1], ids: { up: id } }, tabsbar_protocol) : await tabsbar({ ...subs[1], ids: { up: id } })
   tabsbar_el.classList.add('replaced-tabsbar')
   tabsbar_slot.replaceWith(tabsbar_el)
 
@@ -8187,8 +8246,9 @@ const focus_tracker = require('focus_tracker')
 module.exports = theme_widget
 
 async function theme_widget (opts) {
-  const { sdb } = await get(opts.sid)
+  const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
+
   const on = {
     style: inject
   }
@@ -8199,7 +8259,6 @@ async function theme_widget (opts) {
   <div class="theme-widget main">
     <div class="space-slot"></div>
     <div class="taskbar-slot"></div>
-    <div class="focus-tracker-slot"></div>
   </div>
   <style>
   </style>
@@ -8208,24 +8267,21 @@ async function theme_widget (opts) {
   const style = shadow.querySelector('style')
   const space_slot = shadow.querySelector('.space-slot')
   const taskbar_slot = shadow.querySelector('.taskbar-slot')
-  const focus_tracker_slot = shadow.querySelector('.focus-tracker-slot')
 
   const subs = await sdb.watch(onbatch)
 
   let space_el = null
   let taskbar_el = null
-  let focus_tracker_el = null
   const _ = { send_space: null, send_taskbar: null, send_focus_tracker: null }
 
-  taskbar_el = await taskbar(subs[1], taskbar_protocol)
+  taskbar_el = await taskbar({ ...subs[1], ids: { up: id } }, taskbar_protocol)
   taskbar_slot.replaceWith(taskbar_el)
 
-  space_el = await space(subs[0], space_protocol)
+  space_el = await space({ ...subs[0], ids: { up: id } }, space_protocol)
   space_el.classList.add('space')
   space_slot.replaceWith(space_el)
-
-  focus_tracker_el = await focus_tracker(subs[2], focus_tracker_protocol)
-  focus_tracker_slot.replaceWith(focus_tracker_el)
+  
+  await focus_tracker({ ...subs[2], ids: { up: id } }, focus_tracker_protocol)
 
   return el
 
@@ -8325,7 +8381,10 @@ function fallback_module () {
           }
         },
         focus_tracker: {
-          0: ''
+          0: '',
+          mapping: {
+            focused: 'focused'
+          }
         }
       },
       drive: {
@@ -8345,7 +8404,7 @@ function fallback_module () {
             `
           }
         },
-        flags: {},
+        'flags/': {},
         'commands/': {},
         'icons/': {},
         'scroll/': {},
@@ -8358,7 +8417,8 @@ function fallback_module () {
         'runtime/': {},
         'mode/': {},
         'keybinds/': {},
-        'undo/': {}
+        'undo/': {},
+        'focused/': {}
       }
     }
   }
@@ -8371,7 +8431,7 @@ const STATE = require('STATE')
 const statedb = STATE(__filename)
 const admin_api = statedb.admin()
 const admin_on = {}
-admin_api.on(({type, data}) => {
+admin_api.on(({ type, data }) => {
   admin_on[type] && admin_on[type]()
 })
 const { sdb, io, id } = statedb(fallback_module)
@@ -8411,11 +8471,11 @@ const imports = {
   quick_actions,
   graph_explorer_wrapper,
   manager,
-  steps_wizard,
+  steps_wizard
 }
 config().then(() => boot({ sid: '' }))
 
-async function config() {
+async function config () {
   // const path = path => new URL(`../src/node_modules/${path}`, `file://${__dirname}`).href.slice(8)
   const html = document.documentElement
   const meta = document.createElement('meta')
@@ -8436,7 +8496,7 @@ async function config() {
 /******************************************************************************
   PAGE BOOT
 ******************************************************************************/
-async function boot(opts) {
+async function boot (opts) {
   // ----------------------------------------
   // ID + JSON STATE
   // ----------------------------------------
@@ -8461,7 +8521,6 @@ async function boot(opts) {
   el.style.margin = 0
   el.style.backgroundColor = '#d8dee9'
 
-
   // ----------------------------------------
   // ELEMENTS
   // ----------------------------------------
@@ -8472,7 +8531,6 @@ async function boot(opts) {
 
   const entries = Object.entries(imports)
   const wrappers = []
-  const pairs = {}
   const names = entries.map(([name]) => name)
   let current_selected_wrapper = null
 
@@ -8506,29 +8564,26 @@ async function boot(opts) {
     port.onmessage = event => {
       const txt = event.data
       const key = `[${by} -> ${to}]`
+      console.log('[ port-stuff ]', key)
 
       on[txt.type] && on[txt.type](...txt.data)
-
     }
   })
 
-
-  const editor_subs = await sdb.get_sub("page>../src/node_modules/quick_editor")
+  const editor_subs = await sdb.get_sub('page>../src/node_modules/quick_editor')
   // const subs = await sdb.watch(onbatch)
   const subs = (await sdb.watch(onbatch)).filter((_, index) => index % 2 === 0)
   console.log('Page subs', subs)
   const nav_menu_element = await navbar(subs[names.length], names, initial_checked_indices, menu_callbacks)
 
-
-
   navbar_slot.replaceWith(nav_menu_element, await editor(editor_subs[0]))
   await create_component(entries)
   window.onload = scroll_to_initial_selected
   send_quick_editor_data()
-  admin_on['import'] = send_quick_editor_data
+  admin_on.import = send_quick_editor_data
 
   return el
-  async function create_component(entries_obj) {
+  async function create_component (entries_obj) {
     let index = 0
     for (const [name, factory] of entries_obj) {
       const is_initially_checked = initial_checked_indices.length === 0 || initial_checked_indices.includes(index + 1)
@@ -8540,17 +8595,15 @@ async function boot(opts) {
       <div class="component-wrapper"></div>
     `
       const inner = outer.querySelector('.component-wrapper')
-      const component_content = await factory(subs[index])
+      const component_content = await factory({ ...subs[index], ids: { up: id } })
       component_content.className = 'component-content'
 
       const node_id = admin.status.s2i[subs[index].sid]
       const editor_index = index + 1
       inner.append(component_content, await editor(editor_subs[editor_index]))
 
-
       const result = {}
       const drive = admin.status.dataset.drive
-
 
       const modulepath = node_id.split(':')[0]
       const fields = admin.status.db.read_all(['state', modulepath])
@@ -8558,10 +8611,15 @@ async function boot(opts) {
       for (const node of nodes) {
         result[node] = {}
         const datasets = drive.list('', node)
+        // eslint-disable-next-line no-undef
         for (dataset of datasets) {
+          // eslint-disable-next-line no-undef
           result[node][dataset] = {}
+          // eslint-disable-next-line no-undef
           const files = drive.list(dataset, node)
+          // eslint-disable-next-line no-undef
           for (file of files) {
+            // eslint-disable-next-line no-undef
             result[node][dataset][file] = (await drive.get(dataset + file, node)).raw
           }
         }
@@ -8578,7 +8636,7 @@ async function boot(opts) {
     }
   }
 
-  function scroll_to_initial_selected() {
+  function scroll_to_initial_selected () {
     if (selected_name_param) {
       const index = names.indexOf(selected_name_param)
       if (index !== -1 && wrappers[index]) {
@@ -8595,14 +8653,14 @@ async function boot(opts) {
     }
   }
 
-  function clear_selection_highlight() {
+  function clear_selection_highlight () {
     if (current_selected_wrapper) {
       current_selected_wrapper.style.backgroundColor = ''
     }
     current_selected_wrapper = null
   }
 
-  function update_url(selected_name = url_params.get('selected')) {
+  function update_url (selected_name = url_params.get('selected')) {
     const checked_indices = wrappers.reduce((acc, w, i) => {
       if (w.checkbox_state) { acc.push(i + 1) }
       return acc
@@ -8619,7 +8677,7 @@ async function boot(opts) {
     window.history.replaceState(null, '', new_url)
   }
 
-  function handle_checkbox_change(detail) {
+  function handle_checkbox_change (detail) {
     const { index, checked } = detail
     if (wrappers[index]) {
       wrappers[index].outer.style.display = checked ? 'block' : 'none'
@@ -8632,7 +8690,7 @@ async function boot(opts) {
     }
   }
 
-  function handle_label_click(detail) {
+  function handle_label_click (detail) {
     const { index, name } = detail
     if (wrappers[index]) {
       const target_wrapper = wrappers[index].outer
@@ -8648,7 +8706,7 @@ async function boot(opts) {
     }
   }
 
-  function handle_select_all_toggle(detail) {
+  function handle_select_all_toggle (detail) {
     const { selectAll: select_all } = detail
     wrappers.forEach((w, index) => {
       w.outer.style.display = select_all ? 'block' : 'none'
@@ -8658,49 +8716,48 @@ async function boot(opts) {
     update_url(null)
   }
 
-  async function onbatch(batch) {
+  async function onbatch (batch) {
     for (const { type, paths } of batch) {
       const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
-      const func = on[type] || (() => { })
+      const func = on[type] || fail
       func(data, type)
     }
   }
-  function fail (data, type) { throw new Error('invalid message', { cause: { data, type } }) }
-  function inject(data) {
+  function fail (data, type) { console.warn(__filename + 'invalid message', { cause: { data, type } }) }
+  function inject (data) {
     style.innerHTML = data.join('\n')
   }
-    async function send_quick_editor_data() {
-      const roots = admin.status.db.read(['root_datasets'])
-      const result = {}
-      roots.forEach(root_dataset => {
-        const root = root_dataset.name
-        result[root] = {}
-        const inputs = sdb.admin.get_dataset({ root }) || []
-        inputs.forEach(type => {
-          result[root][type] = {}
-          const datasets = sdb.admin.get_dataset({ root, type })
-          datasets && Object.values(datasets).forEach(name => {
-            result[root][type][name] = {}
-            const ds = sdb.admin.get_dataset({ root, type, name: name })
-            ds.forEach(ds_id => {
-              const files = admin.status.db.read([root, ds_id]).files || []
-              result[root][type][name][ds_id] = {}
-              files.forEach(file_id => {
-                result[root][type][name][ds_id][file_id] = admin.status.db.read([root, file_id])
-              })
+  async function send_quick_editor_data () {
+    const roots = admin.status.db.read(['root_datasets'])
+    const result = {}
+    roots.forEach(root_dataset => {
+      const root = root_dataset.name
+      result[root] = {}
+      const inputs = sdb.admin.get_dataset({ root }) || []
+      inputs.forEach(type => {
+        result[root][type] = {}
+        const datasets = sdb.admin.get_dataset({ root, type })
+        datasets && Object.values(datasets).forEach(name => {
+          result[root][type][name] = {}
+          const ds = sdb.admin.get_dataset({ root, type, name: name })
+          ds.forEach(ds_id => {
+            const files = admin.status.db.read([root, ds_id]).files || []
+            result[root][type][name][ds_id] = {}
+            files.forEach(file_id => {
+              result[root][type][name][ds_id][file_id] = admin.status.db.read([root, file_id])
             })
           })
         })
       })
+    })
 
-      const editor_id = admin.status.a2i[admin.status.s2i[editor_subs[0].sid]]
-      const port = await item.get(editor_id)
-      // await io.at(editor_id)
-      port.postMessage(result)
-
+    const editor_id = admin.status.a2i[admin.status.s2i[editor_subs[0].sid]]
+    const port = await item.get(editor_id)
+    // await io.at(editor_id)
+    port.postMessage(result)
   }
 }
-function fallback_module() {
+function fallback_module () {
   const menuname = '../src/node_modules/menu'
   const names = [
     '../src/node_modules/theme_widget',
@@ -8725,159 +8782,160 @@ function fallback_module() {
     $: '',
     0: '',
     mapping: {
-      'icons': 'icons',
-      'variables': 'variables',
-      'scroll': 'scroll',
-      'style': 'style'
+      icons: 'icons',
+      variables: 'variables',
+      scroll: 'scroll',
+      style: 'style'
     }
   }
   subs['../src/node_modules/space'] = {
     $: '',
     0: '',
     mapping: {
-      'style': 'style',
-      'flags': 'flags',
-      "commands": "commands",
-      "icons": "icons",
-      "scroll": "scroll",
-      "actions": "actions",
-      "hardcons": "hardcons",
-      "files": "files",
-      "highlight": "highlight",
-      "active_tab": "active_tab",
-      "entries": "entries",
-      "runtime": "runtime",
-      "mode": "mode",
-      'keybinds': 'keybinds',
-      'undo': 'undo'
+      style: 'style',
+      flags: 'flags',
+      commands: 'commands',
+      icons: 'icons',
+      scroll: 'scroll',
+      actions: 'actions',
+      hardcons: 'hardcons',
+      files: 'files',
+      highlight: 'highlight',
+      active_tab: 'active_tab',
+      entries: 'entries',
+      runtime: 'runtime',
+      mode: 'mode',
+      keybinds: 'keybinds',
+      undo: 'undo'
     }
   }
   subs['../src/node_modules/manager'] = {
     $: '',
     0: '',
     mapping: {
-      'style': 'style'
+      style: 'style'
     }
   }
   subs['../src/node_modules/steps_wizard'] = {
     $: '',
     0: '',
     mapping: {
-      'style': 'style'
+      style: 'style'
     }
   }
   subs['../src/node_modules/tabsbar'] = {
     $: '',
     0: '',
     mapping: {
-      'icons': 'icons',
-      'style': 'style'
+      icons: 'icons',
+      style: 'style'
     }
   }
   subs['../src/node_modules/action_bar'] = {
     $: '',
     0: '',
     mapping: {
-      'icons': 'icons',
-      'style': 'style'
+      icons: 'icons',
+      style: 'style'
     }
   }
   subs['../src/node_modules/console_history'] = {
     $: '',
     0: '',
     mapping: {
-      'style': 'style',
-      'commands': 'commands',
-      'icons': 'icons',
-      'scroll': 'scroll'
+      style: 'style',
+      commands: 'commands',
+      icons: 'icons',
+      scroll: 'scroll'
     }
   }
   subs['../src/node_modules/actions'] = {
     $: '',
     0: '',
     mapping: {
-      'actions': 'actions',
-      'icons': 'icons',
-      'hardcons': 'hardcons',
-      'style': 'style'
+      actions: 'actions',
+      icons: 'icons',
+      hardcons: 'hardcons',
+      style: 'style'
     }
   }
   subs['../src/node_modules/tabbed_editor'] = {
     $: '',
     0: '',
     mapping: {
-      'style': 'style',
-      'files': 'files',
-      'highlight': 'highlight',
-      'active_tab': 'active_tab'
+      style: 'style',
+      files: 'files',
+      highlight: 'highlight',
+      active_tab: 'active_tab'
     }
   }
   subs['../src/node_modules/task_manager'] = {
     $: '',
     0: '',
     mapping: {
-      'style': 'style',
-      'count': 'count'
+      style: 'style',
+      count: 'count'
     }
   }
   subs['../src/node_modules/quick_actions'] = {
     $: '',
     0: '',
     mapping: {
-      'style': 'style',
-      'icons': 'icons',
-      'actions': 'actions',
-      'hardcons': 'hardcons'
+      style: 'style',
+      icons: 'icons',
+      actions: 'actions',
+      hardcons: 'hardcons'
     }
   }
   subs[menuname] = {
     $: '',
     0: '',
     mapping: {
-      'style': 'style',
+      style: 'style'
     }
   }
   subs['../src/node_modules/quick_editor'] = {
     $: '',
     mapping: {
-      'style': 'style'
+      style: 'style'
     }
-  },
+  }
   subs['../src/node_modules/theme_widget'] = {
     $: '',
     0: '',
     mapping: {
-      'style': 'style',
-      "commands": "commands",
-      "icons": "icons",
-      "scroll": "scroll",
-      "actions": "actions",
-      "hardcons": "hardcons",
-      "files": "files",
-      "highlight": "highlight",
-      "active_tab": "active_tab",
-      "entries": "entries",
-      "runtime": "runtime",
-      "mode": "mode",
-      "flags": "flags",
-      'keybinds': 'keybinds',
-      'undo': 'undo'
+      style: 'style',
+      commands: 'commands',
+      icons: 'icons',
+      scroll: 'scroll',
+      actions: 'actions',
+      hardcons: 'hardcons',
+      files: 'files',
+      highlight: 'highlight',
+      active_tab: 'active_tab',
+      entries: 'entries',
+      runtime: 'runtime',
+      mode: 'mode',
+      flags: 'flags',
+      keybinds: 'keybinds',
+      undo: 'undo',
+      focused: 'focused'
     }
   }
   subs['../src/node_modules/graph_explorer_wrapper'] = {
     $: '',
     0: '',
     mapping: {
-      'theme': 'style',
-      'entries': 'entries',
-      'runtime': 'runtime',
-      'mode': 'mode',
-      'flags': 'flags',
-      'keybinds': 'keybinds',
-      'undo': 'undo'
+      theme: 'style',
+      entries: 'entries',
+      runtime: 'runtime',
+      mode: 'mode',
+      flags: 'flags',
+      keybinds: 'keybinds',
+      undo: 'undo'
     }
   }
-  for (i = 0; i < Object.keys(subs).length - 1; i++) {
+  for (let i = 0; i < Object.keys(subs).length - 1; i++) {
     subs['../src/node_modules/quick_editor'][i] = quick_editor$
   }
 
@@ -9011,22 +9069,23 @@ function fallback_module() {
       'data/': {},
       'flags/': {},
       'keybinds/': {},
-      'undo/': {}
+      'undo/': {},
+      'focused/': {}
     }
   }
-  function quick_editor$(args, tools, [quick_editor]) {
+  function quick_editor$ (args, tools, [quick_editor]) {
     const state = quick_editor()
     state.net = {
       page: {}
     }
     return state
   }
-  function subgen(name) {
+  function subgen (name) {
     subs[name] = {
       $: '',
       0: '',
       mapping: {
-        'style': 'style',
+        style: 'style'
       }
     }
   }
