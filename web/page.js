@@ -171,7 +171,7 @@ async function boot(opts) {
       <div class="component-wrapper"></div>
     `
       const inner = outer.querySelector('.component-wrapper')
-      const component_content = await factory(subs[index])
+      const component_content = await factory({ ...subs[index], ids: { up: id } })
       component_content.className = 'component-content'
 
       const node_id = admin.status.s2i[subs[index].sid]
