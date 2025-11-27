@@ -2,7 +2,7 @@ const STATE = require('STATE')
 const statedb = STATE(__filename)
 const admin_api = statedb.admin()
 const admin_on = {}
-admin_api.on(({type, data}) => {
+admin_api.on(({ type, data }) => {
   admin_on[type] && admin_on[type]()
 })
 const { sdb, io, id } = statedb(fallback_module)
@@ -42,11 +42,11 @@ const imports = {
   quick_actions,
   graph_explorer_wrapper,
   manager,
-  steps_wizard,
+  steps_wizard
 }
 config().then(() => boot({ sid: '' }))
 
-async function config() {
+async function config () {
   // const path = path => new URL(`../src/node_modules/${path}`, `file://${__dirname}`).href.slice(8)
   const html = document.documentElement
   const meta = document.createElement('meta')
@@ -67,7 +67,7 @@ async function config() {
 /******************************************************************************
   PAGE BOOT
 ******************************************************************************/
-async function boot(opts) {
+async function boot (opts) {
   // ----------------------------------------
   // ID + JSON STATE
   // ----------------------------------------
@@ -92,7 +92,6 @@ async function boot(opts) {
   el.style.margin = 0
   el.style.backgroundColor = '#d8dee9'
 
-
   // ----------------------------------------
   // ELEMENTS
   // ----------------------------------------
@@ -103,7 +102,6 @@ async function boot(opts) {
 
   const entries = Object.entries(imports)
   const wrappers = []
-  const pairs = {}
   const names = entries.map(([name]) => name)
   let current_selected_wrapper = null
 
@@ -137,29 +135,26 @@ async function boot(opts) {
     port.onmessage = event => {
       const txt = event.data
       const key = `[${by} -> ${to}]`
+      console.log('[ port-stuff ]', key)
 
       on[txt.type] && on[txt.type](...txt.data)
-
     }
   })
 
-
-  const editor_subs = await sdb.get_sub("page>../src/node_modules/quick_editor")
+  const editor_subs = await sdb.get_sub('page>../src/node_modules/quick_editor')
   // const subs = await sdb.watch(onbatch)
   const subs = (await sdb.watch(onbatch)).filter((_, index) => index % 2 === 0)
   console.log('Page subs', subs)
   const nav_menu_element = await navbar(subs[names.length], names, initial_checked_indices, menu_callbacks)
 
-
-
   navbar_slot.replaceWith(nav_menu_element, await editor(editor_subs[0]))
   await create_component(entries)
   window.onload = scroll_to_initial_selected
   send_quick_editor_data()
-  admin_on['import'] = send_quick_editor_data
+  admin_on.import = send_quick_editor_data
 
   return el
-  async function create_component(entries_obj) {
+  async function create_component (entries_obj) {
     let index = 0
     for (const [name, factory] of entries_obj) {
       const is_initially_checked = initial_checked_indices.length === 0 || initial_checked_indices.includes(index + 1)
@@ -178,10 +173,8 @@ async function boot(opts) {
       const editor_index = index + 1
       inner.append(component_content, await editor(editor_subs[editor_index]))
 
-
       const result = {}
       const drive = admin.status.dataset.drive
-
 
       const modulepath = node_id.split(':')[0]
       const fields = admin.status.db.read_all(['state', modulepath])
@@ -189,10 +182,15 @@ async function boot(opts) {
       for (const node of nodes) {
         result[node] = {}
         const datasets = drive.list('', node)
+        // eslint-disable-next-line no-undef
         for (dataset of datasets) {
+          // eslint-disable-next-line no-undef
           result[node][dataset] = {}
+          // eslint-disable-next-line no-undef
           const files = drive.list(dataset, node)
+          // eslint-disable-next-line no-undef
           for (file of files) {
+            // eslint-disable-next-line no-undef
             result[node][dataset][file] = (await drive.get(dataset + file, node)).raw
           }
         }
@@ -209,7 +207,7 @@ async function boot(opts) {
     }
   }
 
-  function scroll_to_initial_selected() {
+  function scroll_to_initial_selected () {
     if (selected_name_param) {
       const index = names.indexOf(selected_name_param)
       if (index !== -1 && wrappers[index]) {
@@ -226,14 +224,14 @@ async function boot(opts) {
     }
   }
 
-  function clear_selection_highlight() {
+  function clear_selection_highlight () {
     if (current_selected_wrapper) {
       current_selected_wrapper.style.backgroundColor = ''
     }
     current_selected_wrapper = null
   }
 
-  function update_url(selected_name = url_params.get('selected')) {
+  function update_url (selected_name = url_params.get('selected')) {
     const checked_indices = wrappers.reduce((acc, w, i) => {
       if (w.checkbox_state) { acc.push(i + 1) }
       return acc
@@ -250,7 +248,7 @@ async function boot(opts) {
     window.history.replaceState(null, '', new_url)
   }
 
-  function handle_checkbox_change(detail) {
+  function handle_checkbox_change (detail) {
     const { index, checked } = detail
     if (wrappers[index]) {
       wrappers[index].outer.style.display = checked ? 'block' : 'none'
@@ -263,7 +261,7 @@ async function boot(opts) {
     }
   }
 
-  function handle_label_click(detail) {
+  function handle_label_click (detail) {
     const { index, name } = detail
     if (wrappers[index]) {
       const target_wrapper = wrappers[index].outer
@@ -279,7 +277,7 @@ async function boot(opts) {
     }
   }
 
-  function handle_select_all_toggle(detail) {
+  function handle_select_all_toggle (detail) {
     const { selectAll: select_all } = detail
     wrappers.forEach((w, index) => {
       w.outer.style.display = select_all ? 'block' : 'none'
@@ -289,49 +287,48 @@ async function boot(opts) {
     update_url(null)
   }
 
-  async function onbatch(batch) {
+  async function onbatch (batch) {
     for (const { type, paths } of batch) {
       const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
-      const func = on[type] || (() => { })
+      const func = on[type] || fail
       func(data, type)
     }
   }
-  function fail (data, type) { throw new Error('invalid message', { cause: { data, type } }) }
-  function inject(data) {
+  function fail (data, type) { console.warn(__filename + 'invalid message', { cause: { data, type } }) }
+  function inject (data) {
     style.innerHTML = data.join('\n')
   }
-    async function send_quick_editor_data() {
-      const roots = admin.status.db.read(['root_datasets'])
-      const result = {}
-      roots.forEach(root_dataset => {
-        const root = root_dataset.name
-        result[root] = {}
-        const inputs = sdb.admin.get_dataset({ root }) || []
-        inputs.forEach(type => {
-          result[root][type] = {}
-          const datasets = sdb.admin.get_dataset({ root, type })
-          datasets && Object.values(datasets).forEach(name => {
-            result[root][type][name] = {}
-            const ds = sdb.admin.get_dataset({ root, type, name: name })
-            ds.forEach(ds_id => {
-              const files = admin.status.db.read([root, ds_id]).files || []
-              result[root][type][name][ds_id] = {}
-              files.forEach(file_id => {
-                result[root][type][name][ds_id][file_id] = admin.status.db.read([root, file_id])
-              })
+  async function send_quick_editor_data () {
+    const roots = admin.status.db.read(['root_datasets'])
+    const result = {}
+    roots.forEach(root_dataset => {
+      const root = root_dataset.name
+      result[root] = {}
+      const inputs = sdb.admin.get_dataset({ root }) || []
+      inputs.forEach(type => {
+        result[root][type] = {}
+        const datasets = sdb.admin.get_dataset({ root, type })
+        datasets && Object.values(datasets).forEach(name => {
+          result[root][type][name] = {}
+          const ds = sdb.admin.get_dataset({ root, type, name: name })
+          ds.forEach(ds_id => {
+            const files = admin.status.db.read([root, ds_id]).files || []
+            result[root][type][name][ds_id] = {}
+            files.forEach(file_id => {
+              result[root][type][name][ds_id][file_id] = admin.status.db.read([root, file_id])
             })
           })
         })
       })
+    })
 
-      const editor_id = admin.status.a2i[admin.status.s2i[editor_subs[0].sid]]
-      const port = await item.get(editor_id)
-      // await io.at(editor_id)
-      port.postMessage(result)
-
+    const editor_id = admin.status.a2i[admin.status.s2i[editor_subs[0].sid]]
+    const port = await item.get(editor_id)
+    // await io.at(editor_id)
+    port.postMessage(result)
   }
 }
-function fallback_module() {
+function fallback_module () {
   const menuname = '../src/node_modules/menu'
   const names = [
     '../src/node_modules/theme_widget',
@@ -356,159 +353,159 @@ function fallback_module() {
     $: '',
     0: '',
     mapping: {
-      'icons': 'icons',
-      'variables': 'variables',
-      'scroll': 'scroll',
-      'style': 'style'
+      icons: 'icons',
+      variables: 'variables',
+      scroll: 'scroll',
+      style: 'style'
     }
   }
   subs['../src/node_modules/space'] = {
     $: '',
     0: '',
     mapping: {
-      'style': 'style',
-      'flags': 'flags',
-      "commands": "commands",
-      "icons": "icons",
-      "scroll": "scroll",
-      "actions": "actions",
-      "hardcons": "hardcons",
-      "files": "files",
-      "highlight": "highlight",
-      "active_tab": "active_tab",
-      "entries": "entries",
-      "runtime": "runtime",
-      "mode": "mode",
-      'keybinds': 'keybinds',
-      'undo': 'undo'
+      style: 'style',
+      flags: 'flags',
+      commands: 'commands',
+      icons: 'icons',
+      scroll: 'scroll',
+      actions: 'actions',
+      hardcons: 'hardcons',
+      files: 'files',
+      highlight: 'highlight',
+      active_tab: 'active_tab',
+      entries: 'entries',
+      runtime: 'runtime',
+      mode: 'mode',
+      keybinds: 'keybinds',
+      undo: 'undo'
     }
   }
   subs['../src/node_modules/manager'] = {
     $: '',
     0: '',
     mapping: {
-      'style': 'style'
+      style: 'style'
     }
   }
   subs['../src/node_modules/steps_wizard'] = {
     $: '',
     0: '',
     mapping: {
-      'style': 'style'
+      style: 'style'
     }
   }
   subs['../src/node_modules/tabsbar'] = {
     $: '',
     0: '',
     mapping: {
-      'icons': 'icons',
-      'style': 'style'
+      icons: 'icons',
+      style: 'style'
     }
   }
   subs['../src/node_modules/action_bar'] = {
     $: '',
     0: '',
     mapping: {
-      'icons': 'icons',
-      'style': 'style'
+      icons: 'icons',
+      style: 'style'
     }
   }
   subs['../src/node_modules/console_history'] = {
     $: '',
     0: '',
     mapping: {
-      'style': 'style',
-      'commands': 'commands',
-      'icons': 'icons',
-      'scroll': 'scroll'
+      style: 'style',
+      commands: 'commands',
+      icons: 'icons',
+      scroll: 'scroll'
     }
   }
   subs['../src/node_modules/actions'] = {
     $: '',
     0: '',
     mapping: {
-      'actions': 'actions',
-      'icons': 'icons',
-      'hardcons': 'hardcons',
-      'style': 'style'
+      actions: 'actions',
+      icons: 'icons',
+      hardcons: 'hardcons',
+      style: 'style'
     }
   }
   subs['../src/node_modules/tabbed_editor'] = {
     $: '',
     0: '',
     mapping: {
-      'style': 'style',
-      'files': 'files',
-      'highlight': 'highlight',
-      'active_tab': 'active_tab'
+      style: 'style',
+      files: 'files',
+      highlight: 'highlight',
+      active_tab: 'active_tab'
     }
   }
   subs['../src/node_modules/task_manager'] = {
     $: '',
     0: '',
     mapping: {
-      'style': 'style',
-      'count': 'count'
+      style: 'style',
+      count: 'count'
     }
   }
   subs['../src/node_modules/quick_actions'] = {
     $: '',
     0: '',
     mapping: {
-      'style': 'style',
-      'icons': 'icons',
-      'actions': 'actions',
-      'hardcons': 'hardcons'
+      style: 'style',
+      icons: 'icons',
+      actions: 'actions',
+      hardcons: 'hardcons'
     }
   }
   subs[menuname] = {
     $: '',
     0: '',
     mapping: {
-      'style': 'style',
+      style: 'style'
     }
   }
   subs['../src/node_modules/quick_editor'] = {
     $: '',
     mapping: {
-      'style': 'style'
+      style: 'style'
     }
-  },
+  }
   subs['../src/node_modules/theme_widget'] = {
     $: '',
     0: '',
     mapping: {
-      'style': 'style',
-      "commands": "commands",
-      "icons": "icons",
-      "scroll": "scroll",
-      "actions": "actions",
-      "hardcons": "hardcons",
-      "files": "files",
-      "highlight": "highlight",
-      "active_tab": "active_tab",
-      "entries": "entries",
-      "runtime": "runtime",
-      "mode": "mode",
-      "flags": "flags",
-      'keybinds': 'keybinds',
-      'undo': 'undo'
+      style: 'style',
+      commands: 'commands',
+      icons: 'icons',
+      scroll: 'scroll',
+      actions: 'actions',
+      hardcons: 'hardcons',
+      files: 'files',
+      highlight: 'highlight',
+      active_tab: 'active_tab',
+      entries: 'entries',
+      runtime: 'runtime',
+      mode: 'mode',
+      flags: 'flags',
+      keybinds: 'keybinds',
+      undo: 'undo'
     }
   }
   subs['../src/node_modules/graph_explorer_wrapper'] = {
     $: '',
     0: '',
     mapping: {
-      'theme': 'style',
-      'entries': 'entries',
-      'runtime': 'runtime',
-      'mode': 'mode',
-      'flags': 'flags',
-      'keybinds': 'keybinds',
-      'undo': 'undo'
+      theme: 'style',
+      entries: 'entries',
+      runtime: 'runtime',
+      mode: 'mode',
+      flags: 'flags',
+      keybinds: 'keybinds',
+      undo: 'undo'
     }
   }
-  for (i = 0; i < Object.keys(subs).length - 1; i++) {
+  for (let i = 0; i < Object.keys(subs).length - 1; i++) {
     subs['../src/node_modules/quick_editor'][i] = quick_editor$
   }
 
@@ -645,19 +642,19 @@ function fallback_module() {
       'undo/': {}
     }
   }
-  function quick_editor$(args, tools, [quick_editor]) {
+  function quick_editor$ (args, tools, [quick_editor]) {
     const state = quick_editor()
     state.net = {
       page: {}
     }
     return state
   }
-  function subgen(name) {
+  function subgen (name) {
     subs[name] = {
       $: '',
       0: '',
       mapping: {
-        'style': 'style',
+        style: 'style'
       }
     }
   }
