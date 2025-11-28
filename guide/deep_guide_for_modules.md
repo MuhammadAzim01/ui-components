@@ -79,6 +79,37 @@ Example:
     }
   }
 ```
+
+## Dataset Mapping
+
+The **`mapping`** property is crucial for connecting datasets between parent and child modules. It establishes how data flows from the parent's drive to the child's drive.
+
+### How Mapping Works
+
+Mapping creates a relationship between datasets of the same format or structure. For example, if a parent module has a `style/` dataset and a child module also expects a `style/` dataset, the mapping ensures the child receives the appropriate data.
+
+```js
+mapping: {
+  style: 'style',        // Maps parent's 'style/' to child's 'style/'
+  theme: 'theme',        // Maps parent's 'theme/' to child's 'theme/'
+  icons: 'custom_icons'  // Maps parent's 'icons/' to child's 'custom_icons/'
+}
+```
+
+### Creating Temporary Datasets for Mapping
+
+Sometimes a parent module needs to map to a child's dataset but doesn't have an equivalent dataset. In such cases, we create a temporary empty dataset in the parent's drive solely for mapping purposes.
+
+```js
+drive: {
+  'style/': {
+    'theme.css': { /* actual styles */ }
+  },
+  'somedataset/': {}  // Empty dataset created just for mapping
+}
+```
+
+This empty dataset acts as a placeholder that can be populated later or remain empty, allowing the mapping structure to work without breaking the data flow.
 ---
 Let's go back to drive. As discussed above that we place the data in **drive** which is supposed to be stored in localStorage of a browser. It is completely optional, we can ignore it if we want. The data we want to be customizable is stored in **api**'s **drive** (`fallback_instance`) and which is supposed to be not is stored in `fallback_module`'s drive.
 
@@ -274,89 +305,111 @@ function fallback_module () {
 }
 ```
 ---
-## Communication of a module with other modules
+## Communication between Modules - Protocol System
 
-As discussed above we use **_** property of fallbacks to use **submodules**, Now to add communication between which can be used to trigger functions on events we use a **protocol** based system.
-### Concept
-Lets say **example_sub_module.js** is a submodule of **super_node.js**, then what we need to do is to first of all define a protocol function and pass it as a parameter to the instance of that submodules inorder to introduce a message based communication between those.
+**See [standard_protocol.md](standard_protocol.md) for complete details on the messaging protocol.**
+
+### Overview
+
+Our module system uses a **Double Callback** pattern for inter-module communication. This creates a two-way communication channel between parent and child components:
+
+- **Upward (Child → Parent)**: Child uses the returned `send` function
+- **Downward (Parent → Child)**: Parent uses the child's `onmessage` handler
+
+### Basic Implementation
+
+The protocol is passed as the second parameter to a module:
+
 ```js
-  const example_sub_module = require('example_sub_module')
+const submodule = require('example_submodule')
+
+// In parent module
+element = await submodule(subs[0], parent_protocol)
 ```
-and then
+
+### Protocol Function Structure
+
 ```js
-  let _ = {example_sub_module : null} // this is used to hold functions for all the sub-modules. These would be passed or sent back by the all of the sub_modules. We can also include an `up` property for the communication functions for the super_node if the current module is a example_sub_module for another module and it getting protocol as a paramerter.
-  element = await example_sub_module(subs[0], space_protocol)
-```
-An example of a protocol function in the `super_node.js` for `example_sub_module.js` is:
-```js
-  function space_protocol (send) {
-    _.send_space = send
-    return on // this is the function which is passed to sub_module and the sub_module can execute this to send a message to the super_node
-    function on ({ type, data }) { // runs on behalf of the sub_module
-      decide_and_execute_function_for_subs_based_on_the_passed_type({ type, data })
-    }
-  }
-```
-When the **_** property is like this:
-```js
-  function fallback_instance () {
-    return {
-      _: {
-        'example_sub_module': {
-          0: '',
-          mapping: {
-            'style': 'style'
-          }
-        }
-      }
-    }
-  }
-```
-Then for the `example_sub_module.js` the code could look like:
-```js
-async function taskbar(opts, protocol) {
-...
-  let send = null
-  let _ = null
-  if(protocol) {
-    send = protocol(msg => onmessage(msg))
-    _ = { up: send, action_bar: null, tabsbar: null }
-  }
-...
-return
-...
-  function action_bar_protocol (send) {
-    _.action_bar = send
-    return on
-    function on ({ type, data }) {  //routing the messages to super_node
-      _.up({ type, data })
-    }
-  }
+function parent_protocol (send) {
+  _.send_child = send  // Store child's send function
+  return onmessage     // Return parent's message handler
   
-  function tabsbar_protocol (send) {
-    _.tabsbar = send
-    return on
-    function on ({ type, data }) { //routing the messages to super_node
-      _.up({ type, data })
-    }
+  function onmessage (msg) {
+    // Handle messages from child
+    const { head, refs, type, data } = msg
+    // Process based on message type
   }
-  function onmessage ({ type, data }) { // This function is passed as parameter to the example_super_node function, so it can communicate with the example_sub_module
-    switch (type) {
-      case 'tab_name_clicked':
-      case 'tab_close_clicked':
-        _.up({ type, data })
-        break
-      default:
-        if (_.action_bar) {
-          _.action_bar({ type, data })
-        }
-    }
-  }
-...
 }
 ```
 
-This sets up a 2 way communication between modules to send messages and based on which we can execute any function or piece of code after defining the logic for a message.
+### Message Structure
+
+All messages follow this standardized format:
+
+```js
+{
+  head: [sender_id, receiver_id, message_id],  // [by, to, mid]
+  refs: { cause: parent_message_head },        // Or {} for root events
+  type: "message_type",                        // e.g., 'click', 'update'
+  data: { ... }                               // Payload
+}
+```
+
+### Dynamic IDs
+
+Components must use dynamic IDs (never hardcoded):
+
+```js
+async function my_component(opts, protocol) {
+  const { id } = await get(opts.sid)
+  const ids = opts.ids
+  if (!ids || !ids.up) throw new Error('ids.up required')
+  
+  const by = id        // Our instance ID
+  const to = ids.up    // Parent's instance ID
+  let mid = 0         // Message counter
+  
+  // ... rest of implementation
+}
+```
+
+### Complete Example
+
+```js
+async function component(opts, protocol) {
+  const { id, sdb } = await get(opts.sid)
+  const ids = opts.ids
+  if (!ids || !ids.up) throw new Error('ids.up required')
+  const by = id
+  const to = ids.up
+  let mid = 0
+
+  let send = null
+  let _ = null
+  if (protocol) {
+    send = protocol(onmessage)
+    _ = { up: send }
+  }
+
+  // Send message upward
+  button.onclick = () => {
+    if (_) {
+      const head = [by, to, mid++]
+      const refs = {}  // User event
+      _.up({ head, refs, type: 'click', data: 'hello' })
+    }
+  }
+
+  function onmessage (msg) {
+    const { head, refs, type, data } = msg
+    // Handle incoming messages
+  }
+
+  return el
+}
+```
+
+This protocol system enables robust, traceable communication between modules while maintaining reusability and clear message flow.
 
 ---
 ## sdb

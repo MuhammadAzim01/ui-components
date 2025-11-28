@@ -6,10 +6,23 @@ const { sdb, get } = statedb(fallback_module)
 // exporting the module
 module.exports = component
 // actual module
-async function component (opts, callback = id => console.log('calling:', '@' + id)) {
+async function component (opts, protocol) {
   // getting the state database for the current instance
-  // eslint-disable-next-line no-unused-vars
   const { id, sdb } = await get(opts.sid)
+  // Setup protocol for inter-module communication
+  // Note: Parent must pass opts.ids.up when calling this component
+  // Example: await tabs_component({...subs[0], ids: { up: 'parent_id' }}, protocol)
+  const ids = opts.ids
+  if (!ids || !ids.up) throw new Error('ids.up required - parent must provide its ID')
+  const by = id // Our instance ID
+  const to = ids.up // Parent's instance ID
+  let mid = 0 // Message counter
+  let send = null
+  let _ = null
+  if (protocol) {
+    send = protocol(onmessage)
+    _ = { up: send }
+  }
   // optional getting drive from state database but it does not work currently. will be useful in the future though.
   // eslint-disable-next-line no-unused-vars
   const { drive } = sdb
@@ -101,9 +114,25 @@ async function component (opts, callback = id => console.log('calling:', '@' + i
     el.className = 'tabsbtn'
     const icon_el = el.querySelector('.icon')
     const label_el = el.querySelector('.name')
+    const btn_el = el.querySelector('.btn')
 
     label_el.draggable = false
-    icon_el.onclick = callback
+    icon_el.onclick = () => {
+      // Send message using standardized protocol when icon is clicked
+      if (_) {
+        const head = [by, to, mid++]
+        const refs = {} // User event, no cause
+        _.up({ head, refs, type: 'tab_icon_clicked', data: { name, id, index } })
+      }
+    }
+    btn_el.onclick = () => {
+      // Send message when close button is clicked
+      if (_) {
+        const head = [by, to, mid++]
+        const refs = {} // User event, no cause
+        _.up({ head, refs, type: 'tab_close_clicked', data: { name, id, index } })
+      }
+    }
     entries.appendChild(el)
   }
   // this function is called when the dataset changes. It calls the functions defined in `on` object.
@@ -147,6 +176,32 @@ async function component (opts, callback = id => console.log('calling:', '@' + i
         entries.scrollLeft = data
       }
     }, 200)
+  }
+
+  // Protocol message handler - receives messages from parent or other components
+  function onmessage (msg) {
+    const { type, data } = msg
+    // Handle incoming messages based on type
+    switch (type) {
+    case 'update_tab_data':
+      // Example: Update tab data when parent sends new data
+      if (data && data.variables) {
+        onvariables(data.variables)
+      }
+      break
+    case 'scroll_to_tab':
+      // Example: Scroll to specific tab when requested
+      if (data && data.index !== undefined && entries) {
+        const tabElements = entries.querySelectorAll('.tabsbtn')
+        if (tabElements[data.index]) {
+          tabElements[data.index].scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+        }
+      }
+      break
+    default:
+      // Handle other message types as needed
+      console.log('Received message:', { type, data })
+    }
   }
 }
 // this is the fallback module which is used to create the state database and to provide the default data for the component.
