@@ -3230,7 +3230,8 @@ async function action_bar (opts, protocol) {
     selected_action: parent__selected_action,
     show_submit_btn,
     hide_submit_btn,
-    form_data
+    form_data,
+    update_actions_for_app
   }
 
   return el
@@ -3256,7 +3257,7 @@ async function action_bar (opts, protocol) {
     const refs = {}
     _.up({ head, refs, type: 'console_history_toggle', data: null })
     const head2 = [by, to, mid++]
-    _.up({ head: head2, refs, type: 'ui_focus', data: 'command history' })
+    _.up({ head: head2, refs, type: 'ui_focus', data: 'command_history' })
   }
 
   // --- Toggle Views ---
@@ -3284,6 +3285,10 @@ async function action_bar (opts, protocol) {
     }
 
     return function on (msg) {
+      if(msg.type === "ui_focus"){
+        _.up(msg)
+        return
+      }
       const { type } = msg
       const handler = actions_handlers[type] || fail
       handler(msg)
@@ -3429,6 +3434,19 @@ async function action_bar (opts, protocol) {
     const head_to_steps = [by, 'steps_wizard', mid++]
     _.send_steps_wizard?.({ head: head_to_steps, type: 'init_data', data: actions_data[selected_action] })
   }
+  
+  function update_actions_for_app (msg) {
+    const { data } = msg
+    console.log('Action Bar: Updating actions for focused app:', data?.focused_app)
+    
+    // Here you can implement logic to change actions based on the focused app
+    // For now, we'll just log the message and could trigger action updates
+    if (data?.focused_app) {
+      // Example: Could load different actions based on focused app
+      // const head_to_actions = [by, 'actions', mid++]
+      // _.send_actions?.({ head: head_to_actions, type: 'load_app_specific_actions', data: { app: data.focused_app } })
+    }
+  }
 }
 
 function fallback_module () {
@@ -3537,7 +3555,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/action_bar/action_bar.js")
-},{"STATE":1,"actions":5,"quick_actions":16,"steps_wizard":19}],5:[function(require,module,exports){
+},{"STATE":1,"actions":5,"quick_actions":17,"steps_wizard":20}],5:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -3690,6 +3708,9 @@ async function actions (opts, protocol) {
 
     function onaction () {
       send_selected_action({ data: action_data })
+      const head = [by, to, mid++]
+      const refs = {}
+      _.up({ head, refs, type: 'ui_focus', data: "console_history" })
     }
   }
 
@@ -3964,7 +3985,7 @@ async function console_history (opts, protocol) {
     command_el.onclick = function () {
       const head = [by, to, mid++]
       const refs = {} // since this is a user event
-      _.up({ head, refs, type: 'ui_focus', data: 'command history' })
+      _.up({ head, refs, type: 'ui_focus', data: 'command_history' })
       const head2 = [by, to, mid++]
       _.up({ head: head2, refs, type: 'command_clicked', data: command_data })
     }
@@ -4228,25 +4249,91 @@ const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { get } = statedb(fallback_module)
 
+module.exports = control_unit
+
+async function control_unit (opts, protocol) {
+  const { id, sdb } = await get(opts.sid)
+  const ids = opts.ids
+  if (!ids || !ids.up) {
+    throw new Error(`Component ${__filename} requires ids.up to be provided`)
+  }
+  const by = id
+  const to = ids.up
+  
+  let send = null
+  let _ = null
+  let mid = 0
+  
+  if (protocol) {
+    send = protocol(msg => onmessage(msg))
+    _ = { up: send }
+  }
+
+  await sdb.watch(() => {})
+
+  function onmessage (msg) {
+    const { type, data } = msg
+    
+    if (type === 'focused_app_changed') {
+      if (_.up) {
+        const head = [by, to, mid++]
+        const refs = msg.head ? { cause: msg.head } : {}
+        _.up({ head, refs, type: 'update_actions_for_app', data: data })
+      }
+    }
+  }
+}
+
+function fallback_module () {
+  return {
+    api: fallback_instance,
+    drive: {}
+  }
+  function fallback_instance () {
+    return {
+      drive: {}
+    }
+  }
+}
+
+
+}).call(this)}).call(this,"/src/node_modules/control_unit.js")
+},{"STATE":1}],8:[function(require,module,exports){
+(function (__filename){(function (){
+const STATE = require('STATE')
+const statedb = STATE(__filename)
+const { get } = statedb(fallback_module)
+
 module.exports = focus_tracker
 
 async function focus_tracker (opts, protocol) {
-  const { sdb } = await get(opts.sid)
+  const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
+  const ids = opts.ids
+  if (!ids || !ids.up) {
+    throw new Error(`Component ${__filename} requires ids.up to be provided`)
+  }
+  const by = id
+  const to = ids.up
+  
   const on = {
     focused
   }
   // Keep track of the last focused element
   let last_focused = null
+  let mid = 0
+  let _ = null
 
   if (protocol) {
-    protocol(msg => {
-      const { type, data } = msg
-      if (type === 'ui_focus') {
-        last_focused = data
-        drive.put('focused/current.json', { value: last_focused })
-      }
-    })
+    const send = protocol(msg => onmessage(msg))
+    _ = { up: send }
+  }
+
+  function onmessage (msg) {
+    const { type, data } = msg
+    if (type === 'ui_focus') {
+      drive.put('focused/current.json', { value: data })
+    }
   }
 
   await sdb.watch(onbatch)
@@ -4261,7 +4348,12 @@ async function focus_tracker (opts, protocol) {
   function fail (data, type) { console.warn('invalid message', { cause: { data, type } }) }
   function focused (data) {
     const tmp = typeof data[0] === 'string' ? JSON.parse(data[0]) : data[0]
-    console.log('Focus Tracker: Last focused element:', last_focused)
+    if (_ && last_focused !== tmp.value) {
+      const head = [by, to, mid++]
+      const refs = {}
+      _.up({ head, refs, type: 'focused_app_changed', data: { focused_app: tmp.value } })
+    }
+    
     last_focused = tmp.value
   }
 }
@@ -4284,7 +4376,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/focus_tracker.js")
-},{"STATE":1}],8:[function(require,module,exports){
+},{"STATE":1}],9:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4486,7 +4578,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/form_input.js")
-},{"STATE":1}],9:[function(require,module,exports){
+},{"STATE":1}],10:[function(require,module,exports){
 module.exports = graphdb
 
 function graphdb (entries) {
@@ -4531,7 +4623,7 @@ function graphdb (entries) {
   }
 }
 
-},{}],10:[function(require,module,exports){
+},{}],11:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4739,7 +4831,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/graph_explorer_wrapper/index.js")
-},{"./graphdb":9,"STATE":1,"graph-explorer":3}],11:[function(require,module,exports){
+},{"./graphdb":10,"STATE":1,"graph-explorer":3}],12:[function(require,module,exports){
 module.exports = { resource }
 
 function resource (timeout = 1000) {
@@ -4763,7 +4855,7 @@ function resource (timeout = 1000) {
   }
 }
 
-},{}],12:[function(require,module,exports){
+},{}],13:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4974,7 +5066,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/input_test.js")
-},{"STATE":1}],13:[function(require,module,exports){
+},{"STATE":1}],14:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5066,6 +5158,11 @@ async function manager (opts, protocol) {
   function onmessage (msg) {
     const { type } = msg
     switch (type) {
+    case 'update_actions_for_app':
+      const head_to_action_bar = [by, 'action_bar', mid++]
+      const refs = msg.head ? { cause: msg.head } : {}
+      _.send_actions_bar?.({ head: head_to_action_bar, refs, type, data: msg.data })
+      break
     default: // @TODO Handle message types
     }
   }
@@ -5205,6 +5302,11 @@ async function manager (opts, protocol) {
     }
 
     return function on (msg) {
+      if (msg.type === "console_history_toggle" || msg.type === "ui_focus"){
+        _.up(msg)
+        return
+      }
+
       const { type, data } = msg
       const handler = action_bar_handlers[type] || fail
       handler(data, type, msg)
@@ -5325,7 +5427,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/manager/manager.js")
-},{"STATE":1,"action_bar":4,"program":15}],14:[function(require,module,exports){
+},{"STATE":1,"action_bar":4,"program":16}],15:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5578,7 +5680,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/menu.js")
-},{"STATE":1}],15:[function(require,module,exports){
+},{"STATE":1}],16:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5713,7 +5815,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/program/program.js")
-},{"STATE":1,"form_input":8,"input_test":12}],16:[function(require,module,exports){
+},{"STATE":1,"form_input":9,"input_test":13}],17:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -6163,7 +6265,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/quick_actions/quick_actions.js")
-},{"STATE":1}],17:[function(require,module,exports){
+},{"STATE":1}],18:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -6580,7 +6682,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/quick_editor.js")
-},{"STATE":1,"helpers":11}],18:[function(require,module,exports){
+},{"STATE":1,"helpers":12}],19:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -6931,7 +7033,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/space.js")
-},{"STATE":1,"actions":5,"console_history":6,"graph_explorer_wrapper":10,"tabbed_editor":20}],19:[function(require,module,exports){
+},{"STATE":1,"actions":5,"console_history":6,"graph_explorer_wrapper":11,"tabbed_editor":21}],20:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -7110,7 +7212,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/steps_wizard/steps_wizard.js")
-},{"STATE":1}],20:[function(require,module,exports){
+},{"STATE":1}],21:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -7526,7 +7628,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabbed_editor/tabbed_editor.js")
-},{"STATE":1}],21:[function(require,module,exports){
+},{"STATE":1}],22:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -7751,7 +7853,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabs/tabs.js")
-},{"STATE":1}],22:[function(require,module,exports){
+},{"STATE":1}],23:[function(require,module,exports){
 (function (__filename){(function (){
 const state = require('STATE')
 const state_db = state(__filename)
@@ -7811,7 +7913,7 @@ async function tabsbar (opts, protocol) {
     hat_btn.onclick = () => {
       const head = [by, to, mid++]
       const refs = {}
-      _.up?.({ head, refs, type: 'ui_focus', data: 'wizard hat' })
+      _.up?.({ head, refs, type: 'ui_focus', data: 'wizard_hat' })
     }
   }
   if (dricons[2]) {
@@ -7953,7 +8055,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabsbar/tabsbar.js")
-},{"STATE":1,"tabs":21,"task_manager":23}],23:[function(require,module,exports){
+},{"STATE":1,"tabs":22,"task_manager":24}],24:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -8000,7 +8102,7 @@ async function task_manager (opts, protocol) {
     if (_) {
       const head = [by, to, mid++]
       const refs = {}
-      _.up({ head, refs, type: 'ui_focus', data: 'task manager' })
+      _.up({ head, refs, type: 'ui_focus', data: 'task_manager' })
     }
   }
 
@@ -8069,7 +8171,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/task_manager.js")
-},{"STATE":1}],24:[function(require,module,exports){
+},{"STATE":1}],25:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -8233,7 +8335,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/taskbar/taskbar.js")
-},{"STATE":1,"manager":13,"tabsbar":22}],25:[function(require,module,exports){
+},{"STATE":1,"manager":14,"tabsbar":23}],26:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -8242,6 +8344,7 @@ const { get } = statedb(fallback_module)
 const space = require('space')
 const taskbar = require('taskbar')
 const focus_tracker = require('focus_tracker')
+const control_unit = require('control_unit')
 
 module.exports = theme_widget
 
@@ -8272,7 +8375,7 @@ async function theme_widget (opts) {
 
   let space_el = null
   let taskbar_el = null
-  const _ = { send_space: null, send_taskbar: null, send_focus_tracker: null }
+  const _ = { send_space: null, send_taskbar: null, send_focus_tracker: null, send_control_unit: null }
 
   taskbar_el = await taskbar({ ...subs[1], ids: { up: id } }, taskbar_protocol)
   taskbar_slot.replaceWith(taskbar_el)
@@ -8282,6 +8385,7 @@ async function theme_widget (opts) {
   space_slot.replaceWith(space_el)
   
   await focus_tracker({ ...subs[2], ids: { up: id } }, focus_tracker_protocol)
+  await control_unit({ ...subs[3], ids: { up: id } }, control_unit_protocol)
 
   return el
 
@@ -8327,7 +8431,16 @@ async function theme_widget (opts) {
     _.send_focus_tracker = send
     return on
     function on (msg) {
-      // @TODO: Focus tracker might send messages back
+      if (_ && _.send_control_unit) _.send_control_unit(msg)
+    }
+  }
+
+  function control_unit_protocol (send) {
+    _.send_control_unit = send
+    return on
+    function on (msg) {
+      // @TODO: Control unit might send messages back
+      console.log('Control unit message:', msg)
     }
   }
 }
@@ -8346,6 +8459,9 @@ function fallback_module () {
         }
       },
       focus_tracker: {
+        $: ''
+      },
+      control_unit: {
         $: ''
       }
     }
@@ -8385,6 +8501,9 @@ function fallback_module () {
           mapping: {
             focused: 'focused'
           }
+        },
+        control_unit: {
+          0: ''
         }
       },
       drive: {
@@ -8425,7 +8544,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/theme_widget/theme_widget.js")
-},{"STATE":1,"focus_tracker":7,"space":18,"taskbar":24}],26:[function(require,module,exports){
+},{"STATE":1,"control_unit":7,"focus_tracker":8,"space":19,"taskbar":25}],27:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -9092,4 +9211,4 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/web/page.js")
-},{"../src/node_modules/action_bar":4,"../src/node_modules/actions":5,"../src/node_modules/console_history":6,"../src/node_modules/graph_explorer_wrapper":10,"../src/node_modules/helpers":11,"../src/node_modules/manager":13,"../src/node_modules/menu":14,"../src/node_modules/quick_actions":16,"../src/node_modules/quick_editor":17,"../src/node_modules/space":18,"../src/node_modules/steps_wizard":19,"../src/node_modules/tabbed_editor":20,"../src/node_modules/tabs":21,"../src/node_modules/tabsbar":22,"../src/node_modules/task_manager":23,"../src/node_modules/taskbar":24,"../src/node_modules/theme_widget":25,"STATE":1}]},{},[26]);
+},{"../src/node_modules/action_bar":4,"../src/node_modules/actions":5,"../src/node_modules/console_history":6,"../src/node_modules/graph_explorer_wrapper":11,"../src/node_modules/helpers":12,"../src/node_modules/manager":14,"../src/node_modules/menu":15,"../src/node_modules/quick_actions":17,"../src/node_modules/quick_editor":18,"../src/node_modules/space":19,"../src/node_modules/steps_wizard":20,"../src/node_modules/tabbed_editor":21,"../src/node_modules/tabs":22,"../src/node_modules/tabsbar":23,"../src/node_modules/task_manager":24,"../src/node_modules/taskbar":25,"../src/node_modules/theme_widget":26,"STATE":1}]},{},[27]);
