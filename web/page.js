@@ -490,7 +490,8 @@ function fallback_module () {
       flags: 'flags',
       keybinds: 'keybinds',
       undo: 'undo',
-      focused: 'focused'
+      focused: 'focused',
+      temp_actions: 'temp_actions'
     }
   }
   subs['../src/node_modules/graph_explorer_wrapper'] = {
@@ -641,7 +642,8 @@ function fallback_module () {
       'flags/': {},
       'keybinds/': {},
       'undo/': {},
-      'focused/': {}
+      'focused/': {},
+      'temp_actions/': {}
     }
   }
   function quick_editor$ (args, tools, [quick_editor]) {

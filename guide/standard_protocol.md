@@ -33,7 +33,7 @@ The `head` is an array of 3 elements that uniquely identifies the message: `[fro
   - *Dynamic*: Always derived from `opts.sid` (e.g., `const { id } = await get(opts.sid)`).
 - **`to` (receiver_id)**: The instance ID of the component receiving the message.
   - *Dynamic*: For upward messages, this is passed by the parent via `opts.ids.up`.
-  - For downward messages, the parent knows the child's ID (or uses a specific name like `'child_component'`).
+  - For downward messages, the parent knows the child's ID (or uses a specific name like `'child_component'`) using the subs array. We can pass it as `subs[0].sid` etc.
 - **`id` (message_id)**: A unique counter for the message, specific to the sender instance.
   - Typically implemented as a local `let mid = 0` counter that increments with `mid++`.
 
