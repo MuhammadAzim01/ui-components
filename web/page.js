@@ -182,15 +182,10 @@ async function boot (opts) {
       for (const node of nodes) {
         result[node] = {}
         const datasets = drive.list('', node)
-        // eslint-disable-next-line no-undef
-        for (dataset of datasets) {
-          // eslint-disable-next-line no-undef
+        for (const dataset of datasets) {
           result[node][dataset] = {}
-          // eslint-disable-next-line no-undef
           const files = drive.list(dataset, node)
-          // eslint-disable-next-line no-undef
-          for (file of files) {
-            // eslint-disable-next-line no-undef
+          for (const file of files) {
             result[node][dataset][file] = (await drive.get(dataset + file, node)).raw
           }
         }
