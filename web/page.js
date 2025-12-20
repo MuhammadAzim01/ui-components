@@ -71,8 +71,10 @@ async function boot (opts) {
   // ----------------------------------------
   // ID + JSON STATE
   // ----------------------------------------
+  let resize_enabled = false
   const on = {
     style: inject,
+    resize_container: update_resize,
     ...sdb.admin.status.dataset.drive,
     ...sdb.admin
   }
@@ -126,7 +128,8 @@ async function boot (opts) {
   const menu_callbacks = {
     on_checkbox_change: handle_checkbox_change,
     on_label_click: handle_label_click,
-    on_select_all_toggle: handle_select_all_toggle
+    on_select_all_toggle: handle_select_all_toggle,
+    on_resize_toggle: handle_resize_toggle
   }
   const item = resource()
   io.on(port => {
@@ -149,6 +152,7 @@ async function boot (opts) {
 
   navbar_slot.replaceWith(nav_menu_element, await editor(editor_subs[0]))
   await create_component(entries)
+  update_resize(resize_enabled)
   window.onload = scroll_to_initial_selected
   send_quick_editor_data()
   admin_on.import = send_quick_editor_data
@@ -282,6 +286,12 @@ async function boot (opts) {
     update_url(null)
   }
 
+  function handle_resize_toggle () {
+    console.log('handle_resize_toggle', resize_enabled)
+    resize_enabled = !resize_enabled
+    drive.put('resize_container/state.json', resize_enabled)
+  }
+
   async function onbatch (batch) {
     for (const { type, paths } of batch) {
       const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
@@ -292,6 +302,17 @@ async function boot (opts) {
   function fail (data, type) { console.warn(__filename + 'invalid message', { cause: { data, type } }) }
   function inject (data) {
     style.innerHTML = data.join('\n')
+  }
+  function update_resize (data) {
+    console.log('update_resize', data)
+    // resize_enabled = data
+    // wrappers.forEach(wrap => {
+    //   const wrapper = wrap.outer.querySelector('.component-wrapper')
+    //   if (wrapper) {
+    //     wrapper.style.resize = resize_enabled ? 'both' : 'none'
+    //     wrapper.style.overflow = resize_enabled ? 'auto' : 'visible'
+    //   }
+    // })
   }
   async function send_quick_editor_data () {
     const roots = admin.status.db.read(['root_datasets'])
@@ -516,12 +537,6 @@ function fallback_module () {
             padding-top: 10px; /* Adjust as needed */
           }
 
-          .components-wrapper {
-            width: 95%;
-            margin: 0 auto;
-            padding: 2.5%;
-          }
-
           .component-outer-wrapper {
             margin-bottom: 20px;
             padding: 0px 0px 10px 0px;
@@ -537,10 +552,12 @@ function fallback_module () {
           }
 
           .component-wrapper {
+            width: 95%;
+            margin: 0 auto;
             position: relative;
             padding: 15px;
             border: 3px solid #666;
-            resize: both;
+            resize: none;
             overflow: visible;
             border-radius: 0px;
             background-color: #eceff4;
@@ -618,6 +635,11 @@ function fallback_module () {
             top: -5px;
             right: -10px;
           }`
+        }
+      },
+      'resize_container/': {
+        'state.json': {
+          raw: 'false'
         }
       },
       'icons/': {},
