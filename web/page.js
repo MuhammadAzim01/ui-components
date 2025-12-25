@@ -71,7 +71,7 @@ async function boot (opts) {
   // ----------------------------------------
   // ID + JSON STATE
   // ----------------------------------------
-  let resize_enabled = false
+  let resize_enabled = true
   const on = {
     style: inject,
     resize_container: update_resize,
@@ -304,15 +304,15 @@ async function boot (opts) {
     style.innerHTML = data.join('\n')
   }
   function update_resize (data) {
-    console.log('update_resize', data)
-    // resize_enabled = data
-    // wrappers.forEach(wrap => {
-    //   const wrapper = wrap.outer.querySelector('.component-wrapper')
-    //   if (wrapper) {
-    //     wrapper.style.resize = resize_enabled ? 'both' : 'none'
-    //     wrapper.style.overflow = resize_enabled ? 'auto' : 'visible'
-    //   }
-    // })
+    console.log('[ update_resize ]', data)
+    resize_enabled = data
+    wrappers.forEach(wrap => {
+      const wrapper = wrap.outer.querySelector('.component-wrapper')
+      if (wrapper) {
+        wrapper.style.resize = resize_enabled ? 'both' : 'none'
+        wrapper.style.overflow = resize_enabled ? 'auto' : 'visible'
+      }
+    })
   }
   async function send_quick_editor_data () {
     const roots = admin.status.db.read(['root_datasets'])
