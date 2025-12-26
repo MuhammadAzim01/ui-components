@@ -1,10 +1,8 @@
 (function(){function r(e,n,t){function o(i,f){if(!n[i]){if(!e[i]){var c="function"==typeof require&&require;if(!f&&c)return c(i,!0);if(u)return u(i,!0);var a=new Error("Cannot find module '"+i+"'");throw a.code="MODULE_NOT_FOUND",a}var p=n[i]={exports:{}};e[i][0].call(p.exports,function(r){var n=e[i][1][r];return o(n||r)},p,p.exports,r,e,n,t)}return n[i].exports}for(var u="function"==typeof require&&require,i=0;i<t.length;i++)o(t[i]);return o}return r})()({1:[function(require,module,exports){
 
 },{}],2:[function(require,module,exports){
-arguments[4][1][0].apply(exports,arguments)
-},{"dup":1}],3:[function(require,module,exports){
 (function (__filename){(function (){
-const STATE = require('./STATE')
+const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { get } = statedb(fallback_module)
 
@@ -637,8 +635,8 @@ async function graph_explorer (opts, protocol) {
       return
     }
     const parsed_data = parse_json_data(data[0])
-    if (!Array.isArray(parsed_data)) {
-      console.error('Parsed undo stack data is not a valid array.')
+    if (typeof parsed_data !== 'object' || !parsed_data) {
+      console.error('Parsed undo stack data is not a valid Object.')
       return
     }
     undo_stack = parsed_data
@@ -3138,7 +3136,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/node_modules/graph-explorer/lib/graph_explorer.js")
-},{"./STATE":2}],4:[function(require,module,exports){
+},{"STATE":1}],3:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -3561,7 +3559,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/action_bar/action_bar.js")
-},{"STATE":1,"actions":5,"quick_actions":17,"steps_wizard":20}],5:[function(require,module,exports){
+},{"STATE":1,"actions":4,"quick_actions":16,"steps_wizard":19}],4:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -3918,7 +3916,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/actions/actions.js")
-},{"STATE":1}],6:[function(require,module,exports){
+},{"STATE":1}],5:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4265,7 +4263,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/console_history/console_history.js")
-},{"STATE":1}],7:[function(require,module,exports){
+},{"STATE":1}],6:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4450,7 +4448,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/control_unit.js")
-},{"STATE":1}],8:[function(require,module,exports){
+},{"STATE":1}],7:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4528,7 +4526,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/focus_tracker.js")
-},{"STATE":1}],9:[function(require,module,exports){
+},{"STATE":1}],8:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4730,7 +4728,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/form_input.js")
-},{"STATE":1}],10:[function(require,module,exports){
+},{"STATE":1}],9:[function(require,module,exports){
 module.exports = graphdb
 
 function graphdb (entries) {
@@ -4775,7 +4773,7 @@ function graphdb (entries) {
   }
 }
 
-},{}],11:[function(require,module,exports){
+},{}],10:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4985,7 +4983,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/graph_explorer_wrapper/index.js")
-},{"./graphdb":10,"STATE":1,"graph-explorer":3}],12:[function(require,module,exports){
+},{"./graphdb":9,"STATE":1,"graph-explorer":2}],11:[function(require,module,exports){
 module.exports = { resource }
 
 function resource (timeout = 1000) {
@@ -5009,7 +5007,7 @@ function resource (timeout = 1000) {
   }
 }
 
-},{}],13:[function(require,module,exports){
+},{}],12:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5220,7 +5218,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/input_test.js")
-},{"STATE":1}],14:[function(require,module,exports){
+},{"STATE":1}],13:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5591,7 +5589,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/manager/manager.js")
-},{"STATE":1,"action_bar":4,"program":16}],15:[function(require,module,exports){
+},{"STATE":1,"action_bar":3,"program":15}],14:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5607,7 +5605,8 @@ async function create_component_menu (opts, names, inicheck, callbacks) {
   const {
     on_checkbox_change,
     on_label_click,
-    on_select_all_toggle
+    on_select_all_toggle,
+    on_resize_toggle
   } = callbacks
 
   const checkobject = {}
@@ -5625,6 +5624,7 @@ async function create_component_menu (opts, names, inicheck, callbacks) {
       <div class="menu hidden">
         <div class="menu-header">
           <button class="unselect-all-button">${all_checked ? 'Unselect All' : 'Select All'}</button>
+          <button class="resize-toggle-button">Toggle Resize</button>
         </div>
         <ul class="menu-list"></ul>
       </div>
@@ -5636,6 +5636,7 @@ async function create_component_menu (opts, names, inicheck, callbacks) {
   const menu = shadow.querySelector('.menu')
   const toggle_btn = shadow.querySelector('.menu-toggle-button')
   const unselect_btn = shadow.querySelector('.unselect-all-button')
+  const resize_btn = shadow.querySelector('.resize-toggle-button')
   const list = shadow.querySelector('.menu-list')
 
   names.forEach((name, index) => {
@@ -5662,8 +5663,10 @@ async function create_component_menu (opts, names, inicheck, callbacks) {
   })
   await sdb.watch(onbatch)
   // event listeners
+  console.log('resize_btn', resize_btn)
   toggle_btn.onclick = on_toggle_btn
   unselect_btn.onclick = on_unselect_btn
+  resize_btn.onclick = on_resize_btn
   document.onclick = handle_document_click
 
   return el
@@ -5678,6 +5681,11 @@ async function create_component_menu (opts, names, inicheck, callbacks) {
     unselect_btn.textContent = select_all ? 'Unselect All' : 'Select All'
     list.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = select_all })
     on_select_all_toggle({ selectAll: select_all })
+  }
+
+  function on_resize_btn () {
+    console.log('on_resize_btn')
+    on_resize_toggle()
   }
 
   function handle_document_click (e) {
@@ -5776,9 +5784,23 @@ function fallback_module () {
               cursor: pointer;
               border-radius: 5px;
               width: 100%;
+              margin-bottom: 5px;
             }
 
             .unselect-all-button:hover {
+              background-color: #c0c0c0;
+            }
+
+            .resize-toggle-button {
+              padding: 8px 12px;
+              border: none;
+              background-color: #d0d0d0;
+              cursor: pointer;
+              border-radius: 5px;
+              width: 100%;
+            }
+
+            .resize-toggle-button:hover {
               background-color: #c0c0c0;
             }
 
@@ -5844,7 +5866,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/menu.js")
-},{"STATE":1}],16:[function(require,module,exports){
+},{"STATE":1}],15:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5979,7 +6001,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/program/program.js")
-},{"STATE":1,"form_input":9,"input_test":13}],17:[function(require,module,exports){
+},{"STATE":1,"form_input":8,"input_test":12}],16:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -6018,19 +6040,22 @@ async function quick_actions (opts, protocol) {
         <span class="slash-prefix">/</span>
         <span class="command-text"></span>
         <span class="step-display" style="display: none;">
-          <span>steps:<span>
+          <span>steps:</span>
           <span class="current-step">1</span>
           <span class="step-separator">-</span>
           <span class="total-step">1</span>
         </span>
         <input class="input-field" type="text" placeholder="Type to search actions...">
+        <div class="input-tooltip" style="display: none;"></div>
       </div>
       <button class="submit-btn" style="display: none;"></button>
       <button class="close-btn"></button>
     </div>
+    <div class="tooltip hide"></div>
   </div>
   <style>
   </style>`
+  const container = shadow.querySelector('.quick-actions-container')
   const default_actions = shadow.querySelector('.default-actions')
   const text_bar = shadow.querySelector('.text-bar')
   const input_wrapper = shadow.querySelector('.input-wrapper')
@@ -6042,6 +6067,8 @@ async function quick_actions (opts, protocol) {
   const step_display = shadow.querySelector('.step-display')
   const current_step = shadow.querySelector('.current-step')
   const total_steps = shadow.querySelector('.total-step')
+  const tooltip = shadow.querySelector('.tooltip')
+  const input_tooltip = shadow.querySelector('.input-tooltip')
   const style = shadow.querySelector('style')
 
   let init = false
@@ -6065,9 +6092,6 @@ async function quick_actions (opts, protocol) {
 
   await sdb.watch(onbatch)
 
-  submit_btn.innerHTML = hardcons.submit
-  close_btn.innerHTML = hardcons.cross
-
   return el
 
   function onsubmit () {
@@ -6076,9 +6100,11 @@ async function quick_actions (opts, protocol) {
     _.up({ head, refs, type: 'action_submitted' })
   }
   function oninput (e) {
+    const value = e.target.value
+    update_input_tooltip(value)
     const head = [by, to, mid++]
     const refs = {}
-    _.up({ head, refs, type: 'filter_actions', data: e.target.value })
+    _.up({ head, refs, type: 'filter_actions', data: value })
   }
 
   function update_input_display (selected_action = null) {
@@ -6087,10 +6113,11 @@ async function quick_actions (opts, protocol) {
       command_text.style.display = 'inline'
       command_text.textContent = `#${selected_action.action}`
       current_step.textContent = selected_action?.current_step || 1
-      total_steps.textContent = selected_action.total_steps || 1
+      total_steps.textContent = selected_action?.total_steps || 1
       step_display.style.display = 'inline-flex'
 
       input_field.style.display = 'none'
+      hide_input_tooltip()
     } else {
       slash_prefix.style.display = 'none'
       command_text.style.display = 'none'
@@ -6098,15 +6125,18 @@ async function quick_actions (opts, protocol) {
       submit_btn.style.display = 'none'
       step_display.style.display = 'none'
       input_field.placeholder = 'Type to search actions...'
+      hide_input_tooltip()
     }
   }
 
   function activate_input_field () {
+    console.log('activate_input_field')
     default_actions.style.display = 'none'
     text_bar.style.display = 'none'
 
     input_wrapper.style.display = 'flex'
     input_field.focus()
+    update_input_tooltip('')
 
     const head = [by, to, mid++]
     const refs = {}
@@ -6135,6 +6165,7 @@ async function quick_actions (opts, protocol) {
 
     input_field.value = ''
     update_input_display()
+    hide_input_tooltip()
 
     const head = [by, to, mid++]
     const refs = {}
@@ -6171,7 +6202,7 @@ async function quick_actions (opts, protocol) {
       // TODO: update actions
     }
   }
-  function fail (data, type) { throw new Error('invalid message', { cause: { data, type } }) }
+  function fail (data, type) { throw new Error(`Invalid message type: ${type}`, { cause: { data, type } }) }
 
   function inject (data) {
     style.innerHTML = data.join('\n')
@@ -6181,6 +6212,8 @@ async function quick_actions (opts, protocol) {
       submit: data[0],
       cross: data[1]
     }
+    submit_btn.innerHTML = hardcons.submit
+    close_btn.innerHTML = hardcons.cross
   }
   function iconject (data) {
     icons = data
@@ -6193,19 +6226,91 @@ async function quick_actions (opts, protocol) {
 
   function create_default_actions (actions) {
     default_actions.replaceChildren()
-    actions.forEach(action => {
-      const btn = document.createElement('div')
-      btn.classList.add('action-btn')
-      btn.innerHTML = icons[action.icon]
-      default_actions.appendChild(btn)
-    })
+    actions.forEach((action) => create_action_button(action))
+  }
 
-    close_btn.innerHTML = icons.close
+  function create_action_button (action) {
+    const btn = document.createElement('div')
+    btn.classList.add('action-btn')
+    btn.innerHTML = icons[action.icon]
+    btn.dataset.name = action.name
+    btn.onmouseenter = () => show_tooltip(btn, action.name)
+    btn.onmouseleave = hide_tooltip
+    default_actions.appendChild(btn)
+  }
+
+  function update_input_tooltip (value) {
+    if (!value || value.trim() === '') {
+      hide_input_tooltip()
+      return
+    }
+    const tooltip_text = get_tooltip_text(value)
+    if (tooltip_text) {
+      show_input_tooltip(tooltip_text)
+    } else {
+      hide_input_tooltip()
+    }
+  }
+
+  function get_tooltip_text (value) {
+    const lower_value = value.toLowerCase().trim()
+    if (lower_value.length === 0) return null
+    if (defaults.length > 0) {
+      const matching = defaults.filter((action) => {
+        return matches_action(action, lower_value)
+      })
+      if (matching.length > 0) {
+        const names = matching.map(function (action) {
+          return action.name
+        })
+        return `Found ${matching.length} action${matching.length > 1 ? 's' : ''}: ${names.join(', ')}`
+      }
+    }
+    return 'No actions found. Try a different search term.'
+  }
+
+  function matches_action (action, search_term) {
+    return action.name.toLowerCase().includes(search_term)
+  }
+
+  function show_input_tooltip (text) {
+    input_tooltip.textContent = text
+    input_tooltip.style.display = 'block'
+    position_input_tooltip()
+  }
+
+  function hide_input_tooltip () {
+    input_tooltip.style.display = 'none'
+  }
+
+  function position_input_tooltip () {
+    const input_rect = input_field.getBoundingClientRect()
+    const wrapper_rect = input_wrapper.getBoundingClientRect()
+    const tooltip_rect = input_tooltip.getBoundingClientRect()
+    const left = input_rect.left - wrapper_rect.left + (input_rect.width / 2) - (tooltip_rect.width / 2)
+    const top = input_rect.top - wrapper_rect.top - tooltip_rect.height - 8
+    input_tooltip.style.left = `${left}px`
+    input_tooltip.style.top = `${top}px`
   }
 
   function update_actions_for_app (data) {
     const focused_app = data?.focused_app
-    console.log('Quick actions updated for focused app:', focused_app)
+  }
+
+  function show_tooltip (btn, name) {
+    tooltip.textContent = name
+    tooltip.style.display = 'block'
+    const btn_rect = btn.getBoundingClientRect()
+    const container_rect = container.getBoundingClientRect()
+    const tooltip_rect = tooltip.getBoundingClientRect()
+    const left = btn_rect.left - container_rect.left + (btn_rect.width / 2) - (tooltip_rect.width / 2)
+    const top = btn_rect.top - container_rect.top - tooltip_rect.height - 8
+    tooltip.style.left = `${left}px`
+    tooltip.style.top = `${top}px`
+  }
+
+  function hide_tooltip () {
+    tooltip.style.display = 'none'
   }
 }
 
@@ -6281,6 +6386,7 @@ function fallback_module () {
                 padding: 4px;
                 gap: 8px;
                 min-width: 200px;
+                position: relative;
               }
               .default-actions {
                 display: flex;
@@ -6333,6 +6439,7 @@ function fallback_module () {
                 align-items: center;
                 padding: 0 12px;
                 min-height: 32px;
+                position: relative;
               }
               .slash-prefix {
                 color: #a6a6a6;
@@ -6426,6 +6533,52 @@ function fallback_module () {
               .hide {
                 display: none;
               }
+              .tooltip {
+                position: absolute;
+                background: #2d2d2d;
+                color: #e8eaed;
+                padding: 6px 12px;
+                border-radius: 4px;
+                font-size: 12px;
+                white-space: nowrap;
+                pointer-events: none;
+                z-index: 1000;
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+                border: 1px solid #3c3c3c;
+              }
+              .tooltip::after {
+                content: '';
+                position: absolute;
+                top: 100%;
+                left: 50%;
+                transform: translateX(-50%);
+                border: 4px solid transparent;
+                border-top-color: #2d2d2d;
+              }
+              .input-tooltip {
+                position: absolute;
+                background: #2d2d2d;
+                color: #e8eaed;
+                padding: 6px 12px;
+                border-radius: 4px;
+                font-size: 12px;
+                white-space: normal;
+                pointer-events: none;
+                z-index: 1001;
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+                border: 1px solid #4285f4;
+                max-width: 300px;
+                word-wrap: break-word;
+              }
+              .input-tooltip::after {
+                content: '';
+                position: absolute;
+                top: 100%;
+                left: 50%;
+                transform: translateX(-50%);
+                border: 4px solid transparent;
+                border-top-color: #4285f4;
+              }
             `
           }
         }
@@ -6435,7 +6588,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/quick_actions/quick_actions.js")
-},{"STATE":1}],18:[function(require,module,exports){
+},{"STATE":1}],17:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -6852,7 +7005,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/quick_editor.js")
-},{"STATE":1,"helpers":12}],19:[function(require,module,exports){
+},{"STATE":1,"helpers":11}],18:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -7203,7 +7356,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/space.js")
-},{"STATE":1,"actions":5,"console_history":6,"graph_explorer_wrapper":11,"tabbed_editor":21}],20:[function(require,module,exports){
+},{"STATE":1,"actions":4,"console_history":5,"graph_explorer_wrapper":10,"tabbed_editor":20}],19:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -7382,7 +7535,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/steps_wizard/steps_wizard.js")
-},{"STATE":1}],21:[function(require,module,exports){
+},{"STATE":1}],20:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -7798,7 +7951,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabbed_editor/tabbed_editor.js")
-},{"STATE":1}],22:[function(require,module,exports){
+},{"STATE":1}],21:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -8023,7 +8176,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabs/tabs.js")
-},{"STATE":1}],23:[function(require,module,exports){
+},{"STATE":1}],22:[function(require,module,exports){
 (function (__filename){(function (){
 const state = require('STATE')
 const state_db = state(__filename)
@@ -8225,7 +8378,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabsbar/tabsbar.js")
-},{"STATE":1,"tabs":22,"task_manager":24}],24:[function(require,module,exports){
+},{"STATE":1,"tabs":21,"task_manager":23}],23:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -8341,7 +8494,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/task_manager.js")
-},{"STATE":1}],25:[function(require,module,exports){
+},{"STATE":1}],24:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -8505,7 +8658,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/taskbar/taskbar.js")
-},{"STATE":1,"manager":14,"tabsbar":23}],26:[function(require,module,exports){
+},{"STATE":1,"manager":13,"tabsbar":22}],25:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -8715,7 +8868,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/theme_widget/theme_widget.js")
-},{"STATE":1,"control_unit":7,"focus_tracker":8,"space":19,"taskbar":25}],27:[function(require,module,exports){
+},{"STATE":1,"control_unit":6,"focus_tracker":7,"space":18,"taskbar":24}],26:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -8790,8 +8943,10 @@ async function boot (opts) {
   // ----------------------------------------
   // ID + JSON STATE
   // ----------------------------------------
+  let resize_enabled = true
   const on = {
     style: inject,
+    resize_container: update_resize,
     ...sdb.admin.status.dataset.drive,
     ...sdb.admin
   }
@@ -8845,7 +9000,8 @@ async function boot (opts) {
   const menu_callbacks = {
     on_checkbox_change: handle_checkbox_change,
     on_label_click: handle_label_click,
-    on_select_all_toggle: handle_select_all_toggle
+    on_select_all_toggle: handle_select_all_toggle,
+    on_resize_toggle: handle_resize_toggle
   }
   const item = resource()
   io.on(port => {
@@ -8868,6 +9024,7 @@ async function boot (opts) {
 
   navbar_slot.replaceWith(nav_menu_element, await editor(editor_subs[0]))
   await create_component(entries)
+  update_resize(resize_enabled)
   window.onload = scroll_to_initial_selected
   send_quick_editor_data()
   admin_on.import = send_quick_editor_data
@@ -8901,15 +9058,10 @@ async function boot (opts) {
       for (const node of nodes) {
         result[node] = {}
         const datasets = drive.list('', node)
-        // eslint-disable-next-line no-undef
-        for (dataset of datasets) {
-          // eslint-disable-next-line no-undef
+        for (const dataset of datasets) {
           result[node][dataset] = {}
-          // eslint-disable-next-line no-undef
           const files = drive.list(dataset, node)
-          // eslint-disable-next-line no-undef
-          for (file of files) {
-            // eslint-disable-next-line no-undef
+          for (const file of files) {
             result[node][dataset][file] = (await drive.get(dataset + file, node)).raw
           }
         }
@@ -9006,6 +9158,12 @@ async function boot (opts) {
     update_url(null)
   }
 
+  function handle_resize_toggle () {
+    console.log('handle_resize_toggle', resize_enabled)
+    resize_enabled = !resize_enabled
+    drive.put('resize_container/state.json', resize_enabled)
+  }
+
   async function onbatch (batch) {
     for (const { type, paths } of batch) {
       const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
@@ -9016,6 +9174,17 @@ async function boot (opts) {
   function fail (data, type) { console.warn(__filename + 'invalid message', { cause: { data, type } }) }
   function inject (data) {
     style.innerHTML = data.join('\n')
+  }
+  function update_resize (data) {
+    console.log('[ update_resize ]', data)
+    resize_enabled = data
+    wrappers.forEach(wrap => {
+      const wrapper = wrap.outer.querySelector('.component-wrapper')
+      if (wrapper) {
+        wrapper.style.resize = resize_enabled ? 'both' : 'none'
+        wrapper.style.overflow = resize_enabled ? 'auto' : 'visible'
+      }
+    })
   }
   async function send_quick_editor_data () {
     const roots = admin.status.db.read(['root_datasets'])
@@ -9240,12 +9409,6 @@ function fallback_module () {
             padding-top: 10px; /* Adjust as needed */
           }
 
-          .components-wrapper {
-            width: 95%;
-            margin: 0 auto;
-            padding: 2.5%;
-          }
-
           .component-outer-wrapper {
             margin-bottom: 20px;
             padding: 0px 0px 10px 0px;
@@ -9261,10 +9424,12 @@ function fallback_module () {
           }
 
           .component-wrapper {
+            width: 95%;
+            margin: 0 auto;
             position: relative;
             padding: 15px;
             border: 3px solid #666;
-            resize: both;
+            resize: none;
             overflow: visible;
             border-radius: 0px;
             background-color: #eceff4;
@@ -9344,6 +9509,11 @@ function fallback_module () {
           }`
         }
       },
+      'resize_container/': {
+        'state.json': {
+          raw: 'false'
+        }
+      },
       'icons/': {},
       'variables/': {},
       'scroll/': {},
@@ -9384,4 +9554,4 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/web/page.js")
-},{"../src/node_modules/action_bar":4,"../src/node_modules/actions":5,"../src/node_modules/console_history":6,"../src/node_modules/graph_explorer_wrapper":11,"../src/node_modules/helpers":12,"../src/node_modules/manager":14,"../src/node_modules/menu":15,"../src/node_modules/quick_actions":17,"../src/node_modules/quick_editor":18,"../src/node_modules/space":19,"../src/node_modules/steps_wizard":20,"../src/node_modules/tabbed_editor":21,"../src/node_modules/tabs":22,"../src/node_modules/tabsbar":23,"../src/node_modules/task_manager":24,"../src/node_modules/taskbar":25,"../src/node_modules/theme_widget":26,"STATE":1}]},{},[27]);
+},{"../src/node_modules/action_bar":3,"../src/node_modules/actions":4,"../src/node_modules/console_history":5,"../src/node_modules/graph_explorer_wrapper":10,"../src/node_modules/helpers":11,"../src/node_modules/manager":13,"../src/node_modules/menu":14,"../src/node_modules/quick_actions":16,"../src/node_modules/quick_editor":17,"../src/node_modules/space":18,"../src/node_modules/steps_wizard":19,"../src/node_modules/tabbed_editor":20,"../src/node_modules/tabs":21,"../src/node_modules/tabsbar":22,"../src/node_modules/task_manager":23,"../src/node_modules/taskbar":24,"../src/node_modules/theme_widget":25,"STATE":1}]},{},[26]);
