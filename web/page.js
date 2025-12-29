@@ -365,6 +365,20 @@ function fallback_module () {
   const subs = {}
   names.forEach(subgen)
   subs['../src/node_modules/helpers'] = 0
+
+  subs['../src/node_modules/taskbar'] = {
+    $: '',
+    0: '',
+    mapping: {
+      style: 'style',
+      icons: 'icons',
+      actions: 'actions',
+      prefs: 'prefs',
+      variables: 'variables',
+      data: 'data',
+      hardcons: 'hardcons'
+    }
+  }
   subs['../src/node_modules/tabs'] = {
     $: '',
     0: '',
@@ -400,7 +414,13 @@ function fallback_module () {
     $: '',
     0: '',
     mapping: {
-      style: 'style'
+      icons: 'icons',
+      style: 'style',
+      variables: 'variables',
+      data: 'data',
+      actions: 'actions',
+      hardcons: 'hardcons',
+      prefs: 'prefs'
     }
   }
   subs['../src/node_modules/steps_wizard'] = {
@@ -423,7 +443,11 @@ function fallback_module () {
     0: '',
     mapping: {
       icons: 'icons',
-      style: 'style'
+      style: 'style',
+      actions: 'actions',
+      variables: 'variables',
+      hardcons: 'hardcons',
+      prefs: 'prefs'
     }
   }
   subs['../src/node_modules/console_history'] = {
@@ -471,7 +495,8 @@ function fallback_module () {
       style: 'style',
       icons: 'icons',
       actions: 'actions',
-      hardcons: 'hardcons'
+      hardcons: 'hardcons',
+      prefs: 'prefs'
     }
   }
   subs[menuname] = {
@@ -508,7 +533,10 @@ function fallback_module () {
       undo: 'undo',
       focused: 'focused',
       temp_actions: 'temp_actions',
-      temp_quick_actions: 'temp_quick_actions'
+      temp_quick_actions: 'temp_quick_actions',
+      prefs: 'prefs',
+      variables: 'variables',
+      data: 'data'
     }
   }
   subs['../src/node_modules/graph_explorer_wrapper'] = {
@@ -662,7 +690,8 @@ function fallback_module () {
       'undo/': {},
       'focused/': {},
       'temp_actions/': {},
-      'temp_quick_actions/': {}
+      'temp_quick_actions/': {},
+      'prefs/': {}
     }
   }
   function quick_editor$ (args, tools, [quick_editor]) {
