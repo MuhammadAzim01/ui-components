@@ -3233,7 +3233,8 @@ async function action_bar (opts, protocol) {
     show_submit_btn,
     hide_submit_btn,
     form_data,
-    update_actions_for_app
+    update_actions_for_app,
+    update_quick_actions_for_app
   }
 
   return el
@@ -3245,7 +3246,7 @@ async function action_bar (opts, protocol) {
       func(data, type)
     }
   }
-  function fail (data, type) { throw new Error('invalid message', { cause: { data, type } }) }
+  function fail (data, type) { console.warn('Unknown message type:', type, data) }
 
   function inject (data) {
     style.innerHTML = data.join('\n')
@@ -3299,44 +3300,7 @@ async function action_bar (opts, protocol) {
 
   function actions__selected_action (msg) {
     const { type, data } = msg
-    selected_action = data?.action || null
-
-    if (selected_action === 'Help') {
-      const head = [by, to, mid++]
-      const refs = {}
-      _.up({ head, refs, type: 'ui_focus', data: 'help button' })
-    }
-
-    const head_to_quick = [by, quick_actions_sid, mid++]
-    _.send_quick_actions?.({
-      head: head_to_quick,
-      refs: msg.head ? { cause: msg.head } : undefined,
-      type,
-      data: {
-        ...data,
-        total_steps: actions_data[selected_action]?.length || 0
-      }
-    })
-
-    const head_to_steps = [by, steps_wizard_sid, mid++]
-    _.send_steps_wizard?.({ head: head_to_steps, refs: msg.head ? { cause: msg.head } : undefined, type: 'init_data', data: actions_data[selected_action] })
-
-    steps_toggle_view('block')
-
-    if (actions_data[selected_action]?.length > 0) {
-      const first_step = actions_data[selected_action][0]
-      const head = [by, to, mid++]
-      const refs = msg.head ? { cause: msg.head } : undefined
-      _.up?.({ head, refs, type: 'render_form', data: first_step })
-    }
-
-    if (actions_data[selected_action][actions_data[selected_action].length - 1]?.is_completed) {
-      const head_to_quick_submit = [by, quick_actions_sid, mid++]
-      _?.send_quick_actions({ head: head_to_quick_submit, refs: msg.head ? { cause: msg.head } : undefined, type: 'show_submit_btn' })
-    }
-
-    _.up?.({ head: msg.head, refs: msg.refs, type, data: selected_action })
-    actions_toggle_view('none')
+    handle_action_selection('actions_menu', data)
   }
 
   // -------------------------------
@@ -3348,11 +3312,13 @@ async function action_bar (opts, protocol) {
 
     const quick_handlers = {
       display_actions: quick_actions__display_actions,
-      action_submitted: quick_actions__action_submitted
+      action_submitted: quick_actions__action_submitted,
+      filter_actions,
+      quick_action_selected: quick_actions__quick_action_selected,
+      trigger_steps_wizard: quick_actions__trigger_steps_wizard
     }
 
-    return on
-    function on (msg) {
+    return function on (msg) {
       const { type } = msg
       const handler = quick_handlers[type] || fail
       handler(msg)
@@ -3410,8 +3376,7 @@ async function action_bar (opts, protocol) {
   }
 
   function onmessage (msg) {
-    const { type, data } = msg
-    console.log('action_bar.onmessage', type, data)
+    const { type } = msg
     parent_handler[type]?.(msg)
   }
 
@@ -3451,6 +3416,77 @@ async function action_bar (opts, protocol) {
     const head_to_quick = [by, quick_actions_sid, mid++]
     _.send_quick_actions?.({ head: head_to_quick, refs, type, data })
   }
+
+  function update_quick_actions_for_app (msg) {
+    const { data, type } = msg
+    const head_to_quick_actions = [by, quick_actions_sid, mid++]
+    const refs = msg.head ? { cause: msg.head } : {}
+    _.send_quick_actions?.({ head: head_to_quick_actions, refs, type, data })
+  }
+
+  function filter_actions (msg) {
+    const { data, type } = msg
+    const head_to_actions = [by, actions_sid, mid++]
+    _.send_actions?.({ head: head_to_actions, cause: msg.head ? { cause: msg.head } : {}, type, data })
+  }
+
+  function quick_actions__quick_action_selected (msg) {
+    const { data } = msg
+    handle_action_selection('quick_actions', data)
+  }
+
+  function quick_actions__trigger_steps_wizard (msg) {
+    const { data } = msg
+    
+    // Show steps wizard with the selected action
+    if (selected_action && actions_data[selected_action]) {
+      const head_to_steps = [by, steps_wizard_sid, mid++]
+      _.send_steps_wizard?.({ 
+        head: head_to_steps, 
+        refs: msg.head ? { cause: msg.head } : undefined, 
+        type: 'init_data', 
+        data: actions_data[selected_action] 
+      })
+      
+      steps_toggle_view('block')
+      
+      // Update quick actions with step info
+      const head_to_quick = [by, quick_actions_sid, mid++]
+      _.send_quick_actions?.({
+        head: head_to_quick,
+        type: 'selected_action',
+        data: {
+          action: selected_action,
+          total_steps: actions_data[selected_action]?.length || 0
+        }
+      })
+    }
+  }
+
+  function handle_action_selection(source, action_data) {
+    // Centralized handler for all action selections
+    selected_action = action_data.action
+    
+    // Update quick_actions input field with the command
+    const head_to_quick = [by, quick_actions_sid, mid++]
+    _.send_quick_actions?.({
+      head: head_to_quick,
+      type: 'set_command_from_action',
+      data: {
+        command: action_data.action,
+        source: source,
+        total_steps: actions_data[action_data.action]?.length || 0
+      }
+    })
+    
+    // Show submit button if action has steps
+    if (actions_data[action_data.action]?.length > 0) {
+      _.send_quick_actions?.({
+        head: [by, quick_actions_sid, mid++],
+        type: 'show_submit_btn'
+      })
+    }
+  }
 }
 
 function fallback_module () {
@@ -3471,7 +3507,8 @@ function fallback_module () {
             style: 'style',
             icons: 'icons',
             actions: 'actions',
-            hardcons: 'hardcons'
+            hardcons: 'hardcons',
+            prefs: 'prefs'
           }
         },
         actions: {
@@ -3552,7 +3589,11 @@ function fallback_module () {
               }
             `
           }
-        }
+        },
+        'actions/': {},
+        'hardcons/': {},
+        'prefs/': {},
+        'variables/': {}
       }
     }
   }
@@ -3725,7 +3766,7 @@ async function actions (opts, protocol) {
   function filter (search_term) {
     const items = shadow.querySelectorAll('.action-item')
     items.forEach(item => {
-      const action_name = item.children[1].textContext.toLowerCase()
+      const action_name = item.children[1].textContent.toLowerCase()
       const matches = action_name.includes(search_term.toLowerCase())
       item.style.display = matches ? 'flex' : 'none'
     })
@@ -4315,6 +4356,24 @@ async function control_unit (opts, protocol) {
         const head = [by, to, mid++]
         const refs = msg.head ? { cause: msg.head } : {}
         _.up({ head, refs, type: 'update_actions_for_app', data: message_data })
+        
+        let quick_actions_data = null
+        
+        if (focused_app) {
+          const file = `temp_quick_actions/${focused_app}.json`
+          const temp_quick_actions_file = await drive.get(file)
+          if (temp_quick_actions_file) {
+            quick_actions_data = typeof temp_quick_actions_file.raw === 'string' ? JSON.parse(temp_quick_actions_file.raw) : temp_quick_actions_file.raw
+          }
+        }
+        
+        const quick_actions_message_data = {
+          ...data,
+          temp_quick_actions: quick_actions_data
+        }
+        const quick_actions_head = [by, to, mid++]
+        const quick_actions_refs = msg.head ? { cause: msg.head } : {}
+        _.up({ head: quick_actions_head, refs: quick_actions_refs, type: 'update_quick_actions_for_app', data: quick_actions_message_data })
       }
     }
   }
@@ -4438,6 +4497,156 @@ function fallback_module () {
                 pinned: false,
                 default: true,
                 icon: 'search'
+              }
+            ])
+          },
+          'help_button.json': {
+            raw: JSON.stringify([
+              {
+                action: 'Get Help',
+                pinned: true,
+                default: true,
+                icon: 'help'
+              },
+              {
+                action: 'Documentation',
+                pinned: false,
+                default: true,
+                icon: 'book'
+              },
+              {
+                action: 'Tutorial',
+                pinned: false,
+                default: false,
+                icon: 'graduation-cap'
+              },
+              {
+                action: 'Contact Support',
+                pinned: true,
+                default: false,
+                icon: 'support'
+              }
+            ])
+          }
+        },
+        'temp_quick_actions/': {
+          'command_history.json': {
+            raw: JSON.stringify([
+              {
+                name: 'Clear History',
+                icon: '0',
+                action: 'clear_history'
+              },
+              {
+                name: 'Export History',
+                icon: '1',
+                action: 'export_history'
+              },
+              {
+                name: 'Search History',
+                icon: '2',
+                action: 'search_history'
+              }
+            ])
+          },
+          'task_manager.json': {
+            raw: JSON.stringify([
+              {
+                name: 'Kill Process',
+                icon: '0',
+                action: 'kill_process'
+              },
+              {
+                name: 'Restart Task',
+                icon: '1',
+                action: 'restart_task'
+              },
+              {
+                name: 'Task Details',
+                icon: '2',
+                action: 'task_details'
+              }
+            ])
+          },
+          'tab.json': {
+            raw: JSON.stringify([
+              {
+                name: 'New Tab',
+                icon: '0',
+                action: 'new_tab'
+              },
+              {
+                name: 'Duplicate Tab',
+                icon: '1',
+                action: 'duplicate_tab'
+              },
+              {
+                name: 'Close Tab',
+                icon: '2',
+                action: 'close_tab'
+              }
+            ])
+          },
+          'wizard_hat.json': {
+            raw: JSON.stringify([
+              {
+                name: 'New File',
+                icon: '0',
+                action: 'new_file'
+              },
+              {
+                name: 'Open File',
+                icon: '1',
+                action: 'open_file'
+              },
+              {
+                name: 'Save File',
+                icon: '2',
+                action: 'save_file'
+              },
+              {
+                name: 'Settings',
+                icon: '3',
+                action: 'settings'
+              },
+              {
+                name: 'Help',
+                icon: '4',
+                action: 'help'
+              },
+              {
+                name: 'Terminal',
+                icon: '0',
+                action: 'terminal'
+              },
+              {
+                name: 'Search',
+                icon: '2',
+                action: 'search'
+              }
+            ])
+          },
+          'help_button.json': {
+            raw: JSON.stringify([
+              {
+                name: 'Get Help',
+                icon: '0',
+                action: 'get_help'
+              },
+              {
+                name: 'Documentation',
+                icon: '1',
+                action: 'documentation'
+              },
+              {
+                name: 'Tutorial',
+                icon: '2',
+                action: 'tutorial'
+              },
+              {
+                name: 'Contact Support',
+                icon: '3',
+                action: 'contact_support'
               }
             ])
           }
@@ -5324,6 +5533,10 @@ async function manager (opts, protocol) {
       const head_to_action_bar = [by, action_bar_sid, mid++]
       const refs = msg.head ? { cause: msg.head } : {}
       _.send_actions_bar?.({ head: head_to_action_bar, refs, type, data: msg.data })
+    case 'update_quick_actions_for_app':
+      const head_to_quick_actions = [by, action_bar_sid, mid++]
+      const quick_refs = msg.head ? { cause: msg.head } : {}
+      _.send_actions_bar?.({ head: head_to_quick_actions, quick_refs, type, data: msg.data })
       break
     default: // @TODO Handle message types
     }
@@ -5339,7 +5552,7 @@ async function manager (opts, protocol) {
   }
 
   function fail (data, type) {
-    throw new Error('invalid message', { cause: { data, type } })
+    console.warn('invalid message', { cause: { data, type } })
   }
 
   function inject (data) {
@@ -5541,7 +5754,11 @@ function fallback_module () {
           0: '',
           mapping: {
             icons: 'icons',
-            style: 'style'
+            style: 'style',
+            actions: 'actions',
+            variables: 'variables',
+            hardcons: 'hardcons',
+            prefs: 'prefs'
           }
         },
         program: {
@@ -5582,7 +5799,12 @@ function fallback_module () {
               }
             `
           }
-        }
+        },
+        'variables/': {},
+        'data/': {},
+        'actions/': {},
+        'hardcons/': {},
+        'prefs/': {}
       }
     }
   }
@@ -6022,7 +6244,8 @@ async function quick_actions (opts, protocol) {
     style: inject,
     icons: iconject,
     hardcons: onhardcons,
-    actions: onactions
+    actions: onactions,
+    prefs: onprefs
   }
 
   const el = document.createElement('div')
@@ -6073,6 +6296,8 @@ async function quick_actions (opts, protocol) {
 
   let init = false
   let mid = 0
+  let enable_quick_action_tooltips = false
+  let enable_input_field_tooltips = false
   let icons = {}
   let hardcons = {}
   let defaults = []
@@ -6097,11 +6322,12 @@ async function quick_actions (opts, protocol) {
   function onsubmit () {
     const head = [by, to, mid++]
     const refs = {}
-    _.up({ head, refs, type: 'action_submitted' })
+    // Send trigger_steps_wizard instead of action_submitted
+    _.up({ head, refs, type: 'trigger_steps_wizard', data: { command: command_text.textContent } })
   }
   function oninput (e) {
     const value = e.target.value
-    update_input_tooltip(value)
+    if (enable_input_field_tooltips) update_input_tooltip(value)
     const head = [by, to, mid++]
     const refs = {}
     _.up({ head, refs, type: 'filter_actions', data: value })
@@ -6136,7 +6362,8 @@ async function quick_actions (opts, protocol) {
 
     input_wrapper.style.display = 'flex'
     input_field.focus()
-    update_input_tooltip('')
+    
+    if (enable_input_field_tooltips) update_input_tooltip('')
 
     const head = [by, to, mid++]
     const refs = {}
@@ -6149,9 +6376,11 @@ async function quick_actions (opts, protocol) {
       selected_action,
       deactivate_input_field,
       show_submit_btn,
-      update_current_step,
       hide_submit_btn,
-      update_actions_for_app
+      update_current_step,
+      update_actions_for_app,
+      update_quick_actions_for_app,
+      set_command_from_action
     }
     const handler = message_map[type] || fail
     handler(data)
@@ -6202,7 +6431,7 @@ async function quick_actions (opts, protocol) {
       // TODO: update actions
     }
   }
-  function fail (data, type) { throw new Error(`Invalid message type: ${type}`, { cause: { data, type } }) }
+  function fail (data, type) { console.warn(`Invalid message type: ${type}`, { cause: { data, type } }) }
 
   function inject (data) {
     style.innerHTML = data.join('\n')
@@ -6222,6 +6451,13 @@ async function quick_actions (opts, protocol) {
   function onactions (data) {
     const vars = typeof data[0] === 'string' ? JSON.parse(data[0]) : data[0]
     defaults = vars
+    create_default_actions(defaults)
+  }
+
+  function onprefs (data) {
+    const vars = typeof data[0] === 'string' ? JSON.parse(data[0]) : data[0]
+    enable_input_field_tooltips = vars.input_field
+    enable_quick_action_tooltips = vars.quick_actions
   }
 
   function create_default_actions (actions) {
@@ -6234,8 +6470,26 @@ async function quick_actions (opts, protocol) {
     btn.classList.add('action-btn')
     btn.innerHTML = icons[action.icon]
     btn.dataset.name = action.name
-    btn.onmouseenter = () => show_tooltip(btn, action.name)
-    btn.onmouseleave = hide_tooltip
+    if (enable_quick_action_tooltips){
+      btn.onmouseenter = () => show_tooltip(btn, action.name)
+      btn.onmouseleave = hide_tooltip
+    }
+    
+    // Add click handler to send action to action_bar
+    btn.onclick = () => {
+      const head = [by, to, mid++]
+      const refs = {}
+      _.up({ 
+        head, 
+        refs, 
+        type: 'quick_action_selected', 
+        data: { 
+          action: action.name,
+          source: 'quick_actions'
+        } 
+      })
+    }
+    
     default_actions.appendChild(btn)
   }
 
@@ -6295,6 +6549,28 @@ async function quick_actions (opts, protocol) {
 
   function update_actions_for_app (data) {
     const focused_app = data?.focused_app
+  }
+
+  function update_quick_actions_for_app (data) {
+    const temp_quick_actions = data?.temp_quick_actions
+    if (temp_quick_actions && Array.isArray(temp_quick_actions)) {
+      drive.put('actions/default.json', JSON.stringify(temp_quick_actions))
+    }
+  }
+
+  function set_command_from_action (data) {
+    // Handle command from action_bar
+    activate_input_field()
+    
+    // Update input display with the command
+    update_input_display({
+      action: data.command,
+      current_step: 1,
+      total_steps: data.total_steps
+    })
+    
+    // Store the command for submit
+    command_text.textContent = data.command
   }
 
   function show_tooltip (btn, name) {
@@ -6580,6 +6856,14 @@ function fallback_module () {
                 border-top-color: #4285f4;
               }
             `
+          }
+        },
+        'prefs/': {
+          "tooltips.json": {
+            raw: JSON.stringify({
+              "quick_actions": true,
+              "input_field": false
+            })
           }
         }
       }
@@ -8244,6 +8528,11 @@ async function tabsbar (opts, protocol) {
     const doc = parser.parseFromString(dricons[2], 'image/svg+xml')
     const svgElem = doc.documentElement
     bar_btn.replaceChildren(svgElem)
+    bar_btn.onclick = () => {
+      const head = [by, to, mid++]
+      const refs = {}
+      _.up?.({ head, refs, type: 'ui_focus', data: 'help_button' })
+    }
   }
   const tabs = protocol ? await tabs_component({ ...subs[0], ids: { up: id } }, tabs_protocol) : await tabs_component({ ...subs[0], ids: { up: id } })
   tabs.classList.add('tabs-bar')
@@ -8557,7 +8846,7 @@ async function taskbar (opts, protocol) {
     }
   }
 
-  function fail (data, type) { throw new Error('invalid message', { cause: { data, type } }) }
+  function fail (data, type) { console.warn('invalid message', { cause: { data, type } }) }
 
   function inject (data) {
     style.innerHTML = data.join('\n')
@@ -8617,7 +8906,12 @@ function fallback_module () {
           0: '',
           mapping: {
             icons: 'icons',
-            style: 'style'
+            style: 'style',
+            variables: 'variables',
+            data: 'data',
+            actions: 'actions',
+            hardcons: 'hardcons',
+            prefs: 'prefs'
           }
         },
         tabsbar: {
@@ -8651,7 +8945,13 @@ function fallback_module () {
               }
             `
           }
-        }
+        },
+        'icons/': {},
+        'variables/': {},
+        'data/': {},
+        'actions/': {},
+        'hardcons/': {},
+        'prefs/': {}
       }
     }
   }
@@ -8813,7 +9113,13 @@ function fallback_module () {
         taskbar: {
           0: '',
           mapping: {
-            style: 'style'
+            style: 'style',
+            icons: 'icons',
+            actions: 'actions',
+            prefs: 'prefs',
+            variables: 'variables',
+            data: 'data',
+            hardcons: 'hardcons'
           }
         },
         focus_tracker: {
@@ -8825,7 +9131,8 @@ function fallback_module () {
         control_unit: {
           0: '',
           mapping: {
-            temp_actions: 'temp_actions'
+            temp_actions: 'temp_actions',
+            temp_quick_actions: 'temp_quick_actions'
           }
         }
       },
@@ -8861,7 +9168,11 @@ function fallback_module () {
         'keybinds/': {},
         'undo/': {},
         'focused/': {},
-        'temp_actions/': {}
+        'temp_actions/': {},
+        'temp_quick_actions/': {},
+        'prefs/': {},
+        'variables/': {},
+        'data/': {}
       }
     }
   }
@@ -9237,6 +9548,20 @@ function fallback_module () {
   const subs = {}
   names.forEach(subgen)
   subs['../src/node_modules/helpers'] = 0
+
+  subs['../src/node_modules/taskbar'] = {
+    $: '',
+    0: '',
+    mapping: {
+      style: 'style',
+      icons: 'icons',
+      actions: 'actions',
+      prefs: 'prefs',
+      variables: 'variables',
+      data: 'data',
+      hardcons: 'hardcons'
+    }
+  }
   subs['../src/node_modules/tabs'] = {
     $: '',
     0: '',
@@ -9272,7 +9597,13 @@ function fallback_module () {
     $: '',
     0: '',
     mapping: {
-      style: 'style'
+      icons: 'icons',
+      style: 'style',
+      variables: 'variables',
+      data: 'data',
+      actions: 'actions',
+      hardcons: 'hardcons',
+      prefs: 'prefs'
     }
   }
   subs['../src/node_modules/steps_wizard'] = {
@@ -9295,7 +9626,11 @@ function fallback_module () {
     0: '',
     mapping: {
       icons: 'icons',
-      style: 'style'
+      style: 'style',
+      actions: 'actions',
+      variables: 'variables',
+      hardcons: 'hardcons',
+      prefs: 'prefs'
     }
   }
   subs['../src/node_modules/console_history'] = {
@@ -9343,7 +9678,8 @@ function fallback_module () {
       style: 'style',
       icons: 'icons',
       actions: 'actions',
-      hardcons: 'hardcons'
+      hardcons: 'hardcons',
+      prefs: 'prefs'
     }
   }
   subs[menuname] = {
@@ -9379,7 +9715,11 @@ function fallback_module () {
       keybinds: 'keybinds',
       undo: 'undo',
       focused: 'focused',
-      temp_actions: 'temp_actions'
+      temp_actions: 'temp_actions',
+      temp_quick_actions: 'temp_quick_actions',
+      prefs: 'prefs',
+      variables: 'variables',
+      data: 'data'
     }
   }
   subs['../src/node_modules/graph_explorer_wrapper'] = {
@@ -9532,7 +9872,9 @@ function fallback_module () {
       'keybinds/': {},
       'undo/': {},
       'focused/': {},
-      'temp_actions/': {}
+      'temp_actions/': {},
+      'temp_quick_actions/': {},
+      'prefs/': {}
     }
   }
   function quick_editor$ (args, tools, [quick_editor]) {
