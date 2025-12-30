@@ -3284,7 +3284,7 @@ async function action_bar (opts, protocol) {
     _.send_actions = send
 
     const actions_handlers = {
-      selected_action: actions__selected_action
+      selected_action: update_quick_actions_input
     }
 
     return function on (msg) {
@@ -3300,7 +3300,38 @@ async function action_bar (opts, protocol) {
 
   function actions__selected_action (msg) {
     const { type, data } = msg
-    handle_action_selection('actions_menu', data)
+    selected_action = data?.action || null
+
+    const head_to_quick = [by, quick_actions_sid, mid++]
+    _.send_quick_actions?.({
+      head: head_to_quick,
+      refs: msg.head ? { cause: msg.head } : undefined,
+      type,
+      data: {
+        ...data,
+        total_steps: actions_data[selected_action]?.length || 0
+      }
+    })
+
+    const head_to_steps = [by, steps_wizard_sid, mid++]
+    _.send_steps_wizard?.({ head: head_to_steps, refs: msg.head ? { cause: msg.head } : undefined, type: 'init_data', data: actions_data[selected_action] })
+
+    steps_toggle_view('block')
+
+    if (actions_data[selected_action]?.length > 0) {
+      const first_step = actions_data[selected_action][0]
+      const head = [by, to, mid++]
+      const refs = msg.head ? { cause: msg.head } : undefined
+      _.up?.({ head, refs, type: 'render_form', data: first_step })
+    }
+
+    if (actions_data[selected_action][actions_data[selected_action].length - 1]?.is_completed) {
+      const head_to_quick_submit = [by, quick_actions_sid, mid++]
+      _?.send_quick_actions({ head: head_to_quick_submit, refs: msg.head ? { cause: msg.head } : undefined, type: 'show_submit_btn' })
+    }
+
+    _.up?.({ head: msg.head, refs: msg.refs, type, data: selected_action })
+    actions_toggle_view('none')
   }
 
   // -------------------------------
@@ -3314,11 +3345,12 @@ async function action_bar (opts, protocol) {
       display_actions: quick_actions__display_actions,
       action_submitted: quick_actions__action_submitted,
       filter_actions,
-      quick_action_selected: quick_actions__quick_action_selected,
-      trigger_steps_wizard: quick_actions__trigger_steps_wizard
+      update_quick_actions_input,
+      activate_steps_wizard
     }
 
-    return function on (msg) {
+    return on
+    function on (msg) {
       const { type } = msg
       const handler = quick_handlers[type] || fail
       handler(msg)
@@ -3371,8 +3403,6 @@ async function action_bar (opts, protocol) {
     const head = [by, to, mid++]
     const refs = msg.head ? { cause: msg.head } : {}
     _.up?.({ head, refs, type: 'render_form', data })
-    const head2 = [by, to, mid++]
-    _.up({ head: head2, refs, type: 'ui_focus', data: 'wizard hat' })
   }
 
   function onmessage (msg) {
@@ -3430,62 +3460,32 @@ async function action_bar (opts, protocol) {
     _.send_actions?.({ head: head_to_actions, cause: msg.head ? { cause: msg.head } : {}, type, data })
   }
 
-  function quick_actions__quick_action_selected (msg) {
+  function update_quick_actions_input (msg) {
     const { data } = msg
-    handle_action_selection('quick_actions', data)
-  }
-
-  function quick_actions__trigger_steps_wizard (msg) {
-    const { data } = msg
-    
-    // Show steps wizard with the selected action
-    if (selected_action && actions_data[selected_action]) {
-      const head_to_steps = [by, steps_wizard_sid, mid++]
-      _.send_steps_wizard?.({ 
-        head: head_to_steps, 
-        refs: msg.head ? { cause: msg.head } : undefined, 
-        type: 'init_data', 
-        data: actions_data[selected_action] 
-      })
-      
-      steps_toggle_view('block')
-      
-      // Update quick actions with step info
-      const head_to_quick = [by, quick_actions_sid, mid++]
-      _.send_quick_actions?.({
-        head: head_to_quick,
-        type: 'selected_action',
-        data: {
-          action: selected_action,
-          total_steps: actions_data[selected_action]?.length || 0
-        }
-      })
-    }
-  }
-
-  function handle_action_selection(source, action_data) {
-    // Centralized handler for all action selections
-    selected_action = action_data.action
-    
-    // Update quick_actions input field with the command
+    selected_action = data || null
     const head_to_quick = [by, quick_actions_sid, mid++]
-    _.send_quick_actions?.({
-      head: head_to_quick,
-      type: 'set_command_from_action',
-      data: {
-        command: action_data.action,
-        source: source,
-        total_steps: actions_data[action_data.action]?.length || 0
-      }
+    _.send_quick_actions?.({ 
+      head: head_to_quick, 
+      type: 'update_input_command', 
+      data,
+      refs: msg.head ? { cause: msg.head } : {}
+    })
+  }
+
+  function activate_steps_wizard (msg) {
+    // Show the steps wizard
+    steps_toggle_view('block')
+    
+
+    const head_to_steps = [by, steps_wizard_sid, mid++]
+    _.send_steps_wizard?.({ 
+      head: head_to_steps, 
+      type: 'init_data', 
+      data: selected_action,
+      refs: msg.head ? { cause: msg.head } : {}
     })
     
-    // Show submit button if action has steps
-    if (actions_data[action_data.action]?.length > 0) {
-      _.send_quick_actions?.({
-        head: [by, quick_actions_sid, mid++],
-        type: 'show_submit_btn'
-      })
-    }
+    actions_toggle_view('none')
   }
 }
 
@@ -3689,7 +3689,7 @@ async function actions (opts, protocol) {
     const action_data = msg.type === 'send_selected_action' ? msg.data.data : msg.data
 
     const head = [by, to, mid++]
-    const refs = msg.head ? { cause: msg.head } : undefined
+    const refs = msg.head ? { cause: msg.head } : {}
 
     _.up({
       head,
@@ -6271,6 +6271,7 @@ async function quick_actions (opts, protocol) {
         <input class="input-field" type="text" placeholder="Type to search actions...">
         <div class="input-tooltip" style="display: none;"></div>
       </div>
+      <button class="confirm-btn" style="display: none;"></button>
       <button class="submit-btn" style="display: none;"></button>
       <button class="close-btn"></button>
     </div>
@@ -6285,6 +6286,7 @@ async function quick_actions (opts, protocol) {
   const slash_prefix = shadow.querySelector('.slash-prefix')
   const command_text = shadow.querySelector('.command-text')
   const input_field = shadow.querySelector('.input-field')
+  const confirm_btn = shadow.querySelector('.confirm-btn')
   const submit_btn = shadow.querySelector('.submit-btn')
   const close_btn = shadow.querySelector('.close-btn')
   const step_display = shadow.querySelector('.step-display')
@@ -6312,6 +6314,7 @@ async function quick_actions (opts, protocol) {
   }
   text_bar.onclick = activate_input_field
   close_btn.onclick = deactivate_input_field
+  confirm_btn.onclick = onconfirm
   submit_btn.onclick = onsubmit
   input_field.oninput = oninput
 
@@ -6322,8 +6325,13 @@ async function quick_actions (opts, protocol) {
   function onsubmit () {
     const head = [by, to, mid++]
     const refs = {}
-    // Send trigger_steps_wizard instead of action_submitted
-    _.up({ head, refs, type: 'trigger_steps_wizard', data: { command: command_text.textContent } })
+    _.up({ head, refs, type: 'action_submitted' })
+  }
+  
+  function onconfirm () {
+    const head = [by, to, mid++]
+    const refs = {}
+    _.up({ head, refs, type: 'activate_steps_wizard' })
   }
   function oninput (e) {
     const value = e.target.value
@@ -6343,11 +6351,13 @@ async function quick_actions (opts, protocol) {
       step_display.style.display = 'inline-flex'
 
       input_field.style.display = 'none'
+      confirm_btn.style.display = 'flex'
       hide_input_tooltip()
     } else {
       slash_prefix.style.display = 'none'
       command_text.style.display = 'none'
       input_field.style.display = 'block'
+      confirm_btn.style.display = 'none'
       submit_btn.style.display = 'none'
       step_display.style.display = 'none'
       input_field.placeholder = 'Type to search actions...'
@@ -6373,14 +6383,13 @@ async function quick_actions (opts, protocol) {
   function onmessage (msg) {
     const { type, data } = msg
     const message_map = {
-      selected_action,
       deactivate_input_field,
       show_submit_btn,
-      hide_submit_btn,
       update_current_step,
+      hide_submit_btn,
       update_actions_for_app,
       update_quick_actions_for_app,
-      set_command_from_action
+      update_input_command
     }
     const handler = message_map[type] || fail
     handler(data)
@@ -6414,10 +6423,6 @@ async function quick_actions (opts, protocol) {
     current_step.textContent = current_step_value
   }
 
-  function selected_action (data) {
-    update_input_display(data)
-  }
-
   async function onbatch (batch) {
     for (const { type, paths } of batch) {
       const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
@@ -6439,10 +6444,12 @@ async function quick_actions (opts, protocol) {
   function onhardcons (data) {
     hardcons = {
       submit: data[0],
-      cross: data[1]
+      cross: data[1],
+      confirm: data[2]
     }
     submit_btn.innerHTML = hardcons.submit
     close_btn.innerHTML = hardcons.cross
+    confirm_btn.innerHTML = hardcons.confirm
   }
   function iconject (data) {
     icons = data
@@ -6474,23 +6481,13 @@ async function quick_actions (opts, protocol) {
       btn.onmouseenter = () => show_tooltip(btn, action.name)
       btn.onmouseleave = hide_tooltip
     }
-    
-    // Add click handler to send action to action_bar
-    btn.onclick = () => {
+    btn.onclick = onclick 
+    default_actions.appendChild(btn)
+    function onclick () {
       const head = [by, to, mid++]
       const refs = {}
-      _.up({ 
-        head, 
-        refs, 
-        type: 'quick_action_selected', 
-        data: { 
-          action: action.name,
-          source: 'quick_actions'
-        } 
-      })
+      _.up({ head, refs, type: 'update_quick_actions_input', data: action.name })
     }
-    
-    default_actions.appendChild(btn)
   }
 
   function update_input_tooltip (value) {
@@ -6558,19 +6555,34 @@ async function quick_actions (opts, protocol) {
     }
   }
 
-  function set_command_from_action (data) {
-    // Handle command from action_bar
-    activate_input_field()
+  function update_input_command (command) {
+    if (input_wrapper.style.display === 'none') {
+      activate_input_field()
+    }
     
-    // Update input display with the command
-    update_input_display({
-      action: data.command,
-      current_step: 1,
-      total_steps: data.total_steps
-    })
+    // Find the action that matches the command
+    const matching_action = defaults.find(action => 
+      action.name === command || 
+      action.action === command
+    )
     
-    // Store the command for submit
-    command_text.textContent = data.command
+    if (matching_action) {
+      const pass_data = {
+        action: matching_action.name,
+        current_step: 1,
+        total_steps: 3
+      }
+      update_input_display(pass_data)
+    } else {
+      // TODO: Strictly handle this case
+      const pass_data = {
+        action: command.action,
+        current_step: 1,
+        total_steps: 3
+      }
+      update_input_display(pass_data)
+      // console.error('No matching action found for command:', command)
+    }
   }
 
   function show_tooltip (btn, name) {
@@ -6621,6 +6633,9 @@ function fallback_module () {
           },
           'close.svg': {
             $ref: 'cross.svg'
+          },
+          'confirm.svg': {
+            $ref: 'check.svg'
           }
         },
         'actions/': {
@@ -6763,6 +6778,24 @@ function fallback_module () {
               }
               .submit-btn:hover {
                 background: #ffffff00;
+              }
+              .confirm-btn {
+                display: none;
+                align-items: center;
+                justify-content: center;
+                background: transparent;
+                border: none;
+                padding: 6px;
+                border-radius: 50%;
+                cursor: pointer;
+                color: #a6a6a6;
+                min-width: 32px;
+                height: 32px;
+                margin-right: 4px;
+                font-size: 12px;
+              }
+              .confirm-btn:hover {
+                background: rgba(255, 255, 255, 0.1);
               }
               .close-btn {
                 display: flex;
@@ -7694,22 +7727,20 @@ async function steps_wizard (opts, protocol) {
     { name: 'Step 2 testingasadasdadasdasdaasdasdsassss', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
     { name: 'Step 3', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
     { name: 'Step 4', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
-    { name: 'Step 5', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
-    { name: 'Step 6', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
-    { name: 'Step 7', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
-    { name: 'Step 8', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
-    { name: 'Step 9', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
-    { name: 'Step 10', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
-    { name: 'Step 11', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
-    { name: 'Step 12', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' }
+    { name: 'Step 5', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' }
   ])
 
   return el
 
   function onmessage ({ type, data }) {
-    console.log('steps_ data', type, data)
     if (type === 'init_data') {
-      variables = data
+      variables = [
+        { name: 'Optional Step', type: 'optional', is_completed: false, component: 'form_input', status: 'default', data: '' },
+        { name: 'Step 2 testingasadasdadasdasdaasdasdsassss', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
+        { name: 'Step 3', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
+        { name: 'Step 4', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
+        { name: 'Step 5', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' }
+      ]
       render_steps(variables)
     }
   }
