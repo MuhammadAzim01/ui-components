@@ -376,7 +376,8 @@ function fallback_module () {
       prefs: 'prefs',
       variables: 'variables',
       data: 'data',
-      hardcons: 'hardcons'
+      hardcons: 'hardcons',
+      docs: 'docs'
     }
   }
   subs['../src/node_modules/tabs'] = {
@@ -386,7 +387,8 @@ function fallback_module () {
       icons: 'icons',
       variables: 'variables',
       scroll: 'scroll',
-      style: 'style'
+      style: 'style',
+      docs: 'docs'
     }
   }
   subs['../src/node_modules/space'] = {
@@ -407,7 +409,9 @@ function fallback_module () {
       runtime: 'runtime',
       mode: 'mode',
       keybinds: 'keybinds',
-      undo: 'undo'
+      undo: 'undo',
+      docs_style: 'docs_style',
+      docs: 'docs'
     }
   }
   subs['../src/node_modules/manager'] = {
@@ -420,14 +424,16 @@ function fallback_module () {
       data: 'data',
       actions: 'actions',
       hardcons: 'hardcons',
-      prefs: 'prefs'
+      prefs: 'prefs',
+      docs: 'docs'
     }
   }
   subs['../src/node_modules/steps_wizard'] = {
     $: '',
     0: '',
     mapping: {
-      style: 'style'
+      style: 'style',
+      docs: 'docs'
     }
   }
   subs['../src/node_modules/tabsbar'] = {
@@ -435,7 +441,8 @@ function fallback_module () {
     0: '',
     mapping: {
       icons: 'icons',
-      style: 'style'
+      style: 'style',
+      docs: 'docs'
     }
   }
   subs['../src/node_modules/action_bar'] = {
@@ -447,7 +454,8 @@ function fallback_module () {
       actions: 'actions',
       variables: 'variables',
       hardcons: 'hardcons',
-      prefs: 'prefs'
+      prefs: 'prefs',
+      docs: 'docs'
     }
   }
   subs['../src/node_modules/console_history'] = {
@@ -457,7 +465,8 @@ function fallback_module () {
       style: 'style',
       commands: 'commands',
       icons: 'icons',
-      scroll: 'scroll'
+      scroll: 'scroll',
+      docs: 'docs'
     }
   }
   subs['../src/node_modules/actions'] = {
@@ -467,7 +476,8 @@ function fallback_module () {
       actions: 'actions',
       icons: 'icons',
       hardcons: 'hardcons',
-      style: 'style'
+      style: 'style',
+      docs: 'docs'
     }
   }
   subs['../src/node_modules/tabbed_editor'] = {
@@ -477,7 +487,8 @@ function fallback_module () {
       style: 'style',
       files: 'files',
       highlight: 'highlight',
-      active_tab: 'active_tab'
+      active_tab: 'active_tab',
+      docs: 'docs'
     }
   }
   subs['../src/node_modules/task_manager'] = {
@@ -485,7 +496,8 @@ function fallback_module () {
     0: '',
     mapping: {
       style: 'style',
-      count: 'count'
+      count: 'count',
+      docs: 'docs'
     }
   }
   subs['../src/node_modules/quick_actions'] = {
@@ -496,20 +508,23 @@ function fallback_module () {
       icons: 'icons',
       actions: 'actions',
       hardcons: 'hardcons',
-      prefs: 'prefs'
+      prefs: 'prefs',
+      docs: 'docs'
     }
   }
   subs[menuname] = {
     $: '',
     0: '',
     mapping: {
-      style: 'style'
+      style: 'style',
+      docs: 'docs'
     }
   }
   subs['../src/node_modules/quick_editor'] = {
     $: '',
     mapping: {
-      style: 'style'
+      style: 'style',
+      docs: 'docs'
     }
   }
   subs['../src/node_modules/theme_widget'] = {
@@ -536,7 +551,9 @@ function fallback_module () {
       temp_quick_actions: 'temp_quick_actions',
       prefs: 'prefs',
       variables: 'variables',
-      data: 'data'
+      data: 'data',
+      docs_style: 'docs_style',
+      docs: 'docs'
     }
   }
   subs['../src/node_modules/graph_explorer_wrapper'] = {
@@ -549,7 +566,8 @@ function fallback_module () {
       mode: 'mode',
       flags: 'flags',
       keybinds: 'keybinds',
-      undo: 'undo'
+      undo: 'undo',
+      docs: 'docs'
     }
   }
   for (let i = 0; i < Object.keys(subs).length - 1; i++) {
@@ -691,7 +709,9 @@ function fallback_module () {
       'focused/': {},
       'temp_actions/': {},
       'temp_quick_actions/': {},
-      'prefs/': {}
+      'prefs/': {},
+      'docs_style/': {},
+      'docs/': {}
     }
   }
   function quick_editor$ (args, tools, [quick_editor]) {
@@ -706,7 +726,8 @@ function fallback_module () {
       $: '',
       0: '',
       mapping: {
-        style: 'style'
+        style: 'style',
+        docs: 'docs'
       }
     }
   }
