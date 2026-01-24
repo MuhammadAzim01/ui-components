@@ -36,6 +36,13 @@
       ]
     }
   },
+  "standardx": {
+    "ignore": [
+      "**/node_modules/**",
+      "**/bundle.js",
+      "!**/src/node_modules/**"
+    ]
+  },
   "dependencies": {
     "graph-explorer": "github:ddroid/graph-explorer"
   }
