@@ -3137,10 +3137,158 @@ function fallback_module () {
 
 }).call(this)}).call(this,"/node_modules/graph-explorer/lib/graph_explorer.js")
 },{"STATE":1}],3:[function(require,module,exports){
+(function (global){(function (){
+// --- Main Export ---
+// Usage: const docs = DOCS(__filename)(opts.sid)
+//        docs.wrap(handler, docContent)
+
+module.exports = function DOCS (filename) {
+  return function (sid) {
+    return create_context(filename, sid)
+  }
+}
+
+// Static methods (called as DOCS.method())
+module.exports.set_docs_mode = set_docs_mode
+module.exports.get_docs_mode = get_docs_mode
+module.exports.on_docs_mode_change = on_docs_mode_change
+module.exports.set_doc_display_handler = set_doc_display_handler
+
+const scope = typeof window !== 'undefined' ? window : global
+
+if (!scope.__DOCS_GLOBAL_STATE__) {
+  scope.__DOCS_GLOBAL_STATE__ = {
+    docs_mode_active: false,
+    docs_mode_listeners: [],
+    doc_display_callback: null
+  }
+}
+
+const state = scope.__DOCS_GLOBAL_STATE__
+
+// --- Static Methods (called as DOCS.method()) ---
+
+function set_docs_mode (active) {
+  state.docs_mode_active = active
+  state.docs_mode_listeners.forEach(listener => listener(active))
+}
+
+function get_docs_mode () {
+  return state.docs_mode_active
+}
+
+function on_docs_mode_change (listener) {
+  state.docs_mode_listeners.push(listener)
+  return () => {
+    state.docs_mode_listeners = state.docs_mode_listeners.filter(l => l !== listener)
+  }
+}
+
+function set_doc_display_handler (callback) {
+  state.doc_display_callback = callback
+}
+
+// --- Internal Helpers ---
+
+async function display_doc (content, sid) {
+  let resolved_content = content
+  if (typeof content === 'function') {
+    resolved_content = await content()
+  } else if (content && typeof content.then === 'function') {
+    resolved_content = await content
+  }
+  
+  if (state.doc_display_callback) {
+    state.doc_display_callback({ content: resolved_content || 'No documentation available', sid })
+  }
+}
+
+function create_sys_api (meta) {
+  return {
+    is_docs_mode: () => state.docs_mode_active,
+    get_doc: () => meta.doc || 'No documentation available',
+    get_meta: () => ({ ...meta }),
+    show_doc: () => display_doc(meta.doc || 'No documentation available', meta.sid)
+  }
+}
+
+// --- Instance Methods (called as docs.method()) ---
+
+function wrap (handler, meta = {}) {
+  const sys = create_sys_api(meta)
+  
+  return async function wrapped_handler (event) {
+    if (state.docs_mode_active) {
+      if (event && event.preventDefault) {
+        event.preventDefault()
+        event.stopPropagation()
+      }
+      await display_doc(meta.doc || 'No documentation available', meta.sid)
+      return
+    }
+    return handler.call(this, event, sys)
+  }
+}
+
+function wrap_isolated (handler_string, meta = {}) {
+  const sys = create_sys_api(meta)
+  
+  try {
+    const isolated_fn = new Function('sys', `return function isolated_handler (event) { 
+      if (sys.is_docs_mode()) {
+        if (event && event.preventDefault) {
+          event.preventDefault()
+          event.stopPropagation()
+        }
+        sys.show_doc()
+        return
+      }
+      return (${handler_string})(event, sys)
+    }`)(sys)
+    
+    return isolated_fn
+  } catch (err) {
+    console.error('DOCS.wrap_isolated failed:', err)
+    return wrap(() => {}, meta)
+  }
+}
+
+function hook (dom, meta = {}) {
+  if (!dom) return dom
+  
+  const proto = Object.getPrototypeOf(Object.getPrototypeOf(dom))
+  if (!proto) return dom
+  
+  Object.keys(proto).forEach(key => {
+    if (key.startsWith('on') && typeof dom[key] === 'function') {
+      const original = dom[key]
+      dom[key] = wrap(original, { ...meta, event_type: key })
+    }
+  })
+  
+  return dom
+}
+
+// --- Context Factory (creates instance with component scope) ---
+
+function create_context (filename, sid) {
+  return {
+    wrap: (handler, doc) => wrap(handler, { doc, sid, component: filename }),
+    wrap_isolated: (handler_string, doc) => wrap_isolated(handler_string, { doc, sid, component: filename }),
+    hook: (dom, doc) => hook(dom, { doc, sid, component: filename }),
+    get_docs_mode,
+    on_docs_mode_change
+  }
+}
+
+
+}).call(this)}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+},{}],4:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { get } = statedb(fallback_module)
+const DOCS = require('DOCS')
 
 const quick_actions = require('quick_actions')
 const actions = require('actions')
@@ -3192,7 +3340,7 @@ async function action_bar (opts, protocol) {
   const steps_wizard_placeholder = shadow.querySelector('steps-wizard')
 
   let console_icon = {}
-  let docs_mode_active = false
+  const docs = DOCS(__filename)(opts.sid)
   const subs = await sdb.watch(onbatch)
 
   const _ = {
@@ -3216,7 +3364,10 @@ async function action_bar (opts, protocol) {
   const steps_wizard_sid = subs[2].sid
 
   history_icon.innerHTML = console_icon
-  history_icon.onclick = onhistory
+  history_icon.onclick = docs.wrap(onhistory, async () => {
+    const doc_file = await drive.get('docs/README.md')
+    return doc_file?.raw || 'No documentation available'
+  })
   const element = protocol ? await quick_actions({ ...subs[0], ids: { up: id } }, quick_actions_protocol) : await quick_actions({ ...subs[0], ids: { up: id } })
   quick_placeholder.replaceWith(element)
 
@@ -3259,12 +3410,6 @@ async function action_bar (opts, protocol) {
   async function onhistory () {
     const head = [by, to, mid++]
     const refs = {}
-    if (docs_mode_active) {
-      const doc_file = await drive.get('docs/README.md')
-      const content = doc_file?.raw || 'No documentation available'
-      _.up({ head, refs, type: 'ui_focus_docs', data: { content, sid: opts.sid } })
-      return
-    }
     _.up({ head, refs, type: 'console_history_toggle', data: null })
     const head2 = [by, to, mid++]
     _.up({ head: head2, refs, type: 'ui_focus', data: 'command_history' })
@@ -3296,7 +3441,7 @@ async function action_bar (opts, protocol) {
     }
 
     return function on (msg) {
-      if(msg.type === "ui_focus"){
+      if (msg.type === 'ui_focus') {
         _.up(msg)
         return
       }
@@ -3304,42 +3449,6 @@ async function action_bar (opts, protocol) {
       const handler = actions_handlers[type] || fail
       handler(msg)
     }
-  }
-
-  function actions__selected_action (msg) {
-    const { type, data } = msg
-    selected_action = data?.action || null
-
-    const head_to_quick = [by, quick_actions_sid, mid++]
-    _.send_quick_actions?.({
-      head: head_to_quick,
-      refs: msg.head ? { cause: msg.head } : undefined,
-      type,
-      data: {
-        ...data,
-        total_steps: actions_data[selected_action]?.length || 0
-      }
-    })
-
-    const head_to_steps = [by, steps_wizard_sid, mid++]
-    _.send_steps_wizard?.({ head: head_to_steps, refs: msg.head ? { cause: msg.head } : undefined, type: 'init_data', data: actions_data[selected_action] })
-
-    steps_toggle_view('block')
-
-    if (actions_data[selected_action]?.length > 0) {
-      const first_step = actions_data[selected_action][0]
-      const head = [by, to, mid++]
-      const refs = msg.head ? { cause: msg.head } : undefined
-      _.up?.({ head, refs, type: 'render_form', data: first_step })
-    }
-
-    if (actions_data[selected_action][actions_data[selected_action].length - 1]?.is_completed) {
-      const head_to_quick_submit = [by, quick_actions_sid, mid++]
-      _?.send_quick_actions({ head: head_to_quick_submit, refs: msg.head ? { cause: msg.head } : undefined, type: 'show_submit_btn' })
-    }
-
-    _.up?.({ head: msg.head, refs: msg.refs, type, data: selected_action })
-    actions_toggle_view('none')
   }
 
   // -------------------------------
@@ -3418,11 +3527,10 @@ async function action_bar (opts, protocol) {
   function onmessage (msg) {
     const { type } = msg
     if (type === 'docs_toggle') {
-      docs_mode_active = msg.data?.active || false
-      // Broadcast to subcomponents
-      _.send_quick_actions(msg)
-      _.send_actions(msg)
-      _.send_steps_wizard(msg)
+      // Broadcast to subcomponents (for backward compatibility during migration)
+      _.send_quick_actions?.(msg)
+      _.send_actions?.(msg)
+      _.send_steps_wizard?.(msg)
     } else {
       parent_handler[type]?.(msg)
     }
@@ -3450,17 +3558,17 @@ async function action_bar (opts, protocol) {
     const head_to_steps = [by, steps_wizard_sid, mid++]
     _.send_steps_wizard?.({ head: head_to_steps, type: 'init_data', data: actions_data[selected_action] })
   }
-  
+
   function update_actions_for_app (msg) {
     const { data, type } = msg
     console.log('Action Bar: Updating actions for focused app:', data?.focused_app)
-    
+
     // Forward update_actions_for_app to actions and quick_actions submodules
     const refs = msg.head ? { cause: msg.head } : {}
-    
+
     const head_to_actions = [by, actions_sid, mid++]
     _.send_actions?.({ head: head_to_actions, refs, type, data })
-    
+
     const head_to_quick = [by, quick_actions_sid, mid++]
     _.send_quick_actions?.({ head: head_to_quick, refs, type, data })
   }
@@ -3482,9 +3590,9 @@ async function action_bar (opts, protocol) {
     const { data } = msg
     selected_action = data || null
     const head_to_quick = [by, quick_actions_sid, mid++]
-    _.send_quick_actions?.({ 
-      head: head_to_quick, 
-      type: 'update_input_command', 
+    _.send_quick_actions?.({
+      head: head_to_quick,
+      type: 'update_input_command',
       data,
       refs: msg.head ? { cause: msg.head } : {}
     })
@@ -3493,16 +3601,15 @@ async function action_bar (opts, protocol) {
   function activate_steps_wizard (msg) {
     // Show the steps wizard
     steps_toggle_view('block')
-    
 
     const head_to_steps = [by, steps_wizard_sid, mid++]
-    _.send_steps_wizard?.({ 
-      head: head_to_steps, 
-      type: 'init_data', 
+    _.send_steps_wizard?.({
+      head: head_to_steps,
+      type: 'init_data',
       data: selected_action,
       refs: msg.head ? { cause: msg.head } : {}
     })
-    
+
     actions_toggle_view('none')
   }
 
@@ -3511,14 +3618,14 @@ async function action_bar (opts, protocol) {
   }
 }
 
-
 function fallback_module () {
   return {
     api: fallback_instance,
     _: {
       quick_actions: { $: '' },
       actions: { $: '' },
-      steps_wizard: { $: '' }
+      steps_wizard: { $: '' },
+      DOCS: { $: '' }
     }
   }
   function fallback_instance () {
@@ -3552,6 +3659,9 @@ function fallback_module () {
             variables: 'variables',
             docs: 'docs'
           }
+        },
+        DOCS: {
+          0: ''
         }
       },
       drive: {
@@ -3631,11 +3741,13 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/action_bar/action_bar.js")
-},{"STATE":1,"actions":4,"quick_actions":17,"steps_wizard":20}],4:[function(require,module,exports){
+},{"DOCS":3,"STATE":1,"actions":5,"quick_actions":18,"steps_wizard":21}],5:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { get } = statedb(fallback_module)
+const DOCS = require('DOCS')
+
 module.exports = actions
 
 async function actions (opts, protocol) {
@@ -3672,7 +3784,7 @@ async function actions (opts, protocol) {
   let actions = []
   let icons = {}
   let hardcons = {}
-  let docs_mode_active = false
+  const docs = DOCS(__filename)(opts.sid)
 
   await sdb.watch(onbatch)
   let send = null
@@ -3699,9 +3811,6 @@ async function actions (opts, protocol) {
       break
     case 'update_actions_for_app':
       update_actions_for_app(data)
-      break
-    case 'docs_toggle':
-      docs_mode_active = msg.data?.active || false
       break
     default:
       fail(data, type)
@@ -3787,20 +3896,13 @@ async function actions (opts, protocol) {
     <div class="action-name">${action_data.action}</div>
     <div class="action-pin">${action_data.pin ? hardcons.pin : hardcons.unpin}</div>
     <div class="action-default">${action_data.default ? hardcons.default : hardcons.undefault}</div>`
-    action_item.onclick = onaction
-    actions_menu.appendChild(action_item)
-
-    async function onaction () {
-      if (docs_mode_active) {
-        const head = [by, to, mid++]
-        const refs = {}
-        const doc_file = await drive.get('docs/README.md')
-        const content = doc_file?.raw || 'No documentation available'
-        _.up({ head, refs, type: 'ui_focus_docs', data: { content, sid: opts.sid } })
-        return
-      }
+    action_item.onclick = docs.wrap(() => {
       send_selected_action({ data: action_data })
-    }
+    }, async () => {
+      const doc_file = await drive.get('docs/README.md')
+      return doc_file?.raw || 'No documentation available'
+    })
+    actions_menu.appendChild(action_item)
   }
 
   function filter (search_term) {
@@ -3827,11 +3929,21 @@ async function actions (opts, protocol) {
 
 function fallback_module () {
   return {
-    api: fallback_instance
+    api: fallback_instance,
+    _: {
+      DOCS: {
+        $: ''
+      }
+    }
   }
 
   function fallback_instance () {
     return {
+      _: {
+        DOCS: {
+          0: ''
+        }
+      },
       drive: {
         'actions/': {
           'commands.json': {
@@ -4002,11 +4114,13 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/actions/actions.js")
-},{"STATE":1}],5:[function(require,module,exports){
+},{"DOCS":3,"STATE":1}],6:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { get } = statedb(fallback_module)
+const DOCS = require('DOCS')
+
 module.exports = console_history
 
 async function console_history (opts, protocol) {
@@ -4042,7 +4156,7 @@ async function console_history (opts, protocol) {
   let mid = 0
   let commands = []
   let dricons = []
-  let docs_mode_active = false
+  const docs = DOCS(__filename)(opts.sid)
 
   await sdb.watch(onbatch)
   let send = null
@@ -4054,10 +4168,7 @@ async function console_history (opts, protocol) {
   return el
 
   function onmessage (msg) {
-    const { type, data } = msg
-    if (type === 'docs_toggle') {
-      docs_mode_active = data?.active || false
-    }
+    // Temp placeholder
   }
 
   function create_command_item (command_data) {
@@ -4091,19 +4202,16 @@ async function console_history (opts, protocol) {
         <div class="command-name">${command_data.command}</div>
       </div>`
 
-    command_el.onclick = async function () {
+    command_el.onclick = docs.wrap(async function () {
       const head = [by, to, mid++]
       const refs = {}
-      if (docs_mode_active) {
-        const doc_file = await drive.get('docs/README.md')
-        const content = doc_file?.raw || 'No documentation available'
-        _.up({ head, refs, type: 'ui_focus_docs', data: { content, sid: opts.sid } })
-        return
-      }
       _.up({ head, refs, type: 'ui_focus', data: 'command_history' })
       const head2 = [by, to, mid++]
       _.up({ head: head2, refs, type: 'command_clicked', data: command_data })
-    }
+    }, async () => {
+      const doc_file = await drive.get('docs/README.md')
+      return doc_file?.raw || 'No documentation available'
+    })
 
     return command_el
   }
@@ -4155,11 +4263,21 @@ async function console_history (opts, protocol) {
 
 function fallback_module () {
   return {
-    api: fallback_instance
+    api: fallback_instance,
+    _: {
+      DOCS: {
+        $: ''
+      }
+    }
   }
 
   function fallback_instance () {
     return {
+      _: {
+        DOCS: {
+          0: ''
+        }
+      },
       drive: {
         'commands/': {
           'list.json': {
@@ -4363,7 +4481,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/console_history/console_history.js")
-},{"STATE":1}],6:[function(require,module,exports){
+},{"DOCS":3,"STATE":1}],7:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4380,11 +4498,11 @@ async function control_unit (opts, protocol) {
   }
   const by = id
   const to = ids.up
-  
+
   let send = null
   let _ = null
   let mid = 0
-  
+
   if (protocol) {
     send = protocol(msg => onmessage(msg))
     _ = { up: send }
@@ -4394,13 +4512,12 @@ async function control_unit (opts, protocol) {
 
   async function onmessage (msg) {
     const { type, data } = msg
-    
-    if (type === 'tracked_doc') handle_doc_content(msg)
-    else if (type === 'focused_app_changed') {
+
+    if (type === 'focused_app_changed') {
       if (_.up) {
         const focused_app = data?.focused_app
         let actions_data = null
-        
+
         if (focused_app) {
           const file = `temp_actions/${focused_app}.json`
           const temp_actions_file = await drive.get(file)
@@ -4408,7 +4525,7 @@ async function control_unit (opts, protocol) {
             actions_data = typeof temp_actions_file.raw === 'string' ? JSON.parse(temp_actions_file.raw) : temp_actions_file.raw
           }
         }
-        
+
         const message_data = {
           ...data,
           temp_actions: actions_data
@@ -4416,9 +4533,9 @@ async function control_unit (opts, protocol) {
         const head = [by, to, mid++]
         const refs = msg.head ? { cause: msg.head } : {}
         _.up({ head, refs, type: 'update_actions_for_app', data: message_data })
-        
+
         let quick_actions_data = null
-        
+
         if (focused_app) {
           const file = `temp_quick_actions/${focused_app}.json`
           const temp_quick_actions_file = await drive.get(file)
@@ -4426,7 +4543,7 @@ async function control_unit (opts, protocol) {
             quick_actions_data = typeof temp_quick_actions_file.raw === 'string' ? JSON.parse(temp_quick_actions_file.raw) : temp_quick_actions_file.raw
           }
         }
-        
+
         const quick_actions_message_data = {
           ...data,
           temp_quick_actions: quick_actions_data
@@ -4438,20 +4555,11 @@ async function control_unit (opts, protocol) {
     }
   }
 
-  function handle_doc_content (msg) {
-    const { data } = msg
-    if (_.up) {
-      const head = [by, to, mid++]
-      const refs = msg.head ? { cause: msg.head } : {}
-      _.up({ head, refs, type: 'display_doc', data })
-    }
-  }
 }
 
 function fallback_module () {
   return {
-    api: fallback_instance,
-    drive: {}
+    api: fallback_instance
   }
   function fallback_instance () {
     return {
@@ -4731,7 +4839,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/control_unit/control_unit.js")
-},{"STATE":1}],7:[function(require,module,exports){
+},{"STATE":1}],8:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4834,7 +4942,7 @@ function fallback_module () {
                 color: #e8eaed;
                 overflow: hidden;
                 display: flex;
-                justify-content: flex-start;
+                justify-content: space-between;
                 flex-direction: row-reverse;
                 flex-wrap: nowrap;
                 align-items: flex-start;
@@ -4875,7 +4983,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/docs_window/docs_window.js")
-},{"STATE":1}],8:[function(require,module,exports){
+},{"STATE":1}],9:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4892,7 +5000,7 @@ async function focus_tracker (opts, protocol) {
   }
   const by = id
   const to = ids.up
-  
+
   const on = {
     focused
   }
@@ -4900,7 +5008,6 @@ async function focus_tracker (opts, protocol) {
   let last_focused = null
   let mid = 0
   let _ = null
-  let docs_mode_active = false
 
   if (protocol) {
     const send = protocol(msg => onmessage(msg))
@@ -4916,8 +5023,6 @@ async function focus_tracker (opts, protocol) {
       _.up({ head, refs, type: 'tracked_doc', data })
     } else if (type === 'ui_focus') {
       drive.put('focused/current.json', { value: data })
-    } else if (type === 'docs_toggle') {
-      docs_mode_active = data?.active || false
     }
   }
 
@@ -4938,7 +5043,7 @@ async function focus_tracker (opts, protocol) {
       const refs = {}
       _.up({ head, refs, type: 'focused_app_changed', data: { focused_app: tmp.value } })
     }
-    
+
     last_focused = tmp.value
   }
 }
@@ -4952,7 +5057,7 @@ function fallback_module () {
       drive: {
         'focused/': {
           'current.json': {
-            raw: { value: "default" }
+            raw: { value: 'default' }
           }
         },
         'docs/': {
@@ -4966,11 +5071,12 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/focus_tracker/focus_tracker.js")
-},{"STATE":1}],9:[function(require,module,exports){
+},{"STATE":1}],10:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { get } = statedb(fallback_module)
+const DOCS = require('DOCS')
 
 module.exports = form_input
 async function form_input (opts, protocol) {
@@ -4991,7 +5097,6 @@ async function form_input (opts, protocol) {
   let current_step = null
   let input_accessible = true
   let mid = 0
-  let docs_mode_active = false
 
   let _ = { up: null }
   if (protocol) {
@@ -5086,10 +5191,6 @@ async function form_input (opts, protocol) {
   }
 
   function onmessage ({ type, data }) {
-    if (type === 'docs_toggle') {
-      docs_mode_active = data?.active || false
-      return
-    }
     console.log('message from form_input', type, data)
     parent_handler[type]?.(data, type)
   }
@@ -5115,10 +5216,20 @@ async function form_input (opts, protocol) {
 }
 function fallback_module () {
   return {
-    api: fallback_instance
+    api: fallback_instance,
+    _: {
+      DOCS: {
+        $: ''
+      }
+    }
   }
   function fallback_instance () {
     return {
+      _: {
+        DOCS: {
+          0: ''
+        }
+      },
       drive: {
         'style/': {
           'theme.css': {
@@ -5178,7 +5289,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/form_input/form_input.js")
-},{"STATE":1}],10:[function(require,module,exports){
+},{"DOCS":3,"STATE":1}],11:[function(require,module,exports){
 module.exports = graphdb
 
 function graphdb (entries) {
@@ -5223,7 +5334,7 @@ function graphdb (entries) {
   }
 }
 
-},{}],11:[function(require,module,exports){
+},{}],12:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5441,7 +5552,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/graph_explorer_wrapper/index.js")
-},{"./graphdb":10,"STATE":1,"graph-explorer":2}],12:[function(require,module,exports){
+},{"./graphdb":11,"STATE":1,"graph-explorer":2}],13:[function(require,module,exports){
 module.exports = { resource }
 
 function resource (timeout = 1000) {
@@ -5465,11 +5576,12 @@ function resource (timeout = 1000) {
   }
 }
 
-},{}],13:[function(require,module,exports){
+},{}],14:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { get } = statedb(fallback_module)
+const DOCS = require('DOCS')
 
 module.exports = input_test
 async function input_test (opts, protocol) {
@@ -5490,7 +5602,6 @@ async function input_test (opts, protocol) {
   let current_step = null
   let input_accessible = true
   let mid = 0
-  let docs_mode_active = false
   let _ = { up: null }
   if (protocol) {
     const send = protocol(msg => onmessage(msg))
@@ -5590,10 +5701,6 @@ async function input_test (opts, protocol) {
   // ------------------
 
   function onmessage ({ type, data }) {
-    if (type === 'docs_toggle') {
-      docs_mode_active = data?.active || false
-      return
-    }
     console.log('message from input_test', type, data)
     parent_handler[type]?.(data, type)
   }
@@ -5619,10 +5726,20 @@ async function input_test (opts, protocol) {
 }
 function fallback_module () {
   return {
-    api: fallback_instance
+    api: fallback_instance,
+    _: {
+      DOCS: {
+        $: ''
+      }
+    }
   }
   function fallback_instance () {
     return {
+      _: {
+        DOCS: {
+          0: ''
+        }
+      },
       drive: {
         'style/': {
           'theme.css': {
@@ -5686,11 +5803,12 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/input_test/input_test.js")
-},{"STATE":1}],14:[function(require,module,exports){
+},{"DOCS":3,"STATE":1}],15:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { get } = statedb(fallback_module)
+const DOCS = require('DOCS')
 
 const program = require('program')
 const action_bar = require('action_bar')
@@ -5722,7 +5840,6 @@ async function manager (opts, protocol) {
   let variables = []
   let selected_action = null
   let mid = 0
-  let docs_mode_active = false
 
   let _ = null
   if (protocol) {
@@ -5794,8 +5911,6 @@ async function manager (opts, protocol) {
     const { type } = msg
     switch (type) {
     case 'docs_toggle':
-      docs_mode_active = msg.data?.active || false
-      // Broadcast to subcomponents
       _.send_actions_bar(msg)
       for (const name in _.send_form_input) {
         _.send_form_input[name](msg)
@@ -5952,7 +6067,7 @@ async function manager (opts, protocol) {
     }
 
     return function on (msg) {
-      if (msg.type === "console_history_toggle" || msg.type === "ui_focus"){
+      if (msg.type === 'console_history_toggle' || msg.type === 'ui_focus') {
         _.up(msg)
         return
       }
@@ -6018,7 +6133,8 @@ function fallback_module () {
     api: fallback_instance,
     _: {
       action_bar: { $: '' },
-      program: { $: '' }
+      program: { $: '' },
+      DOCS: { $: '' }
     }
   }
 
@@ -6059,6 +6175,9 @@ function fallback_module () {
             style: 'style',
             data: 'data',
             docs: 'docs'
+          },
+          DOCS: {
+            0: ''
           }
         }
       },
@@ -6095,7 +6214,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/manager/manager.js")
-},{"STATE":1,"action_bar":3,"program":16}],15:[function(require,module,exports){
+},{"DOCS":3,"STATE":1,"action_bar":4,"program":17}],16:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -6372,7 +6491,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/menu/menu.js")
-},{"STATE":1}],16:[function(require,module,exports){
+},{"STATE":1}],17:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -6507,11 +6626,13 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/program/program.js")
-},{"STATE":1,"form_input":9,"input_test":13}],17:[function(require,module,exports){
+},{"STATE":1,"form_input":10,"input_test":14}],18:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { get } = statedb(fallback_module)
+const DOCS = require('DOCS')
+
 module.exports = quick_actions
 
 async function quick_actions (opts, protocol) {
@@ -6587,7 +6708,7 @@ async function quick_actions (opts, protocol) {
   let icons = {}
   let hardcons = {}
   let defaults = []
-  let docs_mode_active = false
+  const docs = DOCS(__filename)(opts.sid)
 
   let send = null
   const _ = {
@@ -6597,26 +6718,31 @@ async function quick_actions (opts, protocol) {
     send = protocol(msg => onmessage(msg))
     _.up = send
   }
-  text_bar.onclick = () => click_handler(activate_input_field)
-  close_btn.onclick= () => click_handler(deactivate_input_field)
-  confirm_btn.onclick= () => click_handler(onconfirm)
-  submit_btn.onclick= () => click_handler(onsubmit)
+  text_bar.onclick = docs.wrap(activate_input_field, async () => {
+    const doc_file = await drive.get('docs/README.md')
+    return doc_file?.raw || 'No documentation available'
+  })
+  close_btn.onclick = docs.wrap(deactivate_input_field, async () => {
+    const doc_file = await drive.get('docs/README.md')
+    return doc_file?.raw || 'No documentation available'
+  })
+  confirm_btn.onclick = docs.wrap(onconfirm, async () => {
+    const doc_file = await drive.get('docs/README.md')
+    return doc_file?.raw || 'No documentation available'
+  })
+  submit_btn.onclick = docs.wrap(onsubmit, async () => {
+    const doc_file = await drive.get('docs/README.md')
+    return doc_file?.raw || 'No documentation available'
+  })
   input_field.oninput = oninput
 
   await sdb.watch(onbatch)
 
   return el
 
-  async function click_handler (func) {
-    if (docs_mode_active) {
-      const head = [by, to, mid++]
-      const refs = {}
-      const doc_file = await drive.get('docs/README.md')
-      const content = doc_file?.raw || 'No documentation available'
-      _.up({ head, refs, type: 'ui_focus_docs', data: { content, sid: opts.sid } })
-      return
-    }
-    func()
+  async function get_doc_content () {
+    const doc_file = await drive.get('docs/README.md')
+    return doc_file?.raw || 'No documentation available'
   }
 
   function onsubmit () {
@@ -6624,7 +6750,7 @@ async function quick_actions (opts, protocol) {
     const refs = {}
     _.up({ head, refs, type: 'action_submitted' })
   }
-  
+
   function onconfirm () {
     const head = [by, to, mid++]
     const refs = {}
@@ -6669,7 +6795,7 @@ async function quick_actions (opts, protocol) {
 
     input_wrapper.style.display = 'flex'
     input_field.focus()
-    
+
     if (enable_input_field_tooltips) update_input_tooltip('')
 
     const head = [by, to, mid++]
@@ -6679,10 +6805,7 @@ async function quick_actions (opts, protocol) {
 
   function onmessage (msg) {
     const { type, data } = msg
-    if (type === 'docs_toggle') {
-      docs_mode_active = data?.active || false
-      return
-    }
+    // No need to handle docs_toggle - DOCS module handles it globally
     const message_map = {
       deactivate_input_field,
       show_submit_btn,
@@ -6778,11 +6901,11 @@ async function quick_actions (opts, protocol) {
     btn.classList.add('action-btn')
     btn.innerHTML = icons[action.icon]
     btn.dataset.name = action.name
-    if (enable_quick_action_tooltips){
+    if (enable_quick_action_tooltips) {
       btn.onmouseenter = () => show_tooltip(btn, action.name)
       btn.onmouseleave = hide_tooltip
     }
-    btn.onclick = () => click_handler(onclick)
+    btn.onclick = docs.wrap(onclick, get_doc_content)
     default_actions.appendChild(btn)
     function onclick () {
       const head = [by, to, mid++]
@@ -6860,13 +6983,13 @@ async function quick_actions (opts, protocol) {
     if (input_wrapper.style.display === 'none') {
       activate_input_field()
     }
-    
+
     // Find the action that matches the command
-    const matching_action = defaults.find(action => 
-      action.name === command || 
+    const matching_action = defaults.find(action =>
+      action.name === command ||
       action.action === command
     )
-    
+
     if (matching_action) {
       const pass_data = {
         action: matching_action.name,
@@ -6905,11 +7028,21 @@ async function quick_actions (opts, protocol) {
 
 function fallback_module () {
   return {
-    api: fallback_instance
+    api: fallback_instance,
+    _: {
+      DOCS: {
+        $: ''
+      }
+    }
   }
 
   function fallback_instance () {
     return {
+      _: {
+        DOCS: {
+          0: ''
+        }
+      },
       drive: {
         'icons/': {
           '0.svg': {
@@ -7198,10 +7331,10 @@ function fallback_module () {
           }
         },
         'prefs/': {
-          "tooltips.json": {
+          'tooltips.json': {
             raw: JSON.stringify({
-              "quick_actions": true,
-              "input_field": false
+              quick_actions: true,
+              input_field: false
             })
           }
         }
@@ -7211,7 +7344,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/quick_actions/quick_actions.js")
-},{"STATE":1}],18:[function(require,module,exports){
+},{"DOCS":3,"STATE":1}],19:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -7628,11 +7761,12 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/quick_editor/quick_editor.js")
-},{"STATE":1,"helpers":12}],19:[function(require,module,exports){
+},{"STATE":1,"helpers":13}],20:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { get } = statedb(fallback_module)
+const DOCS = require('DOCS')
 
 const console_history = require('console_history')
 const actions = require('actions')
@@ -7719,6 +7853,13 @@ async function component (opts, protocol) {
     actions_el.classList.add('hide')
     tabbed_editor_el.classList.add('show')
     graph_explorer_el.classList.add('hide')
+
+    DOCS.set_doc_display_handler(({ content, sid }) => {
+      docs_window_el.classList.remove('hide')
+      if (_.send_docs_window) {
+        _.send_docs_window({ type: 'display_doc', data: { content, sid } })
+      }
+    })
   }
 
   return el
@@ -7896,6 +8037,9 @@ function fallback_module () {
       },
       docs_window: {
         $: ''
+      },
+      DOCS: {
+        $: ''
       }
     }
   }
@@ -7951,6 +8095,9 @@ function fallback_module () {
           mapping: {
             style: 'docs_style'
           }
+        },
+        DOCS: {
+          0: ''
         }
       },
       drive: {
@@ -8026,11 +8173,12 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/space/space.js")
-},{"STATE":1,"actions":4,"console_history":5,"docs_window":7,"graph_explorer_wrapper":11,"tabbed_editor":21}],20:[function(require,module,exports){
+},{"DOCS":3,"STATE":1,"actions":5,"console_history":6,"docs_window":8,"graph_explorer_wrapper":12,"tabbed_editor":22}],21:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { get } = statedb(fallback_module)
+const DOCS = require('DOCS')
 
 module.exports = steps_wizard
 
@@ -8051,7 +8199,7 @@ async function steps_wizard (opts, protocol) {
   let variables = []
   let currentActiveStep = 0
   let mid = 0
-  let docs_mode_active = false
+  const docs = DOCS(__filename)(opts.sid)
 
   let _ = { up: null }
   if (protocol) {
@@ -8087,10 +8235,7 @@ async function steps_wizard (opts, protocol) {
   return el
 
   function onmessage ({ type, data }) {
-    if (type === 'docs_toggle') {
-      docs_mode_active = data?.active || false
-      return
-    }
+    // docs_toggle handled globally by DOCS module
     if (type === 'init_data') {
       variables = [
         { name: 'Optional Step', type: 'optional', is_completed: false, component: 'form_input', status: 'default', data: '' },
@@ -8135,21 +8280,18 @@ async function steps_wizard (opts, protocol) {
         btn.classList.add('active')
       }
 
-      btn.onclick = async () => {
+      btn.onclick = docs.wrap(async () => {
         const head = [by, to, mid++]
         const refs = {}
-        if (docs_mode_active) {
-          const doc_file = await drive.get('docs/README.md')
-          const content = doc_file?.raw || 'No documentation available'
-          _.up({ head, refs, type: 'ui_focus_docs', data: { content, sid: opts.sid } })
-          return
-        }
         console.log('Clicked:', step)
         currentActiveStep = index
         center_step(btn)
         render_steps(steps)
         _?.up({ head, refs, type: 'step_clicked', data: { ...step, index, total_steps: steps.length, is_accessible: accessible } })
-      }
+      }, async () => {
+        const doc_file = await drive.get('docs/README.md')
+        return doc_file?.raw || 'No documentation available'
+      })
 
       steps_entries.appendChild(btn)
     })
@@ -8198,11 +8340,21 @@ async function steps_wizard (opts, protocol) {
 
 function fallback_module () {
   return {
-    api: fallback_instance
+    api: fallback_instance,
+    _: {
+      DOCS: {
+        $: ''
+      }
+    }
   }
 
   function fallback_instance () {
     return {
+      _: {
+        DOCS: {
+          0: ''
+        }
+      },
       drive: {
         'docs/': {
           'README.md': {
@@ -8220,11 +8372,13 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/steps_wizard/steps_wizard.js")
-},{"STATE":1}],21:[function(require,module,exports){
+},{"DOCS":3,"STATE":1}],22:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { get } = statedb(fallback_module)
+const DOCS = require('DOCS')
+
 module.exports = tabbed_editor
 
 async function tabbed_editor (opts, protocol) {
@@ -8263,7 +8417,6 @@ async function tabbed_editor (opts, protocol) {
   let files = {}
   let active_tab = null
   let current_editor = null
-  let docs_mode_active = false
 
   let send = null
   let _ = null
@@ -8287,13 +8440,11 @@ async function tabbed_editor (opts, protocol) {
     case 'toggle_tab':
       toggle_tab(data, msg)
       break
-    case 'docs_toggle':
-      docs_mode_active = data?.active || false
-      break
-    default:
+      default:
+      }
     }
-  }
-
+    // docs_toggle @TODO
+    
   function switch_to_tab (tab_data, msg) {
     if (active_tab === tab_data.id) {
       return
@@ -8451,11 +8602,21 @@ async function tabbed_editor (opts, protocol) {
 
 function fallback_module () {
   return {
-    api: fallback_instance
+    api: fallback_instance,
+    _: {
+      DOCS: {
+        $: ''
+      }
+    }
   }
 
   function fallback_instance () {
     return {
+      _: {
+        DOCS: {
+          0: ''
+        }
+      },
       drive: {
         'files/': {
           'example.js': {
@@ -8645,11 +8806,13 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabbed_editor/tabbed_editor.js")
-},{"STATE":1}],22:[function(require,module,exports){
+},{"DOCS":3,"STATE":1}],23:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { get } = statedb(fallback_module)
+const DOCS = require('DOCS')
+
 module.exports = component
 
 async function component (opts, protocol) {
@@ -8681,7 +8844,7 @@ async function component (opts, protocol) {
   let mid = 0
   let variables = []
   let dricons = []
-  let docs_mode_active = false
+  const docs = DOCS(__filename)(opts.sid)
   await sdb.watch(onbatch)
   let send = null
   let _ = null
@@ -8760,39 +8923,33 @@ async function component (opts, protocol) {
     name_el.draggable = false
 
     // Add click handler for tab name (switch/toggle tab)
-    name_el.onclick = async () => {
+    name_el.onclick = docs.wrap(async () => {
       if (_) {
         const head = [by, to, mid++]
         const refs = {}
-        if (docs_mode_active) {
-          const doc_file = await drive.get('docs/README.md')
-          const content = doc_file?.raw || 'No documentation available'
-          _.up({ head, refs, type: 'ui_focus_docs', data: { content, sid: opts.sid } })
-          return
-        }
         _.up({ head, refs, type: 'ui_focus', data: 'tab' })
         const head2 = [by, to, mid++]
         _.up({ head: head2, refs, type: 'tab_name_clicked', data: { id, name } })
       }
-    }
+    }, async () => {
+      const doc_file = await drive.get('docs/README.md')
+      return doc_file?.raw || 'No documentation available'
+    })
 
     // Add click handler for close button
-    close_btn.onclick = async (e) => {
+    close_btn.onclick = docs.wrap(async (e) => {
       e.stopPropagation()
       if (_) {
         const head = [by, to, mid++]
         const refs = {}
-        if (docs_mode_active) {
-          const doc_file = await drive.get('docs/README.md')
-          const content = doc_file?.raw || 'No documentation available'
-          _.up({ head, refs, type: 'ui_focus_docs', data: { content, sid: opts.sid } })
-          return
-        }
         _.up({ head, refs, type: 'ui_focus', data: 'tab' })
         const head2 = [by, to, mid++]
         _.up({ head: head2, refs, type: 'tab_close_clicked', data: { id, name } })
       }
-    }
+    }, async () => {
+      const doc_file = await drive.get('docs/README.md')
+      return doc_file?.raw || 'No documentation available'
+    })
 
     entries.appendChild(el)
   }
@@ -8839,10 +8996,20 @@ async function component (opts, protocol) {
 
 function fallback_module () {
   return {
-    api: fallback_instance
+    api: fallback_instance,
+    _: {
+      DOCS: {
+        $: ''
+      }
+    }
   }
   function fallback_instance () {
     return {
+      _: {
+        DOCS: {
+          0: ''
+        }
+      },
       drive: {
         'icons/': {
           'cross.svg': {
@@ -8884,11 +9051,12 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabs/tabs.js")
-},{"STATE":1}],23:[function(require,module,exports){
+},{"DOCS":3,"STATE":1}],24:[function(require,module,exports){
 (function (__filename){(function (){
 const state = require('STATE')
 const state_db = state(__filename)
 const { get } = state_db(fallback_module)
+const DOCS = require('DOCS')
 
 const tabs_component = require('tabs')
 const task_manager = require('task_manager')
@@ -8937,12 +9105,16 @@ async function tabsbar (opts, protocol) {
   const bar_btn = shadow.querySelector('.bar-btn')
 
   const subs = await sdb.watch(onbatch)
+  const docs = DOCS(__filename)(opts.sid)
   if (dricons[0]) {
     const parser = new DOMParser()
     const doc = parser.parseFromString(dricons[0], 'image/svg+xml')
     const svgElem = doc.documentElement
     hat_btn.replaceChildren(svgElem)
-    hat_btn.onclick = hat_click
+    hat_btn.onclick = docs.wrap(hat_click, async () => {
+      const doc_file = await drive.get('docs/README.md')
+      return doc_file?.raw || 'No documentation available'
+    })
   }
   if (dricons[2]) {
     const parser = new DOMParser()
@@ -8951,6 +9123,7 @@ async function tabsbar (opts, protocol) {
     bar_btn.replaceChildren(svgElem)
     bar_btn.onclick = () => {
       docs_toggle_active = !docs_toggle_active
+      DOCS.set_docs_mode(docs_toggle_active)
       const head = [by, to, mid++]
       const head_mgr = [by, to, mid++]
       const refs = {}
@@ -8971,12 +9144,6 @@ async function tabsbar (opts, protocol) {
   async function hat_click () {
     const head = [by, to, mid++]
     const refs = {}
-    if (docs_toggle_active) {
-      const doc_file = await drive.get('docs/README.md')
-      const content = doc_file?.raw || 'No documentation available'
-      _.up({ head, refs, type: 'ui_focus_docs', data: { content, sid: opts.sid } })
-      return
-    }
     _.up?.({ head, refs, type: 'ui_focus', data: 'wizard_hat' })
   }
   function onmessage (msg) {
@@ -9034,6 +9201,9 @@ function fallback_module () {
       },
       task_manager: {
         $: ''
+      },
+      DOCS: {
+        $: ''
       }
     }
   }
@@ -9058,6 +9228,9 @@ function fallback_module () {
             style: 'style',
             docs: 'docs'
           }
+        },
+        DOCS: {
+          0: ''
         }
       },
       drive: {
@@ -9117,11 +9290,13 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabsbar/tabsbar.js")
-},{"STATE":1,"tabs":22,"task_manager":24}],24:[function(require,module,exports){
+},{"DOCS":3,"STATE":1,"tabs":23,"task_manager":25}],25:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { get } = statedb(fallback_module)
+const DOCS = require('DOCS')
+
 module.exports = task_manager
 
 async function task_manager (opts, protocol) {
@@ -9135,7 +9310,7 @@ async function task_manager (opts, protocol) {
   const to = ids.up
 
   let mid = 0
-  let docs_mode_active = false
+  const docs = DOCS(__filename)(opts.sid)
 
   const on = {
     style: inject,
@@ -9161,29 +9336,24 @@ async function task_manager (opts, protocol) {
     _ = { up: send }
   }
 
-  btn.onclick = async () => {
+  // DOCS.wrap() is used for automatic docs mode hook
+  btn.onclick = docs.wrap(async () => {
     if (_) {
       const head = [by, to, mid++]
       const refs = {}
-      if (docs_mode_active) {
-        const doc_file = await drive.get('docs/README.md')
-        const content = doc_file?.raw || 'No documentation available'
-        _.up({ head, refs, type: 'ui_focus_docs', data: { content, sid: opts.sid } })
-        return
-      }
       _.up({ head, refs, type: 'ui_focus', data: 'task_manager' })
     }
-  }
+  }, async () => {
+    const doc_file = await drive.get('docs/README.md')
+    return doc_file?.raw || 'No documentation available'
+  })
 
   await sdb.watch(onbatch)
 
   return el
 
   function onmessage (msg) {
-    const { type } = msg
-    if (type === 'docs_toggle') {
-      docs_mode_active = msg.data?.active || false
-    }
+    // Temporary placeholder
   }
 
   async function onbatch (batch) {
@@ -9205,11 +9375,21 @@ async function task_manager (opts, protocol) {
 
 function fallback_module () {
   return {
-    api: fallback_instance
+    api: fallback_instance,
+    _: {
+      DOCS: {
+        $: ''
+      }
+    }
   }
 
   function fallback_instance () {
     return {
+      _: {
+        DOCS: {
+          0: ''
+        }
+      },
       drive: {
         'style/': {
           'theme.css': {
@@ -9247,7 +9427,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/task_manager/task_manager.js")
-},{"STATE":1}],25:[function(require,module,exports){
+},{"DOCS":3,"STATE":1}],26:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -9331,7 +9511,7 @@ async function taskbar (opts, protocol) {
     _.tabsbar = send
     return on
     function on (msg) {
-      if(msg.type == 'docs_toggle') _.manager?.(msg)
+      if (msg.type == 'docs_toggle') _.manager?.(msg)
       _.up(msg)
     }
   }
@@ -9426,7 +9606,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/taskbar/taskbar.js")
-},{"STATE":1,"manager":14,"tabsbar":23}],26:[function(require,module,exports){
+},{"STATE":1,"manager":15,"tabsbar":24}],27:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -9474,7 +9654,7 @@ async function theme_widget (opts) {
   space_el = await space({ ...subs[0], ids: { up: id } }, space_protocol)
   space_el.classList.add('space')
   space_slot.replaceWith(space_el)
-  
+
   await focus_tracker({ ...subs[2], ids: { up: id } }, focus_tracker_protocol)
   await control_unit({ ...subs[3], ids: { up: id } }, control_unit_protocol)
 
@@ -9515,10 +9695,10 @@ async function theme_widget (opts) {
     return on
     function on (msg) {
       if (msg.type === 'ui_focus') _.send_focus_tracker(msg)
-        else if (msg.type === 'docs_toggle') {
-      _.send_focus_tracker(msg)
-      _.send_space(msg)
-    } else if (msg.type === 'ui_focus_docs') {
+      else if (msg.type === 'docs_toggle') {
+        _.send_focus_tracker(msg)
+        _.send_space(msg)
+      } else if (msg.type === 'ui_focus_docs') {
         _.send_focus_tracker(msg)
       } else _.send_space(msg)
     }
@@ -9593,7 +9773,7 @@ function fallback_module () {
             variables: 'variables',
             data: 'data',
             docs: 'docs',
-            docs_style: "docs_style"
+            docs_style: 'docs_style'
           }
         },
         taskbar: {
@@ -9674,7 +9854,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/theme_widget/theme_widget.js")
-},{"STATE":1,"control_unit":6,"focus_tracker":8,"space":19,"taskbar":25}],27:[function(require,module,exports){
+},{"STATE":1,"control_unit":7,"focus_tracker":9,"space":20,"taskbar":26}],28:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -10412,4 +10592,4 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/web/page.js")
-},{"../src/node_modules/action_bar":3,"../src/node_modules/actions":4,"../src/node_modules/console_history":5,"../src/node_modules/graph_explorer_wrapper":11,"../src/node_modules/helpers":12,"../src/node_modules/manager":14,"../src/node_modules/menu":15,"../src/node_modules/quick_actions":17,"../src/node_modules/quick_editor":18,"../src/node_modules/space":19,"../src/node_modules/steps_wizard":20,"../src/node_modules/tabbed_editor":21,"../src/node_modules/tabs":22,"../src/node_modules/tabsbar":23,"../src/node_modules/task_manager":24,"../src/node_modules/taskbar":25,"../src/node_modules/theme_widget":26,"STATE":1}]},{},[27]);
+},{"../src/node_modules/action_bar":4,"../src/node_modules/actions":5,"../src/node_modules/console_history":6,"../src/node_modules/graph_explorer_wrapper":12,"../src/node_modules/helpers":13,"../src/node_modules/manager":15,"../src/node_modules/menu":16,"../src/node_modules/quick_actions":18,"../src/node_modules/quick_editor":19,"../src/node_modules/space":20,"../src/node_modules/steps_wizard":21,"../src/node_modules/tabbed_editor":22,"../src/node_modules/tabs":23,"../src/node_modules/tabsbar":24,"../src/node_modules/task_manager":25,"../src/node_modules/taskbar":26,"../src/node_modules/theme_widget":27,"STATE":1}]},{},[28]);
