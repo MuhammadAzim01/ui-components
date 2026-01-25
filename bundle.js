@@ -3148,26 +3148,22 @@ module.exports = function DOCS (filename) {
   }
 }
 
-// Static methods (called as DOCS.method())
-module.exports.set_docs_mode = set_docs_mode
-module.exports.get_docs_mode = get_docs_mode
-module.exports.on_docs_mode_change = on_docs_mode_change
-module.exports.set_doc_display_handler = set_doc_display_handler
-
 const scope = typeof window !== 'undefined' ? window : global
 
 if (!scope.__DOCS_GLOBAL_STATE__) {
   scope.__DOCS_GLOBAL_STATE__ = {
     docs_mode_active: false,
     docs_mode_listeners: [],
-    doc_display_callback: null
+    doc_display_callback: null,
+    admin_available: true,
+    message_handlers: []
   }
 }
 
 const state = scope.__DOCS_GLOBAL_STATE__
 
 // --- Static Methods (called as DOCS.method()) ---
-
+// Exported via DOCS.Admin API ( which is only available to the first module calling const docs = DOCS(__filename)().admin())
 function set_docs_mode (active) {
   state.docs_mode_active = active
   state.docs_mode_listeners.forEach(listener => listener(active))
@@ -3186,6 +3182,25 @@ function on_docs_mode_change (listener) {
 
 function set_doc_display_handler (callback) {
   state.doc_display_callback = callback
+}
+
+// --- Messaging System for Admin API Calls ---
+
+function send_message (type, data) {
+  state.message_handlers.forEach(handler => {
+    try {
+      handler({ type, data })
+    } catch (err) {
+      console.error('DOCS: Failed to send the message to handler', err)
+    }
+  })
+}
+
+function on_message (handler) {
+  state.message_handlers.push(handler)
+  return () => {
+    state.message_handlers = state.message_handlers.filter(h => h !== handler)
+  }
 }
 
 // --- Internal Helpers ---
@@ -3214,16 +3229,16 @@ function create_sys_api (meta) {
 
 // --- Instance Methods (called as docs.method()) ---
 
-function wrap (handler, meta = {}) {
-  const sys = create_sys_api(meta)
+function wrap (handler, meta = {}, make_sys = create_sys_api) {
+  const sys = make_sys(meta)
   
   return async function wrapped_handler (event) {
-    if (state.docs_mode_active) {
+    if (sys.is_docs_mode()) {
       if (event && event.preventDefault) {
         event.preventDefault()
         event.stopPropagation()
       }
-      await display_doc(meta.doc || 'No documentation available', meta.sid)
+      sys.show_doc()
       return
     }
     return handler.call(this, event, sys)
@@ -3231,24 +3246,13 @@ function wrap (handler, meta = {}) {
 }
 
 function wrap_isolated (handler_string, meta = {}) {
-  const sys = create_sys_api(meta)
-  
   try {
-    const isolated_fn = new Function('sys', `return function isolated_handler (event) { 
-      if (sys.is_docs_mode()) {
-        if (event && event.preventDefault) {
-          event.preventDefault()
-          event.stopPropagation()
-        }
-        sys.show_doc()
-        return
-      }
-      return (${handler_string})(event, sys)
-    }`)(sys)
-    
+    const params = 'meta, make_sys'
+    const source = `(${wrap.toString()})(${handler_string}, ${params})`
+    const isolated_fn = new Function(params, source)(meta, create_sys_api)
     return isolated_fn
   } catch (err) {
-    console.error('DOCS.wrap_isolated failed:', err)
+    console.error('handler function is not allowed to access closure scope', err)
     return wrap(() => {}, meta)
   }
 }
@@ -3272,13 +3276,33 @@ function hook (dom, meta = {}) {
 // --- Context Factory (creates instance with component scope) ---
 
 function create_context (filename, sid) {
-  return {
+  const api = {
     wrap: (handler, doc) => wrap(handler, { doc, sid, component: filename }),
     wrap_isolated: (handler_string, doc) => wrap_isolated(handler_string, { doc, sid, component: filename }),
     hook: (dom, doc) => hook(dom, { doc, sid, component: filename }),
     get_docs_mode,
-    on_docs_mode_change
+    on_docs_mode_change,
+    message: {
+      set_docs_mode: (active) => send_message('set_docs_mode', { active }),
+      set_doc_display_handler: () => send_message('set_doc_display_handler', {})
+    },
+    admin: function (handler) {
+      if (!state.admin_available) {
+        console.error('DOCS.admin() can only be called once by the root module')
+        return null
+      }
+      state.admin_available = false
+      const api = {
+        set_docs_mode,
+        set_doc_display_handler
+      }
+      const unsubscribe = on_message(({ type, data }) => handler({ type, data }, api))
+      api.unsubscribe = unsubscribe
+      return api
+    }
   }
+  
+  return api
 }
 
 
@@ -5015,14 +5039,8 @@ async function focus_tracker (opts, protocol) {
   }
 
   function onmessage (msg) {
-    const { type, data } = msg
-    if (type === 'ui_focus_docs') {
-      // Direct docs request from component - route to control_unit
-      const head = [by, to, mid++]
-      const refs = msg.head ? { cause: msg.head } : {}
-      _.up({ head, refs, type: 'tracked_doc', data })
-    } else if (type === 'ui_focus') {
-      drive.put('focused/current.json', { value: data })
+    if (msg.type === 'ui_focus') {
+      drive.put('focused/current.json', { value: msg.data })
     }
   }
 
@@ -5903,10 +5921,6 @@ async function manager (opts, protocol) {
 
   return el
 
-  function ui_focus_docs (data, type, msg) {
-    _.up(msg)
-  }
-
   function onmessage (msg) {
     const { type } = msg
     switch (type) {
@@ -5970,8 +5984,7 @@ async function manager (opts, protocol) {
 
       const form_input_handlers = {
         action_submitted: form__action_submitted,
-        action_incomplete: form__action_incomplete,
-        ui_focus_docs
+        action_incomplete: form__action_incomplete
       }
 
       return on
@@ -6034,8 +6047,7 @@ async function manager (opts, protocol) {
     _.send_program = send
 
     const program_handlers = {
-      load_actions: program__load_actions,
-      ui_focus_docs
+      load_actions: program__load_actions
     }
     return function on (msg) {
       const { type, data } = msg
@@ -6062,8 +6074,7 @@ async function manager (opts, protocol) {
       render_form: action_bar__render_form,
       clean_up: action_bar__clean_up,
       action_submitted: action_bar__action_submitted,
-      selected_action: action_bar__selected_action,
-      ui_focus_docs
+      selected_action: action_bar__selected_action
     }
 
     return function on (msg) {
@@ -7767,6 +7778,8 @@ const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { get } = statedb(fallback_module)
 const DOCS = require('DOCS')
+const docs = DOCS(__filename)()
+const docs_admin = docs.admin(admin_handler)  // Request admin access
 
 const console_history = require('console_history')
 const actions = require('actions')
@@ -7854,7 +7867,7 @@ async function component (opts, protocol) {
     tabbed_editor_el.classList.add('show')
     graph_explorer_el.classList.add('hide')
 
-    DOCS.set_doc_display_handler(({ content, sid }) => {
+    docs_admin.set_doc_display_handler(({ content, sid }) => {
       docs_window_el.classList.remove('hide')
       if (_.send_docs_window) {
         _.send_docs_window({ type: 'display_doc', data: { content, sid } })
@@ -8172,6 +8185,13 @@ function fallback_module () {
   }
 }
 
+function admin_handler ({ type, data }, api) {
+  if (type === 'set_docs_mode') {
+    api.set_docs_mode(data.active)
+  } else if (type === 'set_doc_display_handler') {
+    console.error('DOCS: No Permission to set doc display handler')
+  }
+}
 }).call(this)}).call(this,"/src/node_modules/space/space.js")
 },{"DOCS":3,"STATE":1,"actions":5,"console_history":6,"docs_window":8,"graph_explorer_wrapper":12,"tabbed_editor":22}],21:[function(require,module,exports){
 (function (__filename){(function (){
@@ -9123,7 +9143,7 @@ async function tabsbar (opts, protocol) {
     bar_btn.replaceChildren(svgElem)
     bar_btn.onclick = () => {
       docs_toggle_active = !docs_toggle_active
-      DOCS.set_docs_mode(docs_toggle_active)
+      docs.message.set_docs_mode(docs_toggle_active)
       const head = [by, to, mid++]
       const head_mgr = [by, to, mid++]
       const refs = {}
@@ -9685,7 +9705,6 @@ async function theme_widget (opts) {
     return on
     function on (msg) {
       if (msg.type === 'ui_focus') _.send_focus_tracker(msg)
-      else if (msg.type === 'ui_focus_docs') _.send_focus_tracker(msg)
       else _.send_taskbar(msg)
     }
   }
@@ -9698,8 +9717,6 @@ async function theme_widget (opts) {
       else if (msg.type === 'docs_toggle') {
         _.send_focus_tracker(msg)
         _.send_space(msg)
-      } else if (msg.type === 'ui_focus_docs') {
-        _.send_focus_tracker(msg)
       } else _.send_space(msg)
     }
   }
