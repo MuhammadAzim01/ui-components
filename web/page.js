@@ -407,7 +407,8 @@ function fallback_module () {
       variables: 'variables',
       scroll: 'scroll',
       style: 'style',
-      docs: 'docs'
+      docs: 'docs',
+      actions: 'actions'
     }
   }
   subs['../src/node_modules/space'] = {
@@ -461,7 +462,8 @@ function fallback_module () {
     mapping: {
       icons: 'icons',
       style: 'style',
-      docs: 'docs'
+      docs: 'docs',
+      actions: 'actions'
     }
   }
   subs['../src/node_modules/action_bar'] = {
@@ -485,7 +487,8 @@ function fallback_module () {
       commands: 'commands',
       icons: 'icons',
       scroll: 'scroll',
-      docs: 'docs'
+      docs: 'docs',
+      actions: 'actions'
     }
   }
   subs['../src/node_modules/actions'] = {
@@ -516,7 +519,8 @@ function fallback_module () {
     mapping: {
       style: 'style',
       count: 'count',
-      docs: 'docs'
+      docs: 'docs',
+      actions: 'actions'
     }
   }
   subs['../src/node_modules/quick_actions'] = {
