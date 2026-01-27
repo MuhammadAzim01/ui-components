@@ -3141,6 +3141,7 @@ function fallback_module () {
 // --- Main Export ---
 // Usage: const docs = DOCS(__filename)(opts.sid)
 //        docs.wrap(handler, docContent)
+// Admin: Only first caller (root module) gets admin API
 
 module.exports = function DOCS (filename) {
   return function (sid) {
@@ -3154,16 +3155,14 @@ if (!scope.__DOCS_GLOBAL_STATE__) {
   scope.__DOCS_GLOBAL_STATE__ = {
     docs_mode_active: false,
     docs_mode_listeners: [],
-    doc_display_callback: null,
-    admin_available: true,
-    message_handlers: []
+    doc_display_callback: null
   }
 }
 
 const state = scope.__DOCS_GLOBAL_STATE__
 
 // --- Static Methods (called as DOCS.method()) ---
-// Exported via DOCS.Admin API ( which is only available to the first module calling const docs = DOCS(__filename)().admin())
+// Exported via DOCS admin API (only available to first caller)
 function set_docs_mode (active) {
   state.docs_mode_active = active
   state.docs_mode_listeners.forEach(listener => listener(active))
@@ -3184,25 +3183,6 @@ function set_doc_display_handler (callback) {
   state.doc_display_callback = callback
 }
 
-// --- Messaging System for Admin API Calls ---
-
-function send_message (type, data) {
-  state.message_handlers.forEach(handler => {
-    try {
-      handler({ type, data })
-    } catch (err) {
-      console.error('DOCS: Failed to send the message to handler', err)
-    }
-  })
-}
-
-function on_message (handler) {
-  state.message_handlers.push(handler)
-  return () => {
-    state.message_handlers = state.message_handlers.filter(h => h !== handler)
-  }
-}
-
 // --- Internal Helpers ---
 
 async function display_doc (content, sid) {
@@ -3212,7 +3192,7 @@ async function display_doc (content, sid) {
   } else if (content && typeof content.then === 'function') {
     resolved_content = await content
   }
-  
+
   if (state.doc_display_callback) {
     state.doc_display_callback({ content: resolved_content || 'No documentation available', sid })
   }
@@ -3231,7 +3211,7 @@ function create_sys_api (meta) {
 
 function wrap (handler, meta = {}, make_sys = create_sys_api) {
   const sys = make_sys(meta)
-  
+
   return async function wrapped_handler (event) {
     if (sys.is_docs_mode()) {
       if (event && event.preventDefault) {
@@ -3259,52 +3239,33 @@ function wrap_isolated (handler_string, meta = {}) {
 
 function hook (dom, meta = {}) {
   if (!dom) return dom
-  
+
   const proto = Object.getPrototypeOf(Object.getPrototypeOf(dom))
   if (!proto) return dom
-  
+
   Object.keys(proto).forEach(key => {
     if (key.startsWith('on') && typeof dom[key] === 'function') {
       const original = dom[key]
       dom[key] = wrap(original, { ...meta, event_type: key })
     }
   })
-  
+
   return dom
 }
 
 // --- Context Factory (creates instance with component scope) ---
 
+var admin = true
 function create_context (filename, sid) {
   const api = {
     wrap: (handler, doc) => wrap(handler, { doc, sid, component: filename }),
     wrap_isolated: (handler_string, doc) => wrap_isolated(handler_string, { doc, sid, component: filename }),
     hook: (dom, doc) => hook(dom, { doc, sid, component: filename }),
     get_docs_mode,
-    on_docs_mode_change,
-    message: {
-      set_docs_mode: (active) => send_message('set_docs_mode', { active }),
-      set_doc_display_handler: () => send_message('set_doc_display_handler', {})
-    },
-    admin: function (handler) {
-      if (!state.admin_available) {
-        console.error('DOCS.admin() can only be called once by the root module')
-        return null
-      }
-      state.admin_available = false
-      const api = {
-        set_docs_mode,
-        set_doc_display_handler
-      }
-      const unsubscribe = on_message(({ type, data }) => handler({ type, data }, api))
-      api.unsubscribe = unsubscribe
-      return api
-    }
+    on_docs_mode_change
   }
-  
-  return api
+  return admin ? (admin = false, Object.assign({ admin: { set_docs_mode, set_doc_display_handler } }, api)) : api
 }
-
 
 }).call(this)}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 },{}],4:[function(require,module,exports){
@@ -3373,6 +3334,7 @@ async function action_bar (opts, protocol) {
     send_actions: null,
     send_steps_wizard: null
   }
+  let all_data = null
   let actions_data = null
   let selected_action = null
 
@@ -3435,8 +3397,8 @@ async function action_bar (opts, protocol) {
     const head = [by, to, mid++]
     const refs = {}
     _.up({ head, refs, type: 'console_history_toggle', data: null })
-    const head2 = [by, to, mid++]
-    _.up({ head: head2, refs, type: 'ui_focus', data: 'command_history' })
+    // const head2 = [by, to, mid++]
+    // _.up({ head: head2, refs, type: 'ui_focus', data: 'command_history' })
   }
 
   // --- Toggle Views ---
@@ -3585,16 +3547,16 @@ async function action_bar (opts, protocol) {
 
   function update_actions_for_app (msg) {
     const { data, type } = msg
-    console.log('Action Bar: Updating actions for focused app:', data?.focused_app)
-
+    
     // Forward update_actions_for_app to actions and quick_actions submodules
     const refs = msg.head ? { cause: msg.head } : {}
-
+    
     const head_to_actions = [by, actions_sid, mid++]
     _.send_actions?.({ head: head_to_actions, refs, type, data })
-
-    const head_to_quick = [by, quick_actions_sid, mid++]
-    _.send_quick_actions?.({ head: head_to_quick, refs, type, data })
+    
+    all_data = data.actions
+    // const head_to_quick = [by, quick_actions_sid, mid++]
+    // _.send_quick_actions?.({ head: head_to_quick, refs, type, data })
   }
 
   function update_quick_actions_for_app (msg) {
@@ -3624,13 +3586,14 @@ async function action_bar (opts, protocol) {
 
   function activate_steps_wizard (msg) {
     // Show the steps wizard
+    const steps_data = all_data.find(action => action.name === msg.data)
     steps_toggle_view('block')
-
     const head_to_steps = [by, steps_wizard_sid, mid++]
+    const data = steps_data.steps
     _.send_steps_wizard?.({
       head: head_to_steps,
       type: 'init_data',
-      data: selected_action,
+      data,
       refs: msg.head ? { cause: msg.head } : {}
     })
 
@@ -3830,7 +3793,6 @@ async function actions (opts, protocol) {
       send_selected_action(msg)
       break
     case 'load_actions':
-      // Handle the new data format from program_protocol
       handleLoadActions(data)
       break
     case 'update_actions_for_app':
@@ -3848,7 +3810,7 @@ async function actions (opts, protocol) {
       default: true,
       icon: 'file'
     }))
-
+    console.error('actions', converted_actions)
     actions = converted_actions
     create_actions_menu()
   }
@@ -3858,7 +3820,6 @@ async function actions (opts, protocol) {
 
     const head = [by, to, mid++]
     const refs = msg.head ? { cause: msg.head } : {}
-
     _.up({
       head,
       refs,
@@ -3921,7 +3882,7 @@ async function actions (opts, protocol) {
     <div class="action-pin">${action_data.pin ? hardcons.pin : hardcons.unpin}</div>
     <div class="action-default">${action_data.default ? hardcons.default : hardcons.undefault}</div>`
     action_item.onclick = docs.wrap(() => {
-      send_selected_action({ data: action_data })
+      send_selected_action({ data: action_data.action })
     }, async () => {
       const doc_file = await drive.get('docs/README.md')
       return doc_file?.raw || 'No documentation available'
@@ -3939,14 +3900,9 @@ async function actions (opts, protocol) {
   }
 
   async function update_actions_for_app (data) {
-    console.log('Focused actions data:', data)
-    const focused_app = data?.focused_app
     const temp_actions = data?.temp_actions
     if (temp_actions) {
       drive.put('actions/commands.json', temp_actions)
-      console.log('Actions updated for focused app:', focused_app)
-    } else {
-      console.log('Actions unchanged for focused app:', temp_actions)
     }
   }
 }
@@ -3971,50 +3927,7 @@ function fallback_module () {
       drive: {
         'actions/': {
           'commands.json': {
-            raw: JSON.stringify([
-              {
-                action: 'New File',
-                pinned: true,
-                default: true,
-                icon: 'file'
-              },
-              {
-                action: 'Open File',
-                pinned: false,
-                default: true,
-                icon: 'folder'
-              },
-              {
-                action: 'Save File',
-                pinned: true,
-                default: false,
-                icon: 'save'
-              },
-              {
-                action: 'Settings',
-                pinned: false,
-                default: true,
-                icon: 'gear'
-              },
-              {
-                action: 'Help',
-                pinned: false,
-                default: false,
-                icon: 'help'
-              },
-              {
-                action: 'Terminal',
-                pinned: true,
-                default: true,
-                icon: 'terminal'
-              },
-              {
-                action: 'Search',
-                pinned: false,
-                default: true,
-                icon: 'search'
-              }
-            ])
+            raw: JSON.stringify([])
           }
         },
         'icons/': {
@@ -4229,7 +4142,12 @@ async function console_history (opts, protocol) {
     command_el.onclick = docs.wrap(async function () {
       const head = [by, to, mid++]
       const refs = {}
-      _.up({ head, refs, type: 'ui_focus', data: 'command_history' })
+      const actions_file = await drive.get('actions/commands.json')
+      const data = {
+        type: 'command_history',
+        actions: JSON.parse(actions_file.raw) || []
+      }
+      _.up({ head, refs, type: 'ui_focus', data: data })
       const head2 = [by, to, mid++]
       _.up({ head: head2, refs, type: 'command_clicked', data: command_data })
     }, async () => {
@@ -4306,6 +4224,46 @@ function fallback_module () {
         'commands/': {
           'list.json': {
             $ref: 'commands.json'
+          }
+        },
+        'actions/': {
+          'commands.json': {
+            raw: JSON.stringify([
+              {
+                name: 'Clear History',
+                icon: 'trash',
+                status: {
+                  pinned: false,
+                  default: true
+                },
+                steps: [
+                  { name: 'Confirm Clear', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' }
+                ]
+              },
+              {
+                name: 'Export History',
+                icon: 'download',
+                status: {
+                  pinned: true,
+                  default: false
+                },
+                steps: [
+                  { name: 'Choose Format', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
+                  { name: 'Select Location', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' }
+                ]
+              },
+              {
+                name: 'Search History',
+                icon: 'search',
+                status: {
+                  pinned: false,
+                  default: true
+                },
+                steps: [
+                  { name: 'Enter Search Term', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' }
+                ]
+              }
+            ])
           }
         },
         'icons/': {
@@ -4531,25 +4489,29 @@ async function control_unit (opts, protocol) {
     send = protocol(msg => onmessage(msg))
     _ = { up: send }
   }
-
+  
   await sdb.watch(() => {})
+  const welcome_actions = await drive.get('actions/commands.json')
+  const welcome_commands = JSON.parse(welcome_actions.raw)
+  const refs = {}
+  const head = [by, to, mid++]
+  _.up({ head, refs, type: 'welcome_actions', data: { type: "welcome", actions: welcome_commands }})
+  return 0
 
   async function onmessage (msg) {
     const { type, data } = msg
-
     if (type === 'focused_app_changed') {
       if (_.up) {
-        const focused_app = data?.focused_app
+        const focused_app = data?.type
         let actions_data = null
-
+        let quick_actions_data = null
+        
         if (focused_app) {
-          const file = `temp_actions/${focused_app}.json`
-          const temp_actions_file = await drive.get(file)
-          if (temp_actions_file) {
-            actions_data = typeof temp_actions_file.raw === 'string' ? JSON.parse(temp_actions_file.raw) : temp_actions_file.raw
-          }
+          const component_actions = await get_component_actions(data)
+          actions_data = component_actions.actions
+          quick_actions_data = component_actions.quick_actions
         }
-
+        
         const message_data = {
           ...data,
           temp_actions: actions_data
@@ -4557,16 +4519,6 @@ async function control_unit (opts, protocol) {
         const head = [by, to, mid++]
         const refs = msg.head ? { cause: msg.head } : {}
         _.up({ head, refs, type: 'update_actions_for_app', data: message_data })
-
-        let quick_actions_data = null
-
-        if (focused_app) {
-          const file = `temp_quick_actions/${focused_app}.json`
-          const temp_quick_actions_file = await drive.get(file)
-          if (temp_quick_actions_file) {
-            quick_actions_data = typeof temp_quick_actions_file.raw === 'string' ? JSON.parse(temp_quick_actions_file.raw) : temp_quick_actions_file.raw
-          }
-        }
 
         const quick_actions_message_data = {
           ...data,
@@ -4579,6 +4531,30 @@ async function control_unit (opts, protocol) {
     }
   }
 
+  async function get_component_actions (data) {
+    const { actions } = data
+    const result_actions = []
+    const result_quick_actions = []
+    let temp_actions = {}
+    let temp_quick_actions = {}
+    actions.forEach(element => {
+      temp_actions = {}
+      temp_actions.action = element.name
+      temp_actions.icon = element.icon
+      temp_actions.pinned = element.status.pinned
+      temp_actions.default = element.status.default
+      result_actions.push(temp_actions)
+
+      temp_quick_actions = {}
+      temp_quick_actions.name = element.name
+      temp_quick_actions.icon = element.icon
+      result_quick_actions.push(temp_quick_actions)
+    })
+      return {
+      actions: result_actions,
+      quick_actions: result_quick_actions
+    }
+  }
 }
 
 function fallback_module () {
@@ -4588,266 +4564,64 @@ function fallback_module () {
   function fallback_instance () {
     return {
       drive: {
-        'temp_actions/': {
-          'command_history.json': {
+        'actions/': {
+          'commands.json': {
             raw: JSON.stringify([
               {
-                action: 'Clear History',
-                pinned: false,
-                default: true,
-                icon: 'trash'
-              },
-              {
-                action: 'Export History',
-                pinned: true,
-                default: false,
-                icon: 'download'
-              },
-              {
-                action: 'Search History',
-                pinned: false,
-                default: true,
-                icon: 'search'
-              }
-            ])
-          },
-          'task_manager.json': {
-            raw: JSON.stringify([
-              {
-                action: 'Kill Process',
-                pinned: false,
-                default: true,
-                icon: 'stop'
-              },
-              {
-                action: 'Restart Task',
-                pinned: true,
-                default: false,
-                icon: 'refresh'
-              },
-              {
-                action: 'Task Details',
-                pinned: false,
-                default: true,
-                icon: 'info'
-              }
-            ])
-          },
-          'tab.json': {
-            raw: JSON.stringify([
-              {
-                action: 'New Tab',
-                pinned: true,
-                default: true,
-                icon: 'plus'
-              },
-              {
-                action: 'Duplicate Tab',
-                pinned: false,
-                default: false,
-                icon: 'copy'
-              },
-              {
-                action: 'Close Tab',
-                pinned: false,
-                default: true,
-                icon: 'close'
-              }
-            ])
-          },
-          'wizard_hat.json': {
-            raw: JSON.stringify([
-              {
-                action: 'New File',
-                pinned: true,
-                default: true,
-                icon: 'file'
-              },
-              {
-                action: 'Open File',
-                pinned: false,
-                default: true,
-                icon: 'folder'
-              },
-              {
-                action: 'Save File',
-                pinned: true,
-                default: false,
-                icon: 'save'
-              },
-              {
-                action: 'Settings',
-                pinned: false,
-                default: true,
-                icon: 'gear'
-              },
-              {
-                action: 'Help',
-                pinned: false,
-                default: false,
-                icon: 'help'
-              },
-              {
-                action: 'Terminal',
-                pinned: true,
-                default: true,
-                icon: 'terminal'
-              },
-              {
-                action: 'Search',
-                pinned: false,
-                default: true,
-                icon: 'search'
-              }
-            ])
-          },
-          'help_button.json': {
-            raw: JSON.stringify([
-              {
-                action: 'Get Help',
-                pinned: true,
-                default: true,
-                icon: 'help'
-              },
-              {
-                action: 'Documentation',
-                pinned: false,
-                default: true,
-                icon: 'book'
-              },
-              {
-                action: 'Tutorial',
-                pinned: false,
-                default: false,
-                icon: 'graduation-cap'
-              },
-              {
-                action: 'Contact Support',
-                pinned: true,
-                default: false,
-                icon: 'support'
-              }
-            ])
-          }
-        },
-        'temp_quick_actions/': {
-          'command_history.json': {
-            raw: JSON.stringify([
-              {
-                name: 'Clear History',
-                icon: '0',
-                action: 'clear_history'
-              },
-              {
-                name: 'Export History',
-                icon: '1',
-                action: 'export_history'
-              },
-              {
-                name: 'Search History',
-                icon: '2',
-                action: 'search_history'
-              }
-            ])
-          },
-          'task_manager.json': {
-            raw: JSON.stringify([
-              {
-                name: 'Kill Process',
-                icon: '0',
-                action: 'kill_process'
-              },
-              {
-                name: 'Restart Task',
-                icon: '1',
-                action: 'restart_task'
-              },
-              {
-                name: 'Task Details',
-                icon: '2',
-                action: 'task_details'
-              }
-            ])
-          },
-          'tab.json': {
-            raw: JSON.stringify([
-              {
-                name: 'New Tab',
-                icon: '0',
-                action: 'new_tab'
-              },
-              {
-                name: 'Duplicate Tab',
-                icon: '1',
-                action: 'duplicate_tab'
-              },
-              {
-                name: 'Close Tab',
-                icon: '2',
-                action: 'close_tab'
-              }
-            ])
-          },
-          'wizard_hat.json': {
-            raw: JSON.stringify([
-              {
-                name: 'New File',
-                icon: '0',
-                action: 'new_file'
-              },
-              {
-                name: 'Open File',
-                icon: '1',
-                action: 'open_file'
-              },
-              {
-                name: 'Save File',
-                icon: '2',
-                action: 'save_file'
+                name: 'New',
+                icon: 'file',
+                status: {
+                  pinned: true,
+                  default: true
+                },
+                steps: [
+                  { name: 'Enter File Name', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
+                  { name: 'Choose Location', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' }
+                ]
               },
               {
                 name: 'Settings',
-                icon: '3',
-                action: 'settings'
+                icon: 'folder',
+                status: {
+                  pinned: false,
+                  default: true
+                },
+                steps: [
+                  { name: 'Configure Settings', type: 'optional', is_completed: false, component: 'form_input', status: 'default', data: '' }
+                ]
               },
               {
                 name: 'Help',
-                icon: '4',
-                action: 'help'
+                icon: 'save',
+                status: {
+                  pinned: true,
+                  default: false
+                },
+                steps: [
+                  { name: 'View Documentation', type: 'optional', is_completed: false, component: 'form_input', status: 'default', data: '' }
+                ]
               },
               {
-                name: 'Terminal',
-                icon: '0',
-                action: 'terminal'
+                name: 'About',
+                icon: 'gear',
+                status: {
+                  pinned: false,
+                  default: true
+                },
+                steps: [
+                  { name: 'View Information', type: 'optional', is_completed: false, component: 'form_input', status: 'default', data: '' }
+                ]
               },
               {
-                name: 'Search',
-                icon: '2',
-                action: 'search'
-              }
-            ])
-          },
-          'help_button.json': {
-            raw: JSON.stringify([
-              {
-                name: 'Get Help',
-                icon: '0',
-                action: 'get_help'
-              },
-              {
-                name: 'Documentation',
-                icon: '1',
-                action: 'documentation'
-              },
-              {
-                name: 'Tutorial',
-                icon: '2',
-                action: 'tutorial'
-              },
-              {
-                name: 'Contact Support',
-                icon: '3',
-                action: 'contact_support'
+                name: 'Exit',
+                icon: 'help',
+                status: {
+                  pinned: false,
+                  default: false
+                },
+                steps: [
+                  { name: 'Confirm Exit', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' }
+                ]
               }
             ])
           }
@@ -5040,7 +4814,12 @@ async function focus_tracker (opts, protocol) {
 
   function onmessage (msg) {
     if (msg.type === 'ui_focus') {
-      drive.put('focused/current.json', { value: msg.data })
+      if (last_focused !== msg.data.type) {
+        const head = [by, to, mid++]
+        const refs = {}
+        _.up({ head, refs, type: 'focused_app_changed', data: msg.data })
+      }
+      drive.put('focused/current.json', { value: msg.data.type })
     }
   }
 
@@ -5056,12 +4835,6 @@ async function focus_tracker (opts, protocol) {
   function fail (data, type) { console.warn('invalid message', { cause: { data, type } }) }
   function focused (data) {
     const tmp = typeof data[0] === 'string' ? JSON.parse(data[0]) : data[0]
-    if (_ && last_focused !== tmp.value) {
-      const head = [by, to, mid++]
-      const refs = {}
-      _.up({ head, refs, type: 'focused_app_changed', data: { focused_app: tmp.value } })
-    }
-
     last_focused = tmp.value
   }
 }
@@ -6114,22 +5887,23 @@ async function manager (opts, protocol) {
   }
 
   function cleanup (selected_action, msg) {
-    const cleaned = variables[selected_action].map(step => ({
-      ...step,
-      is_completed: false,
-      data: ''
-    }))
-    variables[selected_action] = cleaned
+    // console.error('Cleanup', selected_action, variables, msg)
+    // const cleaned = variables[selected_action].map(step => ({
+    //   ...step,
+    //   is_completed: false,
+    //   data: ''
+    // }))
+    // variables[selected_action] = cleaned
     const head_to_program = [by, program_sid, mid++]
     const refs = msg?.head ? { cause: msg.head } : {}
     _.send_program?.({ head: head_to_program, refs, type: 'update_data', data: variables })
 
-    for (const step of variables[selected_action]) {
-      if (step.component && _.send_form_input[step.component]) {
-        const head_to_input = [by, form_input_sids[step.component], mid++]
-        _.send_form_input[step.component]({ head: head_to_input, refs, type: 'reset_data' })
-      }
-    }
+    // for (const step of variables[selected_action]) {
+    //   if (step.component && _.send_form_input[step.component]) {
+    //     const head_to_input = [by, form_input_sids[step.component], mid++]
+    //     _.send_form_input[step.component]({ head: head_to_input, refs, type: 'reset_data' })
+    //   }
+    // }
 
     for (const el of Object.values(form_input_elements)) {
       console.log('toggle_view', el, false)
@@ -6580,15 +6354,7 @@ async function program (opts, protocol) {
   }
 
   function onvariables (data) {
-    const vars = typeof data[0] === 'string' ? JSON.parse(data[0]) : data[0]
-    const head = [by, to, mid++]
-    const refs = {}
-    _?.up({
-      head,
-      refs,
-      type: 'load_actions',
-      data: vars
-    })
+    // Dont get why we have this module.
   }
 
   function onmessage ({ type, data }) {
@@ -6719,6 +6485,7 @@ async function quick_actions (opts, protocol) {
   let icons = {}
   let hardcons = {}
   let defaults = []
+  let stored_selected_action = ''
   const docs = DOCS(__filename)(opts.sid)
 
   let send = null
@@ -6765,7 +6532,7 @@ async function quick_actions (opts, protocol) {
   function onconfirm () {
     const head = [by, to, mid++]
     const refs = {}
-    _.up({ head, refs, type: 'activate_steps_wizard' })
+    _.up({ head, refs, type: 'activate_steps_wizard', data: stored_selected_action })
   }
   function oninput (e) {
     const value = e.target.value
@@ -6822,7 +6589,6 @@ async function quick_actions (opts, protocol) {
       show_submit_btn,
       update_current_step,
       hide_submit_btn,
-      update_actions_for_app,
       update_quick_actions_for_app,
       update_input_command
     }
@@ -6910,7 +6676,12 @@ async function quick_actions (opts, protocol) {
   function create_action_button (action) {
     const btn = document.createElement('div')
     btn.classList.add('action-btn')
-    btn.innerHTML = icons[action.icon]
+    if (icons[action.icon] === undefined) {
+      const texon = action.name.substring(0, 2)
+      btn.innerHTML = texon
+    } else {
+      btn.innerHTML = icons[action.icon]
+    }
     btn.dataset.name = action.name
     if (enable_quick_action_tooltips) {
       btn.onmouseenter = () => show_tooltip(btn, action.name)
@@ -6979,10 +6750,6 @@ async function quick_actions (opts, protocol) {
     input_tooltip.style.top = `${top}px`
   }
 
-  function update_actions_for_app (data) {
-    const focused_app = data?.focused_app
-  }
-
   function update_quick_actions_for_app (data) {
     const temp_quick_actions = data?.temp_quick_actions
     if (temp_quick_actions && Array.isArray(temp_quick_actions)) {
@@ -6991,6 +6758,7 @@ async function quick_actions (opts, protocol) {
   }
 
   function update_input_command (command) {
+    stored_selected_action = command
     if (input_wrapper.style.display === 'none') {
       activate_input_field()
     }
@@ -7016,7 +6784,6 @@ async function quick_actions (opts, protocol) {
         total_steps: 3
       }
       update_input_display(pass_data)
-      // console.error('No matching action found for command:', command)
     }
   }
 
@@ -7085,28 +6852,7 @@ function fallback_module () {
         },
         'actions/': {
           'default.json': {
-            raw: JSON.stringify([
-              {
-                name: 'New',
-                icon: '0'
-              },
-              {
-                name: 'Settings',
-                icon: '1'
-              },
-              {
-                name: 'Help',
-                icon: '2'
-              },
-              {
-                name: 'About',
-                icon: '3'
-              },
-              {
-                name: 'Exit',
-                icon: '4'
-              }
-            ])
+            raw: JSON.stringify([])
           }
         },
         'docs/': {
@@ -7779,7 +7525,6 @@ const statedb = STATE(__filename)
 const { get } = statedb(fallback_module)
 const DOCS = require('DOCS')
 const docs = DOCS(__filename)()
-const docs_admin = docs.admin(admin_handler)  // Request admin access
 
 const console_history = require('console_history')
 const actions = require('actions')
@@ -7796,8 +7541,9 @@ async function component (opts, protocol) {
   if (!ids || !ids.up) {
     throw new Error(`Component ${__filename} requires ids.up to be provided`)
   }
-  // const by = id
-  // const to = ids.up
+  const by = id
+  const to = ids.up
+  let mid = 0
 
   const on = {
     style: inject
@@ -7859,7 +7605,6 @@ async function component (opts, protocol) {
   let console_view = false
   let actions_view = false
   let graph_explorer_view = false
-  let docs_mode_active = false
 
   if (protocol) {
     console_history_el.classList.add('hide')
@@ -7867,10 +7612,18 @@ async function component (opts, protocol) {
     tabbed_editor_el.classList.add('show')
     graph_explorer_el.classList.add('hide')
 
-    docs_admin.set_doc_display_handler(({ content, sid }) => {
-      docs_window_el.classList.remove('hide')
-      if (_.send_docs_window) {
-        _.send_docs_window({ type: 'display_doc', data: { content, sid } })
+    // Send message to root to set doc display handler
+    _.up({
+      head: [by, to, mid++],
+      refs: {},
+      type: 'set_doc_display_handler',
+      data: {
+        callback: ({ content, sid }) => {
+          docs_window_el.classList.remove('hide')
+          if (_.send_docs_window) {
+            _.send_docs_window({ type: 'display_doc', data: { content, sid } })
+          }
+        }
       }
     })
   }
@@ -8021,13 +7774,6 @@ async function component (opts, protocol) {
       if (_.send_docs_window) {
         _.send_docs_window(msg)
       }
-    } else if (type === 'docs_toggle') {
-      docs_mode_active = data?.active || false
-      // Broadcast docs_toggle to all subcomponents
-      if (_.send_console_history) _.send_console_history(msg)
-      if (_.send_actions) _.send_actions(msg)
-      if (_.send_tabbed_editor) _.send_tabbed_editor(msg)
-      if (_.send_graph_explorer) _.send_graph_explorer(msg)
     }
   }
 }
@@ -8067,7 +7813,8 @@ function fallback_module () {
             commands: 'commands',
             icons: 'icons',
             scroll: 'scroll',
-            docs: 'docs'
+            docs: 'docs',
+            actions: 'actions'
           }
         },
         actions: {
@@ -8185,13 +7932,6 @@ function fallback_module () {
   }
 }
 
-function admin_handler ({ type, data }, api) {
-  if (type === 'set_docs_mode') {
-    api.set_docs_mode(data.active)
-  } else if (type === 'set_doc_display_handler') {
-    console.error('DOCS: No Permission to set doc display handler')
-  }
-}
 }).call(this)}).call(this,"/src/node_modules/space/space.js")
 },{"DOCS":3,"STATE":1,"actions":5,"console_history":6,"docs_window":8,"graph_explorer_wrapper":12,"tabbed_editor":22}],21:[function(require,module,exports){
 (function (__filename){(function (){
@@ -8257,14 +7997,21 @@ async function steps_wizard (opts, protocol) {
   function onmessage ({ type, data }) {
     // docs_toggle handled globally by DOCS module
     if (type === 'init_data') {
-      variables = [
-        { name: 'Optional Step', type: 'optional', is_completed: false, component: 'form_input', status: 'default', data: '' },
-        { name: 'Step 2 testing', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: 'asdasd' },
-        { name: 'Step 3', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
-        { name: 'Step 4', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
-        { name: 'Step 5', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' }
-      ]
-      render_steps(variables)
+      console.error(type, data)
+      // If data contains steps from the new action format, use them
+      if (data) {
+        render_steps(data)
+      } else {
+        // Fallback to default steps
+        variables = [
+          { name: 'Optional Step', type: 'optional', is_completed: false, component: 'form_input', status: 'default', data: '' },
+          { name: 'Step 2 testing', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: 'asdasd' },
+          { name: 'Step 3', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
+          { name: 'Step 4', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
+          { name: 'Step 5', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' }
+        ]
+        render_steps(variables)
+      }
     }
   }
 
@@ -8947,7 +8694,12 @@ async function component (opts, protocol) {
       if (_) {
         const head = [by, to, mid++]
         const refs = {}
-        _.up({ head, refs, type: 'ui_focus', data: 'tab' })
+        const actions_file = await drive.get('actions/commands.json')
+        const data = {
+          type: 'tab',
+          actions: JSON.parse(actions_file.raw) || []
+        }
+        _.up({ head, refs, type: 'ui_focus', data })
         const head2 = [by, to, mid++]
         _.up({ head: head2, refs, type: 'tab_name_clicked', data: { id, name } })
       }
@@ -8962,7 +8714,12 @@ async function component (opts, protocol) {
       if (_) {
         const head = [by, to, mid++]
         const refs = {}
-        _.up({ head, refs, type: 'ui_focus', data: 'tab' })
+        const actions_file = await drive.get('actions/commands.json')
+        const data = {
+          type: 'tab',
+          actions: JSON.parse(actions_file.raw) || []
+        }
+        _.up({ head, refs, type: 'ui_focus', data })
         const head2 = [by, to, mid++]
         _.up({ head: head2, refs, type: 'tab_close_clicked', data: { id, name } })
       }
@@ -9043,6 +8800,47 @@ function fallback_module () {
           },
           '3.svg': {
             $ref: 'icon.svg'
+          }
+        },
+        'actions/': {
+          'commands.json': {
+            raw: JSON.stringify([
+              {
+                name: 'New Tab',
+                icon: 'plus',
+                status: {
+                  pinned: true,
+                  default: true
+                },
+                steps: [
+                  { name: 'Enter Tab Name', type: 'optional', is_completed: false, component: 'form_input', status: 'default', data: '' }
+                ]
+              },
+              {
+                name: 'Duplicate Tab',
+                icon: 'copy',
+                status: {
+                  pinned: false,
+                  default: false
+                },
+                steps: [
+                  { name: 'Select Tab to Duplicate', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
+                  { name: 'Enter New Tab Name', type: 'optional', is_completed: false, component: 'form_input', status: 'default', data: '' }
+                ]
+              },
+              {
+                name: 'Close Tab',
+                icon: 'close',
+                status: {
+                  pinned: false,
+                  default: true
+                },
+                steps: [
+                  { name: 'Select Tab to Close', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
+                  { name: 'Confirm Close', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' }
+                ]
+              }
+            ])
           }
         },
         'variables/': {
@@ -9143,11 +8941,13 @@ async function tabsbar (opts, protocol) {
     bar_btn.replaceChildren(svgElem)
     bar_btn.onclick = () => {
       docs_toggle_active = !docs_toggle_active
-      docs.message.set_docs_mode(docs_toggle_active)
       const head = [by, to, mid++]
       const head_mgr = [by, to, mid++]
       const refs = {}
-      _.up?.({ head, refs, type: 'docs_toggle', data: { active: docs_toggle_active } })
+      // Send message to root module to set docs mode
+      _.up?.({ head, refs, type: 'set_docs_mode', data: { active: docs_toggle_active } })
+      // Also send docs_toggle notification for UI updates
+      _.up?.({ head: [by, to, mid++], refs, type: 'docs_toggle', data: { active: docs_toggle_active } })
       bar_btn.classList.toggle('active', docs_toggle_active)
       _.task_manager({ head_mgr, refs, type: 'docs_toggle', data: { active: docs_toggle_active } })
     }
@@ -9164,7 +8964,12 @@ async function tabsbar (opts, protocol) {
   async function hat_click () {
     const head = [by, to, mid++]
     const refs = {}
-    _.up?.({ head, refs, type: 'ui_focus', data: 'wizard_hat' })
+    const actions_file = await drive.get('actions/command.json')
+    const data = {
+      type: 'wizard_hat',
+      actions: JSON.parse(actions_file.raw) || []
+    }
+    _.up({ head, refs, type: 'ui_focus', data: data })
   }
   function onmessage (msg) {
     const { type } = msg
@@ -9238,7 +9043,8 @@ function fallback_module () {
             variables: 'variables',
             scroll: 'scroll',
             style: 'style',
-            docs: 'docs'
+            docs: 'docs',
+            actions: 'actions'
           }
         },
         task_manager: {
@@ -9246,7 +9052,8 @@ function fallback_module () {
           mapping: {
             count: 'count',
             style: 'style',
-            docs: 'docs'
+            docs: 'docs',
+            actions: 'actions'
           }
         },
         DOCS: {
@@ -9297,6 +9104,92 @@ function fallback_module () {
           },
           '3.svg': {
             $ref: 'docs.svg'
+          }
+        },
+        'actions/': {
+          'command.json': {
+            raw: JSON.stringify([
+              {
+                name: 'New File',
+                icon: 'file',
+                status: {
+                  pinned: true,
+                  default: true
+                },
+                steps: [
+                  { name: 'Enter File Name', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
+                  { name: 'Choose Location', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' }
+                ]
+              },
+              {
+                name: 'Open File',
+                icon: 'folder',
+                status: {
+                  pinned: false,
+                  default: true
+                },
+                steps: [
+                  { name: 'Select File', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' }
+                ]
+              },
+              {
+                name: 'Save File',
+                icon: 'save',
+                status: {
+                  pinned: true,
+                  default: false
+                },
+                steps: [
+                  { name: 'Choose Location', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
+                  { name: 'Enter File Name', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' }
+                ]
+              },
+              {
+                name: 'Settings',
+                icon: 'gear',
+                status: {
+                  pinned: false,
+                  default: true
+                },
+                steps: [
+                  { name: 'Configure Settings', type: 'optional', is_completed: false, component: 'form_input', status: 'default', data: '' }
+                ]
+              },
+              {
+                name: 'Help',
+                icon: 'help',
+                status: {
+                  pinned: false,
+                  default: false
+                },
+                steps: [
+                  { name: 'View Documentation', type: 'optional', is_completed: false, component: 'form_input', status: 'default', data: '' }
+                ]
+              },
+              {
+                name: 'Terminal',
+                icon: 'terminal',
+                status: {
+                  pinned: true,
+                  default: true
+                },
+                steps: [
+                  { name: 'Open Terminal', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' }
+                ]
+              },
+              {
+                name: 'Search',
+                icon: 'search',
+                status: {
+                  pinned: false,
+                  default: true
+                },
+                steps: [
+                  { name: 'Enter Search Query', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
+                  { name: 'Select Scope', type: 'optional', is_completed: false, component: 'form_input', status: 'default', data: '' }
+                ]
+              }
+            ])
           }
         },
         'docs/': {
@@ -9361,7 +9254,12 @@ async function task_manager (opts, protocol) {
     if (_) {
       const head = [by, to, mid++]
       const refs = {}
-      _.up({ head, refs, type: 'ui_focus', data: 'task_manager' })
+      const actions_file = await drive.get('actions/commands.json')
+      const data = {
+        type: 'task_manager',
+        actions: JSON.parse(actions_file.raw) || []
+      }
+      _.up({ head, refs, type: 'ui_focus', data })
     }
   }, async () => {
     const doc_file = await drive.get('docs/README.md')
@@ -9429,6 +9327,48 @@ function fallback_module () {
                 background: #3d3d3d;
               }
             `
+          }
+        },
+        'actions/': {
+          'commands.json': {
+            raw: JSON.stringify([
+              {
+                name: 'Kill Process',
+                icon: 'stop',
+                status: {
+                  pinned: false,
+                  default: true
+                },
+                steps: [
+                  { name: 'Select Process', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
+                  { name: 'Confirm Kill', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' }
+                ]
+              },
+              {
+                name: 'Restart Task',
+                icon: 'refresh',
+                status: {
+                  pinned: true,
+                  default: false
+                },
+                steps: [
+                  { name: 'Select Task', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
+                  { name: 'Confirm Restart', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' }
+                ]
+              },
+              {
+                name: 'Task Details',
+                icon: 'info',
+                status: {
+                  pinned: false,
+                  default: true
+                },
+                steps: [
+                  { name: 'Select Task', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
+                  { name: 'View Details', type: 'optional', is_completed: false, component: 'form_input', status: 'default', data: '' }
+                ]
+              }
+            ])
           }
         },
         'count/': {
@@ -9581,7 +9521,8 @@ function fallback_module () {
           mapping: {
             icons: 'icons',
             style: 'style',
-            docs: 'docs'
+            docs: 'docs',
+            actions: 'actions'
           }
         }
       },
@@ -9639,7 +9580,7 @@ const control_unit = require('control_unit')
 
 module.exports = theme_widget
 
-async function theme_widget (opts) {
+async function theme_widget (opts, protocol) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
 
@@ -9667,7 +9608,9 @@ async function theme_widget (opts) {
   let space_el = null
   let taskbar_el = null
   const _ = { send_space: null, send_taskbar: null, send_focus_tracker: null, send_control_unit: null }
-
+  if (protocol) {
+    _.up = protocol()
+  }
   taskbar_el = await taskbar({ ...subs[1], ids: { up: id } }, taskbar_protocol)
   taskbar_slot.replaceWith(taskbar_el)
 
@@ -9705,6 +9648,7 @@ async function theme_widget (opts) {
     return on
     function on (msg) {
       if (msg.type === 'ui_focus') _.send_focus_tracker(msg)
+      else if (msg.type === 'set_doc_display_handler') _.up(msg)
       else _.send_taskbar(msg)
     }
   }
@@ -9717,7 +9661,8 @@ async function theme_widget (opts) {
       else if (msg.type === 'docs_toggle') {
         _.send_focus_tracker(msg)
         _.send_space(msg)
-      } else _.send_space(msg)
+      } else if (msg.type === 'set_docs_mode') _.up(msg)
+      else _.send_space(msg)
     }
   }
 
@@ -9735,6 +9680,9 @@ async function theme_widget (opts) {
     function on (msg) {
       if (msg.type === 'display_doc') {
         _.send_space(msg)
+      } else if (msg.type === 'welcome_actions') {
+        msg.type = 'ui_focus'
+        _.send_focus_tracker(msg)
       } else if (_ && _.send_taskbar) {
         _.send_taskbar(msg)
       }
@@ -9816,8 +9764,7 @@ function fallback_module () {
         control_unit: {
           0: '',
           mapping: {
-            temp_actions: 'temp_actions',
-            temp_quick_actions: 'temp_quick_actions',
+            actions: 'actions',
             docs: 'docs'
           }
         }
@@ -9882,6 +9829,9 @@ admin_api.on(({ type, data }) => {
 })
 const { sdb, io, id } = statedb(fallback_module)
 const { drive, admin } = sdb
+const DOCS = require('../src/node_modules/DOCS')
+const docs = DOCS(__filename)()
+const docs_admin = docs.admin
 /******************************************************************************
   PAGE
 ******************************************************************************/
@@ -10032,6 +9982,17 @@ async function boot (opts) {
   send_quick_editor_data()
   admin_on.import = send_quick_editor_data
 
+  // DOCS admin handlers for theme widget
+  function theme_widget_protocol (send) {
+    return on
+    function on (msg) {
+      if (msg.type === 'set_docs_mode') {
+        docs_admin.set_docs_mode(msg.data.active)
+      } else if (msg.type === 'set_doc_display_handler') {
+        docs_admin.set_doc_display_handler(msg.data.callback)
+      }
+    }
+  }
   return el
   async function create_component (entries_obj) {
     let index = 0
@@ -10045,7 +10006,12 @@ async function boot (opts) {
       <div class="component-wrapper"></div>
     `
       const inner = outer.querySelector('.component-wrapper')
-      const component_content = await factory({ ...subs[index], ids: { up: id } })
+      let component_content
+      if (name === 'theme_widget') {
+        component_content = await factory({ ...subs[index], ids: { up: id } }, theme_widget_protocol)
+      } else {
+        component_content = await factory({ ...subs[index], ids: { up: id } })
+      }
       component_content.className = 'component-content'
 
       const node_id = admin.status.s2i[subs[index].sid]
@@ -10240,7 +10206,7 @@ function fallback_module () {
   const subs = {}
   names.forEach(subgen)
   subs['../src/node_modules/helpers'] = 0
-
+  subs['../src/node_modules/DOCS'] = 0
   subs['../src/node_modules/taskbar'] = {
     $: '',
     0: '',
@@ -10263,7 +10229,8 @@ function fallback_module () {
       variables: 'variables',
       scroll: 'scroll',
       style: 'style',
-      docs: 'docs'
+      docs: 'docs',
+      actions: 'actions'
     }
   }
   subs['../src/node_modules/space'] = {
@@ -10317,7 +10284,8 @@ function fallback_module () {
     mapping: {
       icons: 'icons',
       style: 'style',
-      docs: 'docs'
+      docs: 'docs',
+      actions: 'actions'
     }
   }
   subs['../src/node_modules/action_bar'] = {
@@ -10341,7 +10309,8 @@ function fallback_module () {
       commands: 'commands',
       icons: 'icons',
       scroll: 'scroll',
-      docs: 'docs'
+      docs: 'docs',
+      actions: 'actions'
     }
   }
   subs['../src/node_modules/actions'] = {
@@ -10372,7 +10341,8 @@ function fallback_module () {
     mapping: {
       style: 'style',
       count: 'count',
-      docs: 'docs'
+      docs: 'docs',
+      actions: 'actions'
     }
   }
   subs['../src/node_modules/quick_actions'] = {
@@ -10609,4 +10579,4 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/web/page.js")
-},{"../src/node_modules/action_bar":4,"../src/node_modules/actions":5,"../src/node_modules/console_history":6,"../src/node_modules/graph_explorer_wrapper":12,"../src/node_modules/helpers":13,"../src/node_modules/manager":15,"../src/node_modules/menu":16,"../src/node_modules/quick_actions":18,"../src/node_modules/quick_editor":19,"../src/node_modules/space":20,"../src/node_modules/steps_wizard":21,"../src/node_modules/tabbed_editor":22,"../src/node_modules/tabs":23,"../src/node_modules/tabsbar":24,"../src/node_modules/task_manager":25,"../src/node_modules/taskbar":26,"../src/node_modules/theme_widget":27,"STATE":1}]},{},[28]);
+},{"../src/node_modules/DOCS":3,"../src/node_modules/action_bar":4,"../src/node_modules/actions":5,"../src/node_modules/console_history":6,"../src/node_modules/graph_explorer_wrapper":12,"../src/node_modules/helpers":13,"../src/node_modules/manager":15,"../src/node_modules/menu":16,"../src/node_modules/quick_actions":18,"../src/node_modules/quick_editor":19,"../src/node_modules/space":20,"../src/node_modules/steps_wizard":21,"../src/node_modules/tabbed_editor":22,"../src/node_modules/tabs":23,"../src/node_modules/tabsbar":24,"../src/node_modules/task_manager":25,"../src/node_modules/taskbar":26,"../src/node_modules/theme_widget":27,"STATE":1}]},{},[28]);
