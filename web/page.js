@@ -7,6 +7,9 @@ admin_api.on(({ type, data }) => {
 })
 const { sdb, io, id } = statedb(fallback_module)
 const { drive, admin } = sdb
+const DOCS = require('../src/node_modules/DOCS')
+const docs = DOCS(__filename)()
+const docs_admin = docs.admin
 /******************************************************************************
   PAGE
 ******************************************************************************/
@@ -157,6 +160,17 @@ async function boot (opts) {
   send_quick_editor_data()
   admin_on.import = send_quick_editor_data
 
+  // DOCS admin handlers for theme widget
+  function theme_widget_protocol (send) {
+    return on
+    function on (msg) {
+      if (msg.type === 'set_docs_mode') {
+        docs_admin.set_docs_mode(msg.data.active)
+      } else if (msg.type === 'set_doc_display_handler') {
+        docs_admin.set_doc_display_handler(msg.data.callback)
+      }
+    }
+  }
   return el
   async function create_component (entries_obj) {
     let index = 0
@@ -170,7 +184,12 @@ async function boot (opts) {
       <div class="component-wrapper"></div>
     `
       const inner = outer.querySelector('.component-wrapper')
-      const component_content = await factory({ ...subs[index], ids: { up: id } })
+      let component_content
+      if (name === 'theme_widget') {
+        component_content = await factory({ ...subs[index], ids: { up: id } }, theme_widget_protocol)
+      } else {
+        component_content = await factory({ ...subs[index], ids: { up: id } })
+      }
       component_content.className = 'component-content'
 
       const node_id = admin.status.s2i[subs[index].sid]
@@ -365,7 +384,7 @@ function fallback_module () {
   const subs = {}
   names.forEach(subgen)
   subs['../src/node_modules/helpers'] = 0
-
+  subs['../src/node_modules/DOCS'] = 0
   subs['../src/node_modules/taskbar'] = {
     $: '',
     0: '',
