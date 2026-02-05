@@ -10,6 +10,10 @@ const { drive, admin } = sdb
 const DOCS = require('../src/node_modules/DOCS')
 const docs = DOCS(__filename)()
 const docs_admin = docs.admin
+let send_to_theme_widget = null
+let by = id
+let to = null
+let mid = 0
 /******************************************************************************
   PAGE
 ******************************************************************************/
@@ -162,12 +166,74 @@ async function boot (opts) {
 
   // DOCS admin handlers for theme widget
   function theme_widget_protocol (send) {
+    send_to_theme_widget = send
     return on
     function on (msg) {
       if (msg.type === 'set_docs_mode') {
         docs_admin.set_docs_mode(msg.data.active)
       } else if (msg.type === 'set_doc_display_handler') {
         docs_admin.set_doc_display_handler(msg.data.callback)
+      } else if (msg.type === 'focused_app_changed') {
+        // Use DOCS admin to lookup actions by sid reference
+        const focused_sid = msg.data?.sid
+        let actions = null
+        
+        if (focused_sid && docs_admin) {
+          actions = docs_admin.get_actions(focused_sid)
+        }
+        update_actions_for_app(actions)
+
+        async function update_actions_for_app (data) {
+          const focused_app = msg.data?.type
+          let actions_data = null
+          let quick_actions_data = null
+          
+          if (focused_app) {
+            const component_actions = await get_component_actions(data)
+            actions_data = component_actions.actions
+            quick_actions_data = component_actions.quick_actions
+          }
+          
+          const message_data = {
+            actions: data,
+            temp_actions: actions_data
+          }
+          const head = [by, to, mid++]
+          const refs = msg.head ? { cause: msg.head } : {}
+          send_to_theme_widget({ head, refs, type: 'update_actions_for_app', data: message_data })
+
+          const quick_actions_message_data = {
+            actions: data,
+            temp_quick_actions: quick_actions_data
+          }
+          const quick_actions_head = [by, to, mid++]
+          const quick_actions_refs = msg.head ? { cause: msg.head } : {}
+          send_to_theme_widget({ head: quick_actions_head, refs: quick_actions_refs, type: 'update_quick_actions_for_app', data: quick_actions_message_data })
+
+          async function get_component_actions (data) {
+            const result_actions = []
+            const result_quick_actions = []
+            let temp_actions = {}
+            let temp_quick_actions = {}
+            data.forEach(element => {
+              temp_actions = {}
+              temp_actions.action = element.name
+              temp_actions.icon = element.icon
+              temp_actions.pinned = element.status.pinned
+              temp_actions.default = element.status.default
+              result_actions.push(temp_actions)
+
+              temp_quick_actions = {}
+              temp_quick_actions.name = element.name
+              temp_quick_actions.icon = element.icon
+              result_quick_actions.push(temp_quick_actions)
+            })
+              return {
+              actions: result_actions,
+              quick_actions: result_quick_actions
+            }
+          }
+        }
       }
     }
   }
@@ -186,6 +252,7 @@ async function boot (opts) {
       const inner = outer.querySelector('.component-wrapper')
       let component_content
       if (name === 'theme_widget') {
+        to = subs[index].sid
         component_content = await factory({ ...subs[index], ids: { up: id } }, theme_widget_protocol)
       } else {
         component_content = await factory({ ...subs[index], ids: { up: id } })
