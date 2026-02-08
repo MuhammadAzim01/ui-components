@@ -34,6 +34,7 @@ const editor = require('../src/node_modules/quick_editor')
 const manager = require('../src/node_modules/manager')
 const steps_wizard = require('../src/node_modules/steps_wizard')
 const { resource } = require('../src/node_modules/helpers')
+const exec = require('../src/node_modules/exec')
 
 const imports = {
   theme_widget,
@@ -49,7 +50,8 @@ const imports = {
   quick_actions,
   graph_explorer_wrapper,
   manager,
-  steps_wizard
+  steps_wizard,
+  exec
 }
 config().then(() => boot({ sid: '' }))
 
@@ -196,18 +198,12 @@ async function boot (opts) {
             steps_wizard_data = component_actions.steps_wizard
           }
           
-          const actions_message_data = {
-            actions: data,
-            temp_actions: actions_data
-          }
+          const actions_message_data = actions_data
           const head = [by, to, mid++]
           const refs = msg.head ? { cause: msg.head } : {}
           send_to_theme_widget({ head, refs, type: 'update_actions_for_app', data: actions_message_data })
 
-          const quick_actions_message_data = {
-            actions: data,
-            temp_quick_actions: quick_actions_data
-          }
+          const quick_actions_message_data = quick_actions_data
           const quick_actions_head = [by, to, mid++]
           const quick_actions_refs = msg.head ? { cause: msg.head } : {}
           send_to_theme_widget({ head: quick_actions_head, refs: quick_actions_refs, type: 'update_quick_actions_for_app', data: quick_actions_message_data })
@@ -519,6 +515,16 @@ function fallback_module () {
       hardcons: 'hardcons',
       prefs: 'prefs',
       docs: 'docs'
+    }
+  }
+  subs['../src/node_modules/exec'] = {
+    $: '',
+    0: '',
+    mapping: {
+      style: 'style',
+      variables: 'variables',
+      docs: 'docs',
+      data: 'data'
     }
   }
   subs['../src/node_modules/steps_wizard'] = {
