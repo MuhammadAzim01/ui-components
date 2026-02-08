@@ -187,20 +187,22 @@ async function boot (opts) {
           const focused_app = msg.data?.type
           let actions_data = null
           let quick_actions_data = null
+          let steps_wizard_data = null
           
           if (focused_app) {
             const component_actions = await get_component_actions(data)
             actions_data = component_actions.actions
             quick_actions_data = component_actions.quick_actions
+            steps_wizard_data = component_actions.steps_wizard
           }
           
-          const message_data = {
+          const actions_message_data = {
             actions: data,
             temp_actions: actions_data
           }
           const head = [by, to, mid++]
           const refs = msg.head ? { cause: msg.head } : {}
-          send_to_theme_widget({ head, refs, type: 'update_actions_for_app', data: message_data })
+          send_to_theme_widget({ head, refs, type: 'update_actions_for_app', data: actions_message_data })
 
           const quick_actions_message_data = {
             actions: data,
@@ -210,6 +212,9 @@ async function boot (opts) {
           const quick_actions_refs = msg.head ? { cause: msg.head } : {}
           send_to_theme_widget({ head: quick_actions_head, refs: quick_actions_refs, type: 'update_quick_actions_for_app', data: quick_actions_message_data })
 
+          const steps_wizard_head = [by, to, mid++]
+          const steps_wizard_refs = msg.head ? { cause: msg.head } : {}
+          send_to_theme_widget({ head: steps_wizard_head, refs: steps_wizard_refs, type: 'update_steps_wizard_for_app', data: steps_wizard_data })
           async function get_component_actions (data) {
             const result_actions = []
             const result_quick_actions = []
@@ -228,9 +233,10 @@ async function boot (opts) {
               temp_quick_actions.icon = element.icon
               result_quick_actions.push(temp_quick_actions)
             })
-              return {
+            return {
               actions: result_actions,
-              quick_actions: result_quick_actions
+              quick_actions: result_quick_actions,
+              steps_wizard: data
             }
           }
         }
