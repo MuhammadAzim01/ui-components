@@ -11,7 +11,7 @@ const DOCS = require('../src/node_modules/DOCS')
 const docs = DOCS(__filename)()
 const docs_admin = docs.admin
 let send_to_theme_widget = null
-let by = id
+const by = id
 let to = null
 let mid = 0
 /******************************************************************************
@@ -179,7 +179,7 @@ async function boot (opts) {
         // Use DOCS admin to lookup actions by sid reference
         const focused_sid = msg.data?.sid
         let actions = null
-        
+
         if (focused_sid && docs_admin) {
           actions = docs_admin.get_actions(focused_sid)
         }
@@ -190,14 +190,14 @@ async function boot (opts) {
           let actions_data = null
           let quick_actions_data = null
           let steps_wizard_data = null
-          
+
           if (focused_app) {
             const component_actions = await get_component_actions(data)
             actions_data = component_actions.actions
             quick_actions_data = component_actions.quick_actions
             steps_wizard_data = component_actions.steps_wizard
           }
-          
+
           const actions_message_data = actions_data
           const head = [by, to, mid++]
           const refs = msg.head ? { cause: msg.head } : {}
