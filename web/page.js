@@ -227,6 +227,7 @@ async function boot (opts) {
               temp_quick_actions = {}
               temp_quick_actions.name = element.name
               temp_quick_actions.icon = element.icon
+              temp_quick_actions.total_steps = element.steps.length
               result_quick_actions.push(temp_quick_actions)
             })
             return {
