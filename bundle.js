@@ -3185,7 +3185,7 @@ function set_doc_display_handler (callback) {
 }
 
 function get_actions (sid) {
-  let actions = state.action_registry.get(sid) || []
+  const actions = state.action_registry.get(sid) || []
   if (actions.length === 0) throw new Error('DOCS: No actions registered for SID ' + sid)
   return actions
 }
@@ -3281,7 +3281,7 @@ function register_actions (sid, actions) {
   state.action_registry.set(sid, actions)
 }
 
-var admin = true
+let admin = true
 function create_context (filename, sid) {
   const api = {
     wrap: (handler, doc) => wrap(handler, { doc, sid, component: filename }),
@@ -3444,13 +3444,12 @@ async function action_bar (opts, protocol) {
   }
 
   function quick_actions__action_submitted (msg) {
-    const result = JSON.stringify(actions_data[selected_action].map(step => step.data), null, 2)
     const head_to_quick = [by, quick_actions_sid, mid++]
     const refs_to_quick = msg.head ? { cause: msg.head } : undefined
     _.send_quick_actions?.({ head: head_to_quick, refs: refs_to_quick, type: 'deactivate_input_field', data: null })
     const head = [by, to, mid++]
     const refs = msg.head ? { cause: msg.head } : undefined
-    _.up?.({ head, refs, type: 'action_submitted', data: { result, selected_action } })
+    _.up?.({ head, refs, type: 'action_submitted', data: { selected_action } })
   }
 
   function onmessage (msg) {
@@ -3479,9 +3478,9 @@ async function action_bar (opts, protocol) {
     _.send_quick_actions?.({ head: head_to_quick, type: 'hide_submit_btn' })
   }
 
-
   function update_quick_actions_for_app (msg) {
     const { data, type } = msg
+    actions_data = data
     const head_to_quick_actions = [by, quick_actions_sid, mid++]
     const refs = msg.head ? { cause: msg.head } : {}
     _.send_quick_actions?.({ head: head_to_quick_actions, refs, type, data })
@@ -3679,20 +3678,20 @@ async function actions (opts, protocol) {
   function onmessage (msg) {
     const { type, data } = msg
     switch (type) {
-      case 'filter_actions':
-        filter(data)
-        break
-      case 'send_selected_action':
-        send_selected_action(msg)
-        break
-      case 'load_actions':
-        handle_load_actions(data)
-        break
-      case 'update_actions_for_app':
-        update_actions_for_app(data)
-        break
-      default:
-        fail(data, type)
+    case 'filter_actions':
+      filter(data)
+      break
+    case 'send_selected_action':
+      send_selected_action(msg)
+      break
+    case 'load_actions':
+      handle_load_actions(data)
+      break
+    case 'update_actions_for_app':
+      update_actions_for_app(data)
+      break
+    default:
+      fail(data, type)
     }
   }
 
@@ -3982,7 +3981,7 @@ async function console_history (opts, protocol) {
   let commands = []
   let dricons = []
   const docs = DOCS(__filename)(opts.sid)
-  
+
   // Register actions with DOCS system
   const actions_file = await drive.get('actions/commands.json')
   if (actions_file?.raw) {
@@ -4658,7 +4657,7 @@ async function exec (opts, protocol) {
   }
 
   function program__load_actions (data, type, msg) {
-    console.error("LOADING ACTIONS", msg)
+    console.error('LOADING ACTIONS', msg)
     variables = data
     const head = [by, to, mid++]
     const refs = msg.head ? { cause: msg.head } : {}
@@ -4715,20 +4714,21 @@ async function exec (opts, protocol) {
 
   function form__action_submitted (data, type, msg) {
     console.log('exec.on_form_submitted', data, variables, selected_action)
-    const step = variables[selected_action][data?.index]
+    const step = selected_action.steps[data?.index]
     Object.assign(step, {
       is_completed: true,
       status: 'completed',
       data: data?.value
     })
+
     const refs = msg.head ? { cause: msg.head } : {}
     const head_to_program = [by, program_sid, mid++]
-    _.send_program?.({ head: head_to_program, refs, type: 'update_data', data: variables })
+    _.send_program?.({ head: head_to_program, refs, type: 'update_data', data: all_data })
 
     const head_to_steps = [by, steps_wizard_sid, mid++]
-    _.send_steps_wizard?.({ head: head_to_steps, type: 'init_data', data: variables[selected_action] })
+    _.send_steps_wizard?.({ head: head_to_steps, type: 'init_data', data: selected_action.steps })
 
-    if (variables[selected_action][variables[selected_action].length - 1]?.is_completed) {
+    if (selected_action.steps[selected_action.steps.length - 1]?.is_completed) {
       const head = [by, to, mid++]
       _.up?.({ head, refs, type: 'show_submit_btn' })
     }
@@ -4736,7 +4736,7 @@ async function exec (opts, protocol) {
 
   function form__action_incomplete (data, type, msg) {
     console.log('exec.on_form_incomplete', data, variables, selected_action)
-    const step = variables[selected_action][data?.index]
+    const step = selected_action.steps[data?.index]
 
     if (!step.is_completed) return
 
@@ -4747,10 +4747,10 @@ async function exec (opts, protocol) {
     })
     const refs = msg.head ? { cause: msg.head } : {}
     const head_to_program = [by, program_sid, mid++]
-    _.send_program?.({ head: head_to_program, refs, type: 'update_data', data: variables })
+    _.send_program?.({ head: head_to_program, refs, type: 'update_data', data: all_data })
 
     const head_to_steps = [by, steps_wizard_sid, mid++]
-    _.send_steps_wizard?.({ head: head_to_steps, type: 'init_data', data: variables[selected_action] })
+    _.send_steps_wizard?.({ head: head_to_steps, type: 'init_data', data: selected_action.steps })
 
     const head = [by, to, mid++]
     _.up?.({ head, refs, type: 'hide_submit_btn' })
@@ -4778,7 +4778,7 @@ async function exec (opts, protocol) {
   }
 
   function load_actions (msg) {
-    console.error("LOADING ACTIONS", msg)
+    console.error('LOADING ACTIONS', msg)
     variables = msg.data
     const { data, type } = msg
     const head = [by, program_sid, mid++]
@@ -4788,9 +4788,10 @@ async function exec (opts, protocol) {
 
   function action_submitted (msg) {
     const { data } = msg
+    data.result = JSON.stringify(selected_action.steps.map(step => step.data), null, 2)
     const head = [by, program_sid, mid++]
     const refs = msg.head ? { cause: msg.head } : {}
-    _.send_program?.({ head, refs, type: 'display_result', data })
+    _.send_program?.({ head, refs, type: 'display_result', data: data })
   }
 
   function render_form (msg) {
@@ -4810,7 +4811,7 @@ async function exec (opts, protocol) {
 
   function update_data (msg) {
     const { data, type } = msg
-    console.error("UPDATE DATA", msg)
+    console.error('UPDATE DATA', msg)
     variables = data
     const head = [by, program_sid, mid++]
     const refs = msg.head ? { cause: msg.head } : {}
@@ -4820,6 +4821,8 @@ async function exec (opts, protocol) {
   function activate_steps_wizard (msg) {
     if (!all_data) return
     const steps_data = all_data.find(action => action.name === msg.data)
+    selected_action = steps_data
+
     if (!steps_data) return
     steps_toggle_view('block')
     const head_to_steps = [by, steps_wizard_sid, mid++]
@@ -5134,6 +5137,7 @@ async function form_input (opts, protocol) {
 
   function step_data (data, type) {
     current_step = data
+    input_field_el.value = data?.data
 
     input_accessible = data?.is_accessible !== false
 
@@ -6266,7 +6270,7 @@ async function program (opts, protocol) {
   const _ = {
     up: null
   }
-  let mid = 0
+  const mid = 0
 
   if (protocol) {
     const send = protocol((msg) => onmessage(msg))
@@ -6571,6 +6575,7 @@ async function quick_actions (opts, protocol) {
 
   function show_submit_btn () {
     submit_btn.style.display = 'flex'
+    confirm_btn.style.display = 'none'
   }
 
   function hide_submit_btn () {
@@ -6730,7 +6735,7 @@ async function quick_actions (opts, protocol) {
       const pass_data = {
         action: matching_action.name,
         current_step: 1,
-        total_steps: 3
+        total_steps: matching_action.total_steps || 1
       }
       update_input_display(pass_data)
     } else {
@@ -8198,11 +8203,11 @@ async function tabbed_editor (opts, protocol) {
     case 'toggle_tab':
       toggle_tab(data, msg)
       break
-      default:
-      }
+    default:
     }
-    // docs_toggle @TODO
-    
+  }
+  // docs_toggle @TODO
+
   function switch_to_tab (tab_data, msg) {
     if (active_tab === tab_data.id) {
       return
@@ -8603,14 +8608,14 @@ async function component (opts, protocol) {
   let variables = []
   let dricons = []
   const docs = DOCS(__filename)(opts.sid)
-  
+
   // Register actions with DOCS system
   const actions_file = await drive.get('actions/commands.json')
   if (actions_file?.raw) {
     const actions_data = typeof actions_file.raw === 'string' ? JSON.parse(actions_file.raw) : actions_file.raw
     docs.register_actions(actions_data)
   }
-  
+
   await sdb.watch(onbatch)
   let send = null
   let _ = null
@@ -8934,7 +8939,7 @@ async function tabsbar (opts, protocol) {
   const bar_btn = shadow.querySelector('.bar-btn')
 
   const subs = await sdb.watch(onbatch)
-  
+
   if (dricons[0]) {
     const parser = new DOMParser()
     const doc = parser.parseFromString(dricons[0], 'image/svg+xml')
@@ -9234,7 +9239,7 @@ async function task_manager (opts, protocol) {
 
   let mid = 0
   const docs = DOCS(__filename)(opts.sid)
-  
+
   // Register actions with DOCS system
   const actions_file = await drive.get('actions/commands.json')
   if (actions_file?.raw) {
@@ -9494,11 +9499,9 @@ async function taskbar (opts, protocol) {
           msg.type === 'action_submitted' ||
           msg.type === 'activate_steps_wizard' ||
           msg.type === 'render_form' ||
-          msg.type === 'selected_action')
-      {
+          msg.type === 'selected_action') {
         _.exec(msg)
-      }
-      else _.up(msg)
+      } else _.up(msg)
     }
   }
 
@@ -9507,8 +9510,7 @@ async function taskbar (opts, protocol) {
     return on
     function on (msg) {
       if (msg.type === 'load_actions' || msg.type === 'step_clicked' ||
-          msg.type === 'show_submit_btn' || msg.type === 'hide_submit_btn')
-      {
+          msg.type === 'show_submit_btn' || msg.type === 'hide_submit_btn') {
         _.manager(msg)
       }
       _.up(msg)
@@ -9688,7 +9690,7 @@ async function theme_widget (opts, protocol) {
   if (protocol) {
     _.up = protocol(onmessage_from_root)
   }
-  
+
   function onmessage_from_root (msg) {
     // Handle messages from page.js (root)
     const { type } = msg
@@ -9702,7 +9704,7 @@ async function theme_widget (opts, protocol) {
   await focus_tracker({ ...subs[2], ids: { up: id } }, focus_tracker_protocol)
   taskbar_el = await taskbar({ ...subs[1], ids: { up: id } }, taskbar_protocol)
   taskbar_slot.replaceWith(taskbar_el)
-  
+
   space_el = await space({ ...subs[0], ids: { up: id } }, space_protocol)
   space_el.classList.add('space')
   space_slot.replaceWith(space_el)
@@ -9897,7 +9899,7 @@ const DOCS = require('../src/node_modules/DOCS')
 const docs = DOCS(__filename)()
 const docs_admin = docs.admin
 let send_to_theme_widget = null
-let by = id
+const by = id
 let to = null
 let mid = 0
 /******************************************************************************
@@ -10065,7 +10067,7 @@ async function boot (opts) {
         // Use DOCS admin to lookup actions by sid reference
         const focused_sid = msg.data?.sid
         let actions = null
-        
+
         if (focused_sid && docs_admin) {
           actions = docs_admin.get_actions(focused_sid)
         }
@@ -10076,14 +10078,14 @@ async function boot (opts) {
           let actions_data = null
           let quick_actions_data = null
           let steps_wizard_data = null
-          
+
           if (focused_app) {
             const component_actions = await get_component_actions(data)
             actions_data = component_actions.actions
             quick_actions_data = component_actions.quick_actions
             steps_wizard_data = component_actions.steps_wizard
           }
-          
+
           const actions_message_data = actions_data
           const head = [by, to, mid++]
           const refs = msg.head ? { cause: msg.head } : {}
@@ -10113,6 +10115,7 @@ async function boot (opts) {
               temp_quick_actions = {}
               temp_quick_actions.name = element.name
               temp_quick_actions.icon = element.icon
+              temp_quick_actions.total_steps = element.steps.length
               result_quick_actions.push(temp_quick_actions)
             })
             return {
