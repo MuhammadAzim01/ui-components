@@ -3364,7 +3364,7 @@ async function action_bar (opts, protocol) {
   history_icon.innerHTML = console_icon
   history_icon.onclick = docs.wrap(onhistory, async () => {
     const doc_file = await drive.get('docs/README.md')
-    return doc_file?.raw || 'No documentation available'
+    return doc_file && doc_file.raw ? doc_file.raw : 'No documentation available'
   })
   const element = protocol ? await quick_actions({ ...subs[0], ids: { up: id } }, quick_actions_protocol) : await quick_actions({ ...subs[0], ids: { up: id } })
   quick_placeholder.replaceWith(element)
@@ -3430,16 +3430,16 @@ async function action_bar (opts, protocol) {
   }
 
   function quick_actions_filter_actions (msg) {
-    _.up?.(msg)
+    _.up && _.up(msg)
   }
 
   function quick_actions__display_actions (msg) {
     const { data } = msg
-    _.up?.(msg)
+    _.up && _.up(msg)
     if (data === 'none') {
       const head = [by, to, mid++]
       const refs = msg.head ? { cause: msg.head } : undefined
-      _.up?.({ head, refs, type: 'clean_up', data: selected_action })
+      _.up && _.up({ head, refs, type: 'clean_up', data: selected_action })
     }
   }
 
@@ -3447,18 +3447,18 @@ async function action_bar (opts, protocol) {
     const result = JSON.stringify(actions_data[selected_action].map(step => step.data), null, 2)
     const head_to_quick = [by, quick_actions_sid, mid++]
     const refs_to_quick = msg.head ? { cause: msg.head } : undefined
-    _.send_quick_actions?.({ head: head_to_quick, refs: refs_to_quick, type: 'deactivate_input_field', data: null })
+    _.send_quick_actions && _.send_quick_actions({ head: head_to_quick, refs: refs_to_quick, type: 'deactivate_input_field', data: null })
     const head = [by, to, mid++]
     const refs = msg.head ? { cause: msg.head } : undefined
-    _.up?.({ head, refs, type: 'action_submitted', data: { result, selected_action } })
+    _.up && _.up({ head, refs, type: 'action_submitted', data: { result, selected_action } })
   }
 
   function onmessage (msg) {
     const { type } = msg
     if (type === 'docs_toggle') {
-      _.send_quick_actions?.(msg)
+      _.send_quick_actions && _.send_quick_actions(msg)
     } else {
-      parent_handler[type]?.(msg)
+      parent_handler[type] && parent_handler[type](msg)
     }
   }
 
@@ -3468,15 +3468,15 @@ async function action_bar (opts, protocol) {
   }
   function parent__selected_action (msg) {
     const head_to_quick = [by, quick_actions_sid, mid++]
-    _.send_quick_actions?.({ head: head_to_quick, ...msg })
+    _.send_quick_actions && _.send_quick_actions({ head: head_to_quick, ...msg })
   }
   function show_submit_btn (msg) {
     const head_to_quick = [by, quick_actions_sid, mid++]
-    _.send_quick_actions?.({ head: head_to_quick, type: 'show_submit_btn' })
+    _.send_quick_actions && _.send_quick_actions({ head: head_to_quick, type: 'show_submit_btn' })
   }
   function hide_submit_btn (msg) {
     const head_to_quick = [by, quick_actions_sid, mid++]
-    _.send_quick_actions?.({ head: head_to_quick, type: 'hide_submit_btn' })
+    _.send_quick_actions && _.send_quick_actions({ head: head_to_quick, type: 'hide_submit_btn' })
   }
 
 
@@ -3484,14 +3484,14 @@ async function action_bar (opts, protocol) {
     const { data, type } = msg
     const head_to_quick_actions = [by, quick_actions_sid, mid++]
     const refs = msg.head ? { cause: msg.head } : {}
-    _.send_quick_actions?.({ head: head_to_quick_actions, refs, type, data })
+    _.send_quick_actions && _.send_quick_actions({ head: head_to_quick_actions, refs, type, data })
   }
 
   function update_quick_actions_input (msg) {
     const { data } = msg
     selected_action = data || null
     const head_to_quick = [by, quick_actions_sid, mid++]
-    _.send_quick_actions?.({
+    _.send_quick_actions && _.send_quick_actions({
       head: head_to_quick,
       type: 'update_input_command',
       data,
@@ -3500,16 +3500,16 @@ async function action_bar (opts, protocol) {
   }
 
   function quick_actions__activate_steps_wizard (msg) {
-    _.up?.({ type: 'activate_steps_wizard', data: msg.data, head: msg.head ? [by, to, mid++] : undefined, refs: msg.head ? { cause: msg.head } : {} })
+    _.up && _.up({ type: 'activate_steps_wizard', data: msg.data, head: msg.head ? [by, to, mid++] : undefined, refs: msg.head ? { cause: msg.head } : {} })
   }
 
   function parent__step_clicked (msg) {
     const { data } = msg
     const head_to_quick = [by, quick_actions_sid, mid++]
-    _.send_quick_actions?.({ head: head_to_quick, type: 'update_current_step', data })
+    _.send_quick_actions && _.send_quick_actions({ head: head_to_quick, type: 'update_current_step', data })
     const head = [by, to, mid++]
     const refs = msg.head ? { cause: msg.head } : {}
-    _.up?.({ head, refs, type: 'render_form', data })
+    _.up && _.up({ head, refs, type: 'render_form', data })
   }
 
   function ui_focus_docs (msg) {
@@ -3665,6 +3665,12 @@ async function actions (opts, protocol) {
   let icons = {}
   let hardcons = {}
   const docs = DOCS(__filename)(opts.sid)
+  const on_message = {
+    filter_actions: handle_filter_actions,
+    send_selected_action: handle_send_selected_action,
+    load_actions: handle_load_actions_message,
+    update_actions_for_app: handle_update_actions_for_app_message
+  }
 
   await sdb.watch(onbatch)
   let send = null
@@ -3677,23 +3683,28 @@ async function actions (opts, protocol) {
   return el
 
   function onmessage (msg) {
-    const { type, data } = msg
-    switch (type) {
-      case 'filter_actions':
-        filter(data)
-        break
-      case 'send_selected_action':
-        send_selected_action(msg)
-        break
-      case 'load_actions':
-        handle_load_actions(data)
-        break
-      case 'update_actions_for_app':
-        update_actions_for_app(data)
-        break
-      default:
-        fail(data, type)
-    }
+    const handler = on_message[msg.type] || onmessage_fail
+    handler(msg)
+  }
+
+  function handle_filter_actions (msg) {
+    filter(msg.data)
+  }
+
+  function handle_send_selected_action (msg) {
+    send_selected_action(msg)
+  }
+
+  function handle_load_actions_message (msg) {
+    handle_load_actions(msg.data)
+  }
+
+  function handle_update_actions_for_app_message (msg) {
+    update_actions_for_app(msg.data)
+  }
+
+  function onmessage_fail (msg) {
+    fail(msg.data, msg.type)
   }
 
   function handle_load_actions (data) {
@@ -3708,7 +3719,7 @@ async function actions (opts, protocol) {
   }
 
   function send_selected_action (msg) {
-    const action_data = msg.type === 'send_selected_action' ? msg.data.data : msg.data
+    const action_data = msg && msg.data && msg.data.data ? msg.data.data : msg && msg.data ? msg.data : undefined
 
     const head = [by, to, mid++]
     const refs = msg.head ? { cause: msg.head } : {}
@@ -3985,7 +3996,7 @@ async function console_history (opts, protocol) {
   
   // Register actions with DOCS system
   const actions_file = await drive.get('actions/commands.json')
-  if (actions_file?.raw) {
+  if (actions_file && actions_file.raw) {
     const actions_data = typeof actions_file.raw === 'string' ? JSON.parse(actions_file.raw) : actions_file.raw
     docs.register_actions(actions_data)
   }
@@ -4046,7 +4057,7 @@ async function console_history (opts, protocol) {
       _.up({ head: head2, refs, type: 'command_clicked', data: command_data })
     }, async () => {
       const doc_file = await drive.get('docs/README.md')
-      return doc_file?.raw || 'No documentation available'
+      return doc_file && doc_file.raw ? doc_file.raw : 'No documentation available'
     })
 
     return command_el
@@ -4410,7 +4421,7 @@ async function docs_window (opts, protocol) {
   function onclose () {
     const head = [by, to, mid++]
     const refs = {}
-    _.up?.({ head, refs, type: 'close_docs', data: null })
+    _.up && _.up({ head, refs, type: 'close_docs', data: null })
   }
 
   function onmessage (msg) {
@@ -4421,7 +4432,7 @@ async function docs_window (opts, protocol) {
   }
 
   function display_content (data) {
-    const content = data?.content
+    const content = data && data.content !== undefined ? data.content : undefined
     docs_text.textContent = content || 'No documentation available'
   }
 
@@ -4662,7 +4673,7 @@ async function exec (opts, protocol) {
     variables = data
     const head = [by, to, mid++]
     const refs = msg.head ? { cause: msg.head } : {}
-    _.up?.({ head, refs, type, data })
+    _.up && _.up({ head, refs, type, data })
   }
 
   // -------------------------------
@@ -4680,7 +4691,7 @@ async function exec (opts, protocol) {
       const { type } = msg
       const handler = steps_handlers[type]
       if (handler) handler(msg)
-      else _.up?.(msg)
+      else _.up && _.up(msg)
     }
   }
 
@@ -4688,7 +4699,7 @@ async function exec (opts, protocol) {
     const { data } = msg
     const head = [by, to, mid++]
     const refs = msg.head ? { cause: msg.head } : {}
-    _.up?.({ head, refs, type: 'step_clicked', data })
+    _.up && _.up({ head, refs, type: 'step_clicked', data })
   }
 
   // -------------------------------
@@ -4715,45 +4726,45 @@ async function exec (opts, protocol) {
 
   function form__action_submitted (data, type, msg) {
     console.log('exec.on_form_submitted', data, variables, selected_action)
-    const step = variables[selected_action][data?.index]
+    const step = variables[selected_action] && data && data.index !== undefined ? variables[selected_action][data.index] : undefined
     Object.assign(step, {
       is_completed: true,
       status: 'completed',
-      data: data?.value
+      data: data && data.value !== undefined ? data.value : undefined
     })
     const refs = msg.head ? { cause: msg.head } : {}
     const head_to_program = [by, program_sid, mid++]
-    _.send_program?.({ head: head_to_program, refs, type: 'update_data', data: variables })
+    _.send_program && _.send_program({ head: head_to_program, refs, type: 'update_data', data: variables })
 
     const head_to_steps = [by, steps_wizard_sid, mid++]
-    _.send_steps_wizard?.({ head: head_to_steps, type: 'init_data', data: variables[selected_action] })
+    _.send_steps_wizard && _.send_steps_wizard({ head: head_to_steps, type: 'init_data', data: variables[selected_action] })
 
-    if (variables[selected_action][variables[selected_action].length - 1]?.is_completed) {
+    if (variables[selected_action] && variables[selected_action][variables[selected_action].length - 1] && variables[selected_action][variables[selected_action].length - 1].is_completed) {
       const head = [by, to, mid++]
-      _.up?.({ head, refs, type: 'show_submit_btn' })
+      _.up && _.up({ head, refs, type: 'show_submit_btn' })
     }
   }
 
   function form__action_incomplete (data, type, msg) {
     console.log('exec.on_form_incomplete', data, variables, selected_action)
-    const step = variables[selected_action][data?.index]
+    const step = variables[selected_action] && data && data.index !== undefined ? variables[selected_action][data.index] : undefined
 
     if (!step.is_completed) return
 
     Object.assign(step, {
       is_completed: false,
       status: 'error',
-      data: data?.value
+      data: data && data.value !== undefined ? data.value : undefined
     })
     const refs = msg.head ? { cause: msg.head } : {}
     const head_to_program = [by, program_sid, mid++]
-    _.send_program?.({ head: head_to_program, refs, type: 'update_data', data: variables })
+    _.send_program && _.send_program({ head: head_to_program, refs, type: 'update_data', data: variables })
 
     const head_to_steps = [by, steps_wizard_sid, mid++]
-    _.send_steps_wizard?.({ head: head_to_steps, type: 'init_data', data: variables[selected_action] })
+    _.send_steps_wizard && _.send_steps_wizard({ head: head_to_steps, type: 'init_data', data: variables[selected_action] })
 
     const head = [by, to, mid++]
-    _.up?.({ head, refs, type: 'hide_submit_btn' })
+    _.up && _.up({ head, refs, type: 'hide_submit_btn' })
   }
 
   // -------------------------------
@@ -4763,12 +4774,12 @@ async function exec (opts, protocol) {
   function onmessage (msg) {
     const { type } = msg
     if (type === 'docs_toggle') {
-      _.send_steps_wizard?.(msg)
+      _.send_steps_wizard && _.send_steps_wizard(msg)
       for (const name in _.send_form_input) {
         _.send_form_input[name](msg)
       }
     } else {
-      parent_handler[type]?.(msg)
+      parent_handler[type] && parent_handler[type](msg)
     }
   }
 
@@ -4783,14 +4794,14 @@ async function exec (opts, protocol) {
     const { data, type } = msg
     const head = [by, program_sid, mid++]
     const refs = msg.head ? { cause: msg.head } : {}
-    _.send_program?.({ head, refs, type, data })
+    _.send_program && _.send_program({ head, refs, type, data })
   }
 
   function action_submitted (msg) {
     const { data } = msg
     const head = [by, program_sid, mid++]
     const refs = msg.head ? { cause: msg.head } : {}
-    _.send_program?.({ head, refs, type: 'display_result', data })
+    _.send_program && _.send_program({ head, refs, type: 'display_result', data })
   }
 
   function render_form (msg) {
@@ -4814,7 +4825,7 @@ async function exec (opts, protocol) {
     variables = data
     const head = [by, program_sid, mid++]
     const refs = msg.head ? { cause: msg.head } : {}
-    _.send_program?.({ head, refs, type, data })
+    _.send_program && _.send_program({ head, refs, type, data })
   }
 
   function activate_steps_wizard (msg) {
@@ -4824,11 +4835,11 @@ async function exec (opts, protocol) {
     steps_toggle_view('block')
     const head_to_steps = [by, steps_wizard_sid, mid++]
     const data = steps_data.steps
-    _.send_steps_wizard?.({
+    _.send_steps_wizard && _.send_steps_wizard({
       head: head_to_steps,
+      refs: {},
       type: 'init_data',
-      data,
-      refs: msg.head ? { cause: msg.head } : {}
+      data: steps_data.steps
     })
   }
 
@@ -4836,7 +4847,7 @@ async function exec (opts, protocol) {
     // forward init_data to steps_wizard with current action steps
     const { data } = msg
     const head_to_steps = [by, steps_wizard_sid, mid++]
-    _.send_steps_wizard?.({ head: head_to_steps, type: 'init_data', data })
+    _.send_steps_wizard && _.send_steps_wizard({ head: head_to_steps, type: 'init_data', data })
   }
 
   function clean_up (msg) {
@@ -4948,6 +4959,9 @@ async function focus_tracker (opts, protocol) {
   const on = {
     focused
   }
+  const on_message = {
+    ui_focus: handle_ui_focus
+  }
   // Keep track of the last focused element
   let last_focused = null
   let mid = 0
@@ -4959,14 +4973,21 @@ async function focus_tracker (opts, protocol) {
   }
 
   function onmessage (msg) {
-    if (msg.type === 'ui_focus') {
-      if (last_focused !== msg.data.type) {
-        const head = [by, to, mid++]
-        const refs = {}
-        _.up({ head, refs, type: 'focused_app_changed', data: msg.data })
-      }
-      drive.put('focused/current.json', { value: msg.data.type })
+    const handler = on_message[msg.type] || onmessage_fail
+    handler(msg)
+  }
+
+  function handle_ui_focus (msg) {
+    if (last_focused !== msg.data.type) {
+      const head = [by, to, mid++]
+      const refs = {}
+      _.up({ head, refs, type: 'focused_app_changed', data: msg.data })
     }
+    drive.put('focused/current.json', { value: msg.data.type })
+  }
+
+  function onmessage_fail (msg) {
+    fail(msg.data, msg.type)
   }
 
   await sdb.watch(onbatch)
@@ -5071,7 +5092,7 @@ async function form_input (opts, protocol) {
         type: 'action_submitted',
         data: {
           value: this.value,
-          index: current_step?.index || 0
+          index: current_step && current_step.index !== undefined ? current_step.index : 0
         }
       })
       console.log('mark_as_complete')
@@ -5084,7 +5105,7 @@ async function form_input (opts, protocol) {
         type: 'action_incomplete',
         data: {
           value: this.value,
-          index: current_step?.index || 0
+          index: current_step && current_step.index !== undefined ? current_step.index : 0
         }
       })
     }
@@ -5129,13 +5150,13 @@ async function form_input (opts, protocol) {
 
   function onmessage ({ type, data }) {
     console.log('message from form_input', type, data)
-    parent_handler[type]?.(data, type)
+    parent_handler[type] && parent_handler[type](data, type)
   }
 
   function step_data (data, type) {
     current_step = data
 
-    input_accessible = data?.is_accessible !== false
+    input_accessible = data && data.is_accessible !== false
 
     overlay_el.hidden = input_accessible
 
@@ -5576,7 +5597,7 @@ async function input_test (opts, protocol) {
         type: 'action_submitted',
         data: {
           value: this.value,
-          index: current_step?.index || 0
+          index: current_step && current_step.index !== undefined ? current_step.index : 0
         }
       })
       console.log('mark_as_complete')
@@ -5589,7 +5610,7 @@ async function input_test (opts, protocol) {
         type: 'action_incomplete',
         data: {
           value: this.value,
-          index: current_step?.index || 0
+          index: current_step && current_step.index !== undefined ? current_step.index : 0
         }
       })
     }
@@ -5639,13 +5660,13 @@ async function input_test (opts, protocol) {
 
   function onmessage ({ type, data }) {
     console.log('message from input_test', type, data)
-    parent_handler[type]?.(data, type)
+    parent_handler[type] && parent_handler[type](data, type)
   }
 
   function step_data (data, type) {
     current_step = data
 
-    input_accessible = data?.is_accessible !== false
+    input_accessible = data && data.is_accessible !== false
 
     overlay_el.hidden = input_accessible
 
@@ -5766,6 +5787,15 @@ async function manager (opts, protocol) {
   }
 
   let mid = 0
+  const on_message = {
+    docs_toggle: handle_docs_toggle,
+    load_actions: handle_load_actions,
+    step_clicked: handle_step_clicked,
+    update_quick_actions_for_app: handle_update_quick_actions_for_app,
+    update_quick_actions_input: handle_update_quick_actions_input,
+    show_submit_btn: handle_submit_btn_toggle,
+    hide_submit_btn: handle_submit_btn_toggle
+  }
 
   let _ = null
   if (protocol) {
@@ -5796,35 +5826,42 @@ async function manager (opts, protocol) {
   return el
 
   function onmessage (msg) {
-    const { type } = msg
-    switch (type) {
-    case 'docs_toggle':
-      _.send_actions_bar?.(msg)
-      break
-    case 'load_actions':
-      const head_to_action_bar_load = [by, action_bar_sid, mid++]
-      const load_refs = msg.head ? { cause: msg.head } : {}
-      _.send_actions_bar?.({ head: head_to_action_bar_load, refs: load_refs, type: msg.type, data: msg.data })
-      break
-    case 'step_clicked':
-      _.send_actions_bar?.(msg)
-      break
-    case 'update_quick_actions_for_app':
-      const head_to_quick_actions = [by, action_bar_sid, mid++]
-      const quick_refs = msg.head ? { cause: msg.head } : {}
-      _.send_actions_bar?.({ head: head_to_quick_actions, refs: quick_refs, type, data: msg.data })
-      break
-    case 'update_quick_actions_input':
-      const head_to_action_bar_input = [by, action_bar_sid, mid++]
-      const input_refs = msg.head ? { cause: msg.head } : {}
-      _.send_actions_bar?.({ head: head_to_action_bar_input, refs: input_refs, type, data: msg.data })
-      break
-    case 'show_submit_btn':
-    case 'hide_submit_btn':
-      _.send_actions_bar?.(msg)
-      break
-    default: // @TODO Handle message types
-    }
+    const handler = on_message[msg.type] || onmessage_fail
+    handler(msg)
+  }
+
+  function handle_docs_toggle (msg) {
+    _.send_actions_bar && _.send_actions_bar(msg)
+  }
+
+  function handle_load_actions (msg) {
+    forward_to_action_bar(msg.type, msg.data, msg)
+  }
+
+  function handle_step_clicked (msg) {
+    _.send_actions_bar && _.send_actions_bar(msg)
+  }
+
+  function handle_update_quick_actions_for_app (msg) {
+    forward_to_action_bar(msg.type, msg.data, msg)
+  }
+
+  function handle_update_quick_actions_input (msg) {
+    forward_to_action_bar(msg.type, msg.data, msg)
+  }
+
+  function handle_submit_btn_toggle (msg) {
+    _.send_actions_bar && _.send_actions_bar(msg)
+  }
+
+  function onmessage_fail () {
+    // @TODO Handle unsupported message types
+  }
+
+  function forward_to_action_bar (type, data, msg) {
+    const head = [by, action_bar_sid, mid++]
+    const refs = msg.head ? { cause: msg.head } : {}
+    _.send_actions_bar && _.send_actions_bar({ head, refs, type, data })
   }
 
   // --- Internal Functions ---
@@ -5855,44 +5892,51 @@ async function manager (opts, protocol) {
   function actions_bar_protocol (send) {
     _.send_actions_bar = send
 
-    const action_bar_handlers = {
+    const action_handlers = {
       render_form: action_bar__render_form,
       clean_up: action_bar__clean_up,
       action_submitted: action_bar__action_submitted,
       selected_action: action_bar__selected_action,
-      activate_steps_wizard: action_bar__activate_steps_wizard
+      activate_steps_wizard: action_bar__activate_steps_wizard,
+      console_history_toggle: action_bar__forward_up,
+      ui_focus: action_bar__forward_up,
+      display_actions: action_bar__forward_up,
+      filter_actions: action_bar__forward_up
     }
 
     return function on (msg) {
-      if (msg.type === 'console_history_toggle' || msg.type === 'ui_focus' || msg.type === 'display_actions' || msg.type === 'filter_actions') {
-        _.up(msg)
-        return
-      }
-
       const { type, data } = msg
-      const handler = action_bar_handlers[type] || fail
+      const handler = action_handlers[type] || action_bar_fail
       handler(data, type, msg)
     }
   }
 
+  function action_bar__forward_up (data, type, msg) {
+    _.up && _.up(msg)
+  }
+
+  function action_bar_fail (data, type) {
+    fail(data, type)
+  }
+
   function action_bar__render_form (data, type, msg) {
-    _.up?.(msg)
+    _.up && _.up(msg)
   }
 
   function action_bar__action_submitted (data, type, msg) {
-    _.up?.(msg)
+    _.up && _.up(msg)
   }
 
   function action_bar__selected_action (data, type, msg) {
-    _.up?.(msg)
+    _.up && _.up(msg)
   }
 
   function action_bar__activate_steps_wizard (data, type, msg) {
-    _.up?.(msg)
+    _.up && _.up(msg)
   }
 
   function action_bar__clean_up (data, type, msg) {
-    _.up?.(msg)
+    _.up && _.up(msg)
   }
 }
 
@@ -6316,11 +6360,11 @@ async function program (opts, protocol) {
   }
 
   function onmessage ({ type, data }) {
-    parent_handler[type]?.(data, type)
+    parent_handler[type] && parent_handler[type](data, type)
   }
   function display_result (data) {
     console.log('Display Result:', data)
-    alert(`Result of action(${data?.selected_action}): ${data?.result}`)
+    alert(`Result of action(${data && data.selected_action ? data.selected_action : 'unknown'}): ${data && data.result ? data.result : 'no result'}`)
   }
   function update_data (data) {
     drive.put('variables/program.json', data)
@@ -6456,19 +6500,19 @@ async function quick_actions (opts, protocol) {
   }
   text_bar.onclick = docs.wrap(activate_input_field, async () => {
     const doc_file = await drive.get('docs/README.md')
-    return doc_file?.raw || 'No documentation available'
+    return doc_file && doc_file.raw ? doc_file.raw : 'No documentation available'
   })
   close_btn.onclick = docs.wrap(deactivate_input_field, async () => {
     const doc_file = await drive.get('docs/README.md')
-    return doc_file?.raw || 'No documentation available'
+    return doc_file && doc_file.raw ? doc_file.raw : 'No documentation available'
   })
   confirm_btn.onclick = docs.wrap(onconfirm, async () => {
     const doc_file = await drive.get('docs/README.md')
-    return doc_file?.raw || 'No documentation available'
+    return doc_file && doc_file.raw ? doc_file.raw : 'No documentation available'
   })
   submit_btn.onclick = docs.wrap(onsubmit, async () => {
     const doc_file = await drive.get('docs/README.md')
-    return doc_file?.raw || 'No documentation available'
+    return doc_file && doc_file.raw ? doc_file.raw : 'No documentation available'
   })
   input_field.oninput = oninput
 
@@ -6478,7 +6522,7 @@ async function quick_actions (opts, protocol) {
 
   async function get_doc_content () {
     const doc_file = await drive.get('docs/README.md')
-    return doc_file?.raw || 'No documentation available'
+    return doc_file && doc_file.raw ? doc_file.raw : 'No documentation available'
   }
 
   function onsubmit () {
@@ -6505,8 +6549,8 @@ async function quick_actions (opts, protocol) {
       slash_prefix.style.display = 'inline'
       command_text.style.display = 'inline'
       command_text.textContent = `#${selected_action.action}`
-      current_step.textContent = selected_action?.current_step || 1
-      total_steps.textContent = selected_action?.total_steps || 1
+      current_step.textContent = selected_action && selected_action.current_step ? selected_action.current_step : 1
+      total_steps.textContent = selected_action && selected_action.total_steps ? selected_action.total_steps : 1
       step_display.style.display = 'inline-flex'
 
       input_field.style.display = 'none'
@@ -6578,7 +6622,7 @@ async function quick_actions (opts, protocol) {
   }
 
   function update_current_step (data) {
-    const current_step_value = data?.index + 1 || 1
+    const current_step_value = data && data.index !== undefined ? data.index + 1 : 1
     current_step.textContent = current_step_value
   }
 
@@ -7671,24 +7715,20 @@ async function component (opts, protocol) {
   function actions_protocol (send) {
     _.send_actions = send
 
-    const actions_handlers = {
+    const action_handlers = {
       selected_action: actions_selected_action,
-      ui_focus_docs: actions_ui_focus_docs
+      ui_focus_docs: actions_ui_focus_docs,
+      ui_focus: actions__forward_up
     }
 
     return on
     function on (msg) {
-      if (msg.type === 'ui_focus') {
-        _.up(msg)
-        return
-      }
-      const { type } = msg
-      const handler = actions_handlers[type]
-      if (handler) {
-        handler(msg)
-      } else {
-        _.up(msg)
-      }
+      const handler = action_handlers[msg.type] || actions__forward_up
+      handler(msg)
+    }
+
+    function actions__forward_up (msg) {
+      _.up && _.up(msg)
     }
   }
 
@@ -7726,49 +7766,84 @@ async function component (opts, protocol) {
 
   function docs_window_protocol (send) {
     _.send_docs_window = send
+    const action_handlers = {
+      close_docs: docs_window__close_docs
+    }
     return on
     function on (msg) {
-      if (msg.type === 'close_docs') {
-        docs_window_el.classList.add('hide')
-      }
-      _.up(msg)
+      const handler = action_handlers[msg.type] || docs_window__noop
+      handler(msg)
+      _.up && _.up(msg)
     }
+
+    function docs_window__close_docs () {
+      docs_window_el.classList.add('hide')
+    }
+
+    function docs_window__noop () {}
   }
 
   function onmessage (msg) {
-    const { type, data } = msg
-    if (type === 'console_history_toggle') console_history_toggle_view()
-    else if (type === 'graph_explorer_toggle') graph_explorer_toggle_view()
-    else if (type === 'display_actions') actions_toggle_view(data)
-    else if (type === 'filter_actions') _.send_actions(msg)
-    else if (type === 'tab_name_clicked') {
-      tabbed_editor_toggle_view(true)
-      if (_.send_tabbed_editor) {
-        _.send_tabbed_editor({ ...msg, type: 'toggle_tab' })
-      }
-    } else if (type === 'tab_close_clicked') {
-      if (_.send_tabbed_editor) {
-        _.send_tabbed_editor({ ...msg, type: 'close_tab' })
-      }
-    } else if (type === 'switch_tab') {
-      tabbed_editor_toggle_view(true)
-      if (_.send_tabbed_editor) {
-        _.send_tabbed_editor(msg)
-      }
-    } else if (type === 'entry_toggled') {
-      if (_.send_graph_explorer) {
-        _.send_graph_explorer(msg)
-      }
-    } else if (type === 'display_doc') {
-      docs_window_el.classList.remove('hide')
-      if (_.send_docs_window) {
-        _.send_docs_window(msg)
-      }
-    } else if (type === 'load_actions' || type === 'update_actions_for_app') {
-      if (_.send_actions) {
-        _.send_actions(msg)
-      }
+    const action_handlers = {
+      console_history_toggle: onmessage__console_history_toggle,
+      graph_explorer_toggle: onmessage__graph_explorer_toggle,
+      display_actions: onmessage__display_actions,
+      filter_actions: onmessage__filter_actions,
+      tab_name_clicked: onmessage__tab_name_clicked,
+      tab_close_clicked: onmessage__tab_close_clicked,
+      switch_tab: onmessage__switch_tab,
+      entry_toggled: onmessage__entry_toggled,
+      display_doc: onmessage__display_doc,
+      load_actions: onmessage__send_actions,
+      update_actions_for_app: onmessage__send_actions
     }
+    const handler = action_handlers[msg.type] || onmessage__noop
+    handler(msg)
+
+    function onmessage__console_history_toggle () {
+      console_history_toggle_view()
+    }
+
+    function onmessage__graph_explorer_toggle () {
+      graph_explorer_toggle_view()
+    }
+
+    function onmessage__display_actions (msg) {
+      actions_toggle_view(msg.data)
+    }
+
+    function onmessage__filter_actions (msg) {
+      _.send_actions && _.send_actions(msg)
+    }
+
+    function onmessage__tab_name_clicked (msg) {
+      tabbed_editor_toggle_view(true)
+      _.send_tabbed_editor && _.send_tabbed_editor({ ...msg, type: 'toggle_tab' })
+    }
+
+    function onmessage__tab_close_clicked (msg) {
+      _.send_tabbed_editor && _.send_tabbed_editor({ ...msg, type: 'close_tab' })
+    }
+
+    function onmessage__switch_tab (msg) {
+      tabbed_editor_toggle_view(true)
+      _.send_tabbed_editor && _.send_tabbed_editor(msg)
+    }
+
+    function onmessage__entry_toggled (msg) {
+      _.send_graph_explorer && _.send_graph_explorer(msg)
+    }
+
+    function onmessage__display_doc (msg) {
+      docs_window_el.classList.remove('hide')
+      _.send_docs_window && _.send_docs_window(msg)
+    }
+
+    function onmessage__send_actions (msg) {
+      _.send_actions && _.send_actions(msg)
+    }
+
+    function onmessage__noop () {}
   }
 }
 
@@ -8045,10 +8120,10 @@ async function steps_wizard (opts, protocol) {
         currentActiveStep = index
         center_step(btn)
         render_steps(steps)
-        _?.up({ head, refs, type: 'step_clicked', data: { ...step, index, total_steps: steps.length, is_accessible: accessible } })
+        _ && _.up({ head, refs, type: 'step_clicked', data: { ...step, index, total_steps: steps.length, is_accessible: accessible } })
       }, async () => {
         const doc_file = await drive.get('docs/README.md')
-        return doc_file?.raw || 'No documentation available'
+        return doc_file && doc_file.raw ? doc_file.raw : 'No documentation available'
       })
 
       steps_entries.appendChild(btn)
@@ -8175,6 +8250,11 @@ async function tabbed_editor (opts, protocol) {
   let files = {}
   let active_tab = null
   let current_editor = null
+  const on_message = {
+    switch_tab: handle_switch_tab,
+    close_tab: handle_close_tab,
+    toggle_tab: handle_toggle_tab
+  }
 
   let send = null
   let _ = null
@@ -8187,22 +8267,26 @@ async function tabbed_editor (opts, protocol) {
   return el
 
   function onmessage (msg) {
-    const { type, data } = msg
-    switch (type) {
-    case 'switch_tab':
-      switch_to_tab(data, msg)
-      break
-    case 'close_tab':
-      close_tab(data, msg)
-      break
-    case 'toggle_tab':
-      toggle_tab(data, msg)
-      break
-      default:
-      }
-    }
+    const handler = on_message[msg.type] || onmessage_fail
+    handler(msg)
+  }
+
+  function handle_switch_tab (msg) {
+    switch_to_tab(msg.data, msg)
+  }
+
+  function handle_close_tab (msg) {
+    close_tab(msg.data, msg)
+  }
+
+  function handle_toggle_tab (msg) {
+    toggle_tab(msg.data, msg)
+  }
+
+  function onmessage_fail () {
     // docs_toggle @TODO
-    
+  }
+
   function switch_to_tab (tab_data, msg) {
     if (active_tab === tab_data.id) {
       return
@@ -8213,7 +8297,7 @@ async function tabbed_editor (opts, protocol) {
 
     if (_) {
       const head = [by, to, mid++]
-      const refs = msg?.head ? { cause: msg.head } : undefined
+      const refs = msg && msg.head ? { cause: msg.head } : undefined
       _.up({
         head,
         refs,
@@ -8240,7 +8324,7 @@ async function tabbed_editor (opts, protocol) {
 
     if (_) {
       const head = [by, to, mid++]
-      const refs = msg?.head ? { cause: msg.head } : undefined
+      const refs = msg && msg.head ? { cause: msg.head } : undefined
       _.up({
         head,
         refs,
@@ -8606,7 +8690,7 @@ async function component (opts, protocol) {
   
   // Register actions with DOCS system
   const actions_file = await drive.get('actions/commands.json')
-  if (actions_file?.raw) {
+  if (actions_file && actions_file.raw) {
     const actions_data = typeof actions_file.raw === 'string' ? JSON.parse(actions_file.raw) : actions_file.raw
     docs.register_actions(actions_data)
   }
@@ -8703,7 +8787,7 @@ async function component (opts, protocol) {
       }
     }, async () => {
       const doc_file = await drive.get('docs/README.md')
-      return doc_file?.raw || 'No documentation available'
+      return doc_file && doc_file.raw ? doc_file.raw : 'No documentation available'
     })
 
     // Add click handler for close button
@@ -8722,7 +8806,7 @@ async function component (opts, protocol) {
       }
     }, async () => {
       const doc_file = await drive.get('docs/README.md')
-      return doc_file?.raw || 'No documentation available'
+      return doc_file && doc_file.raw ? doc_file.raw : 'No documentation available'
     })
 
     entries.appendChild(el)
@@ -8896,12 +8980,15 @@ async function tabsbar (opts, protocol) {
   let dricons = {}
   let mid = 0
   let docs_toggle_active = false
+  const on_message = {
+    docs_toggle: handle_docs_toggle
+  }
   const el = document.createElement('div')
   const shadow = el.attachShadow({ mode: 'closed' })
   const docs = DOCS(__filename)(opts.sid)
   // Register actions with DOCS system
   const actions_file = await drive.get('actions/command.json')
-  if (actions_file?.raw) {
+  if (actions_file && actions_file.raw) {
     const actions_data = typeof actions_file.raw === 'string' ? JSON.parse(actions_file.raw) : actions_file.raw
     docs.register_actions(actions_data)
   }
@@ -8942,7 +9029,7 @@ async function tabsbar (opts, protocol) {
     hat_btn.replaceChildren(svgElem)
     hat_btn.onclick = docs.wrap(hat_click, async () => {
       const doc_file = await drive.get('docs/README.md')
-      return doc_file?.raw || 'No documentation available'
+      return doc_file && doc_file.raw ? doc_file.raw : 'No documentation available'
     })
   }
   if (dricons[2]) {
@@ -8956,9 +9043,9 @@ async function tabsbar (opts, protocol) {
       const head_mgr = [by, to, mid++]
       const refs = {}
       // Send message to root module to set docs mode
-      _.up?.({ head, refs, type: 'set_docs_mode', data: { active: docs_toggle_active } })
+      _.up && _.up({ head, refs, type: 'set_docs_mode', data: { active: docs_toggle_active } })
       // Also send docs_toggle notification for UI updates
-      _.up?.({ head: [by, to, mid++], refs, type: 'docs_toggle', data: { active: docs_toggle_active } })
+      _.up && _.up({ head: [by, to, mid++], refs, type: 'docs_toggle', data: { active: docs_toggle_active } })
       bar_btn.classList.toggle('active', docs_toggle_active)
       _.task_manager({ head_mgr, refs, type: 'docs_toggle', data: { active: docs_toggle_active } })
     }
@@ -8982,15 +9069,16 @@ async function tabsbar (opts, protocol) {
     _.up({ head, refs, type: 'ui_focus', data })
   }
   function onmessage (msg) {
-    const { type } = msg
-    switch (type) {
-    case 'docs_toggle':
-      // Broadcast to subcomponents
-      _.tabs?.(msg)
-      break
-    default:
-        // Handle other message types
-    }
+    const handler = on_message[msg.type] || onmessage_fail
+    handler(msg)
+  }
+
+  function handle_docs_toggle (msg) {
+    _.tabs && _.tabs(msg)
+  }
+
+  function onmessage_fail () {
+    // Handle other message types
   }
 
   function tabs_protocol (send) {
@@ -9237,7 +9325,7 @@ async function task_manager (opts, protocol) {
   
   // Register actions with DOCS system
   const actions_file = await drive.get('actions/commands.json')
-  if (actions_file?.raw) {
+  if (actions_file && actions_file.raw) {
     const actions_data = typeof actions_file.raw === 'string' ? JSON.parse(actions_file.raw) : actions_file.raw
     docs.register_actions(actions_data)
   }
@@ -9279,7 +9367,7 @@ async function task_manager (opts, protocol) {
     }
   }, async () => {
     const doc_file = await drive.get('docs/README.md')
-    return doc_file?.raw || 'No documentation available'
+    return doc_file && doc_file.raw ? doc_file.raw : 'No documentation available'
   })
 
   await sdb.watch(onbatch)
@@ -9427,6 +9515,9 @@ async function taskbar (opts, protocol) {
   const on = {
     style: inject
   }
+  const on_message = {
+    update_steps_wizard_for_app: handle_update_steps_wizard_for_app
+  }
 
   const el = document.createElement('div')
   const shadow = el.attachShadow({ mode: 'closed' })
@@ -9486,58 +9577,83 @@ async function taskbar (opts, protocol) {
   // ---------
   function manager_protocol (send) {
     _.manager = send
+    const action_handlers = {
+      update_data: manager__forward_exec,
+      form_data: manager__forward_exec,
+      clean_up: manager__forward_exec,
+      action_submitted: manager__forward_exec,
+      activate_steps_wizard: manager__forward_exec,
+      render_form: manager__forward_exec,
+      selected_action: manager__forward_exec
+    }
     return on
     function on (msg) {
-      if (msg.type === 'update_data' ||
-          msg.type === 'form_data' ||
-          msg.type === 'clean_up' ||
-          msg.type === 'action_submitted' ||
-          msg.type === 'activate_steps_wizard' ||
-          msg.type === 'render_form' ||
-          msg.type === 'selected_action')
-      {
-        _.exec(msg)
-      }
-      else _.up(msg)
+      const handler = action_handlers[msg.type] || manager__forward_up
+      handler(msg)
+    }
+
+    function manager__forward_exec (msg) {
+      _.exec && _.exec(msg)
+    }
+
+    function manager__forward_up (msg) {
+      _.up && _.up(msg)
     }
   }
 
   function exec_protocol (send) {
     _.exec = send
+    const action_handlers = {
+      load_actions: exec__forward_manager,
+      step_clicked: exec__forward_manager,
+      show_submit_btn: exec__forward_manager,
+      hide_submit_btn: exec__forward_manager
+    }
     return on
     function on (msg) {
-      if (msg.type === 'load_actions' || msg.type === 'step_clicked' ||
-          msg.type === 'show_submit_btn' || msg.type === 'hide_submit_btn')
-      {
-        _.manager(msg)
-      }
-      _.up(msg)
+      const handler = action_handlers[msg.type] || exec__noop
+      handler(msg)
+      _.up && _.up(msg)
     }
+
+    function exec__forward_manager (msg) {
+      _.manager && _.manager(msg)
+    }
+
+    function exec__noop () {}
   }
 
   function tabsbar_protocol (send) {
     _.tabsbar = send
+    const action_handlers = {
+      docs_toggle: tabsbar__docs_toggle
+    }
     return on
     function on (msg) {
-      if (msg.type == 'docs_toggle') {
-        _.manager?.(msg)
-        _.exec?.(msg)
-      }
-      _.up(msg)
+      const handler = action_handlers[msg.type] || tabsbar__noop
+      handler(msg)
+      _.up && _.up(msg)
     }
+
+    function tabsbar__docs_toggle (msg) {
+      _.manager && _.manager(msg)
+      _.exec && _.exec(msg)
+    }
+
+    function tabsbar__noop () {}
   }
 
   function onmessage (msg) {
-    const { type } = msg
-    switch (type) {
-    case 'update_steps_wizard_for_app':
-      _.exec?.(msg)
-      break
-    default:
-      if (_.manager) {
-        _.manager(msg)
-      }
-    }
+    const handler = on_message[msg.type] || onmessage_forward_manager
+    handler(msg)
+  }
+
+  function handle_update_steps_wizard_for_app (msg) {
+    _.exec && _.exec(msg)
+  }
+
+  function onmessage_forward_manager (msg) {
+    _.manager && _.manager(msg)
   }
 }
 
@@ -9690,14 +9806,28 @@ async function theme_widget (opts, protocol) {
   }
   
   function onmessage_from_root (msg) {
-    // Handle messages from page.js (root)
-    const { type } = msg
-    if (type === 'update_actions_for_app') {
-      if (_.send_space) _.send_space(msg)
-      else setTimeout(() => _.send_space(msg), 500)
-    } else if (type === 'update_quick_actions_for_app' || type === 'update_steps_wizard_for_app') {
-      if (_.send_taskbar) _.send_taskbar(msg)
+    const action_handlers = {
+      update_actions_for_app: root__update_actions_for_app,
+      update_quick_actions_for_app: root__forward_taskbar,
+      update_steps_wizard_for_app: root__forward_taskbar
     }
+    const handler = action_handlers[msg.type] || root__noop
+    handler(msg)
+
+    function root__update_actions_for_app (msg) {
+      if (_.send_space) _.send_space(msg)
+      else setTimeout(root__retry_send_space, 500, msg)
+    }
+
+    function root__retry_send_space (msg) {
+      _.send_space && _.send_space(msg)
+    }
+
+    function root__forward_taskbar (msg) {
+      _.send_taskbar && _.send_taskbar(msg)
+    }
+
+    function root__noop () {}
   }
   await focus_tracker({ ...subs[2], ids: { up: id } }, focus_tracker_protocol)
   taskbar_el = await taskbar({ ...subs[1], ids: { up: id } }, taskbar_protocol)
@@ -9731,36 +9861,76 @@ async function theme_widget (opts, protocol) {
   // ---------
   function space_protocol (send) {
     _.send_space = send
+    const action_handlers = {
+      ui_focus: space__forward_focus_tracker,
+      set_doc_display_handler: space__forward_up
+    }
     return on
     function on (msg) {
-      if (msg.type === 'ui_focus') _.send_focus_tracker(msg)
-      else if (msg.type === 'set_doc_display_handler') _.up(msg)
-      else _.send_taskbar(msg)
+      const handler = action_handlers[msg.type] || space__forward_taskbar
+      handler(msg)
+    }
+
+    function space__forward_focus_tracker (msg) {
+      _.send_focus_tracker && _.send_focus_tracker(msg)
+    }
+
+    function space__forward_up (msg) {
+      _.up && _.up(msg)
+    }
+
+    function space__forward_taskbar (msg) {
+      _.send_taskbar && _.send_taskbar(msg)
     }
   }
 
   function taskbar_protocol (send) {
     _.send_taskbar = send
+    const action_handlers = {
+      ui_focus: taskbar__forward_focus_tracker,
+      docs_toggle: taskbar__docs_toggle,
+      set_docs_mode: taskbar__forward_up
+    }
     return on
     function on (msg) {
-      if (msg.type === 'ui_focus') _.send_focus_tracker(msg)
-      else if (msg.type === 'docs_toggle') {
-        _.send_focus_tracker(msg)
-        _.send_space(msg)
-      } else if (msg.type === 'set_docs_mode') _.up(msg)
-      else _.send_space(msg)
+      const handler = action_handlers[msg.type] || taskbar__forward_space
+      handler(msg)
+    }
+
+    function taskbar__forward_focus_tracker (msg) {
+      _.send_focus_tracker && _.send_focus_tracker(msg)
+    }
+
+    function taskbar__docs_toggle (msg) {
+      _.send_focus_tracker && _.send_focus_tracker(msg)
+      _.send_space && _.send_space(msg)
+    }
+
+    function taskbar__forward_up (msg) {
+      _.up && _.up(msg)
+    }
+
+    function taskbar__forward_space (msg) {
+      _.send_space && _.send_space(msg)
     }
   }
 
   function focus_tracker_protocol (send) {
     _.send_focus_tracker = send
+    const action_handlers = {
+      focused_app_changed: focus_tracker__forward_up
+    }
     return on
     function on (msg) {
-      if (msg.type === 'focused_app_changed') {
-        // Forward to page.js (root) for action lookup via DOCS admin
-        if (_.up) _.up(msg)
-      }
+      const handler = action_handlers[msg.type] || focus_tracker__noop
+      handler(msg)
     }
+
+    function focus_tracker__forward_up (msg) {
+      _.up && _.up(msg)
+    }
+
+    function focus_tracker__noop () {}
   }
 }
 
