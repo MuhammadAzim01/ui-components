@@ -163,8 +163,11 @@ function defaults () {
 - Use `onbatch` to handle updates dynamically.
 - Customize components using the `defaults` and `api` functions.
 
-## Example Component: `tabs.js` (@TODO: Update):
+## Example Component: `tabs.js` (Standardized):
 - [`module_example`](./tabs_commented.js)
+
+## Component Coding Standard:
+- [`standard`](./standard.md)
 
 ## Module creation Explanation (@TODO: Update):
 [`module_guide`](./deep_guide_for_modules.md)
