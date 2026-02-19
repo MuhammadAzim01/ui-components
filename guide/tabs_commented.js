@@ -33,6 +33,10 @@ async function component (opts, protocol) {
     icons: iconject,
     scroll: onscroll
   }
+  const on_message = {
+    update_tab_data: onmessage__update_tab_data,
+    scroll_to_tab: onmessage__scroll_to_tab
+  }
   // creating the main element and attaching shadow DOM to it.
   const div = document.createElement('div')
   const shadow = div.attachShadow({ mode: 'closed' })
@@ -136,8 +140,12 @@ async function component (opts, protocol) {
     entries.appendChild(el)
   }
   // this function is called when the dataset changes. It calls the functions defined in `on` object.
-  function onbatch (batch) {
-    for (const { type, data } of batch) (on[type] || fail)(data, type)
+  async function onbatch (batch) {
+    for (const { type, paths } of batch) {
+      const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
+      const func = on[type] || fail
+      func(data, type)
+    }
     // this condition checks if the component is initialized or not. If not then it creates the buttons using the create_btn function. if the component is already initialized then it can handle the updates to the drive in future.
     if (!init) {
       // after for loop ends and each of the data is stored in their respective variables, we can create the buttons using the create_btn function.
@@ -149,7 +157,7 @@ async function component (opts, protocol) {
     }
   }
   // this function throws an error if the type of data is not valid. It is used to handle the errors in the onbatch function.
-  function fail (data, type) { throw new Error('invalid message', { cause: { data, type } }) }
+  function fail (data, type) { console.warn('invalid message', { cause: { data, type } }) }
   // this function adds styles to shadow DOM. It uses the CSSStyleSheet API to create a new stylesheet and then replaces the existing stylesheet with the new one.
   function inject_style (data) {
     const sheet = new CSSStyleSheet()
@@ -180,28 +188,28 @@ async function component (opts, protocol) {
 
   // Protocol message handler - receives messages from parent or other components
   function onmessage (msg) {
-    const { type, data } = msg
-    // Handle incoming messages based on type
-    switch (type) {
-    case 'update_tab_data':
-      // Example: Update tab data when parent sends new data
-      if (data && data.variables) {
-        onvariables(data.variables)
-      }
-      break
-    case 'scroll_to_tab':
-      // Example: Scroll to specific tab when requested
-      if (data && data.index !== undefined && entries) {
-        const tabElements = entries.querySelectorAll('.tabsbtn')
-        if (tabElements[data.index]) {
-          tabElements[data.index].scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-        }
-      }
-      break
-    default:
-      // Handle other message types as needed
-      console.log('Received message:', { type, data })
+    const handler = on_message[msg.type] || onmessage_fail
+    handler(msg)
+  }
+
+  function onmessage__update_tab_data (msg) {
+    // Example: Update tab data when parent sends new data
+    if (msg.data && msg.data.variables) {
+      onvariables([msg.data.variables])
     }
+  }
+
+  function onmessage__scroll_to_tab (msg) {
+    // Example: Scroll to specific tab when requested
+    if (!entries || msg.data === undefined || msg.data.index === undefined) return
+    const tab_elements = entries.querySelectorAll('.tabsbtn')
+    if (tab_elements[msg.data.index]) {
+      tab_elements[msg.data.index].scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
+  }
+
+  function onmessage_fail (msg) {
+    console.log('Received message:', { type: msg.type, data: msg.data })
   }
 }
 // this is the fallback module which is used to create the state database and to provide the default data for the component.
