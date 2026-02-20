@@ -5,7 +5,7 @@ Theme Widget composes the main UI shell. Every component expects `opts.ids.up` t
 
 ## Dependency hierarchy (nested)
 - theme_widget
-  - space
+  - program_container
     - console_history
     - actions
     - tabbed_editor
@@ -15,11 +15,9 @@ Theme Widget composes the main UI shell. Every component expects `opts.ids.up` t
     - docs_window
     - DOCS (internal dependency)
   - taskbar
-    - manager
-      - action_bar
-        - quick_actions
-        - DOCS
-    - exec
+    - action_bar
+      - quick_actions
+    - action_executor
       - program
         - form_input (from program)
         - input_test (from program)
@@ -29,8 +27,6 @@ Theme Widget composes the main UI shell. Every component expects `opts.ids.up` t
     - tabsbar
       - tabs
       - task_manager
-      - DOCS
-  - focus_tracker
 
 ## Drive requirements by component
 “Required” below means the component reads the dataset and/or expects the file to exist for full integration.
@@ -41,7 +37,7 @@ Theme Widget composes the main UI shell. Every component expects `opts.ids.up` t
 - Pass-through datasets to subcomponents (exist in drive for mapping)
   - `flags/`, `commands/`, `icons/`, `scroll/`, `actions/`, `hardcons/`, `files/`, `highlight/`, `active_tab/`, `entries/`, `runtime/`, `mode/`, `keybinds/`, `undo/`, `focused/`, `temp_actions/`, `temp_quick_actions/`, `prefs/`, `variables/`, `data/`, `docs/`, `docs_style/`
 
-### space (@src/node_modules/space/space.js)
+### program_container (@src/node_modules/program_container/program_container.js)
 - Required datasets
   - `style/theme.css`
   - `docs_style/` (forwarded to docs_window)
@@ -56,15 +52,9 @@ Theme Widget composes the main UI shell. Every component expects `opts.ids.up` t
 - Required datasets
   - `style/theme.css`
 - Required for subcomponents (mapped)
-  - manager: `icons/`, `style/`, `variables/`, `data/`, `actions/`, `hardcons/`, `prefs/`, `docs/`
-  - exec: `style/`, `variables/`, `docs/`, `data/`
+  - action_bar: `icons/`, `style/`, `variables/`, `data/`, `actions/`, `hardcons/`, `prefs/`, `docs/`
+  - action_executor: `style/`, `variables/`, `docs/`, `data/`
   - tabsbar: `icons/`, `style/`, `docs/`, `actions/`
-
-### manager (@src/node_modules/manager/manager.js)
-- Required datasets
-  - `style/manager.css`
-- Required for subcomponents
-  - action_bar: `icons/`, `style/`, `actions/`, `variables/`, `hardcons/`, `prefs/`, `docs/`
 
 ### action_bar (@src/node_modules/action_bar/action_bar.js)
 - Required datasets
@@ -83,9 +73,9 @@ Theme Widget composes the main UI shell. Every component expects `opts.ids.up` t
   - `style/theme.css`
   - `docs/README.md`
 
-### exec (@src/node_modules/exec/exec.js)
+### action_executor (@src/node_modules/action_executor/action_executor.js)
 - Required datasets
-  - `style/exec.css`
+  - `style/action_executor.css`
 - Required for subcomponents
   - program: `style/`, `variables/`, `docs/`
   - steps_wizard: `style/`, `variables/`, `docs/`
@@ -168,7 +158,3 @@ Theme Widget composes the main UI shell. Every component expects `opts.ids.up` t
 - Required datasets
   - `style/theme.css`
 
-### focus_tracker (@src/node_modules/focus_tracker/focus_tracker.js)
-- Required datasets/files
-  - `focused/current.json`
-  - `docs/README.md`

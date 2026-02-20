@@ -22,7 +22,7 @@ const theme_widget = require('../src/node_modules/theme_widget')
 const taskbar = require('../src/node_modules/taskbar')
 const tabsbar = require('../src/node_modules/tabsbar')
 const action_bar = require('../src/node_modules/action_bar')
-const space = require('../src/node_modules/space')
+const program_container = require('../src/node_modules/program_container')
 const tabs = require('../src/node_modules/tabs')
 const console_history = require('../src/node_modules/console_history')
 const actions = require('../src/node_modules/actions')
@@ -31,17 +31,16 @@ const task_manager = require('../src/node_modules/task_manager')
 const quick_actions = require('../src/node_modules/quick_actions')
 const graph_explorer_wrapper = require('../src/node_modules/graph_explorer_wrapper')
 const editor = require('../src/node_modules/quick_editor')
-const manager = require('../src/node_modules/manager')
+const action_executor = require('../src/node_modules/action_executor')
 const steps_wizard = require('../src/node_modules/steps_wizard')
 const { resource } = require('../src/node_modules/helpers')
-const exec = require('../src/node_modules/exec')
 
 const imports = {
   theme_widget,
   taskbar,
   tabsbar,
   action_bar,
-  space,
+  program_container,
   tabs,
   console_history,
   actions,
@@ -49,9 +48,8 @@ const imports = {
   task_manager,
   quick_actions,
   graph_explorer_wrapper,
-  manager,
-  steps_wizard,
-  exec
+  action_executor,
+  steps_wizard
 }
 config().then(() => boot({ sid: '' }))
 
@@ -439,7 +437,7 @@ function fallback_module () {
     '../src/node_modules/taskbar',
     '../src/node_modules/tabsbar',
     '../src/node_modules/action_bar',
-    '../src/node_modules/space',
+    '../src/node_modules/program_container',
     '../src/node_modules/tabs',
     '../src/node_modules/console_history',
     '../src/node_modules/actions',
@@ -447,7 +445,7 @@ function fallback_module () {
     '../src/node_modules/task_manager',
     '../src/node_modules/quick_actions',
     '../src/node_modules/graph_explorer_wrapper',
-    '../src/node_modules/manager',
+    '../src/node_modules/action_executor',
     '../src/node_modules/steps_wizard'
   ]
   const subs = {}
@@ -480,7 +478,7 @@ function fallback_module () {
       actions: 'actions'
     }
   }
-  subs['../src/node_modules/space'] = {
+  subs['../src/node_modules/program_container'] = {
     $: '',
     0: '',
     mapping: {
@@ -503,21 +501,7 @@ function fallback_module () {
       docs: 'docs'
     }
   }
-  subs['../src/node_modules/manager'] = {
-    $: '',
-    0: '',
-    mapping: {
-      icons: 'icons',
-      style: 'style',
-      variables: 'variables',
-      data: 'data',
-      actions: 'actions',
-      hardcons: 'hardcons',
-      prefs: 'prefs',
-      docs: 'docs'
-    }
-  }
-  subs['../src/node_modules/exec'] = {
+  subs['../src/node_modules/action_executor'] = {
     $: '',
     0: '',
     mapping: {
