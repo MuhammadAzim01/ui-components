@@ -2,9 +2,7 @@ const STATE = require('STATE')
 const statedb = STATE(__filename)
 const admin_api = statedb.admin()
 const admin_on = {}
-admin_api.on(({ type, data }) => {
-  admin_on[type] && admin_on[type]()
-})
+admin_api.on(handle_admin_message)
 const { sdb, io, id } = statedb(fallback_module)
 const { drive, admin } = sdb
 const DOCS = require('../src/node_modules/DOCS')
@@ -51,7 +49,9 @@ const imports = {
   action_executor,
   steps_wizard
 }
-config().then(() => boot({ sid: '' }))
+config().then(boot_default_page)
+
+function boot_default_page () { return boot({ sid: '' }) }
 
 async function config () {
   // const path = path => new URL(`../src/node_modules/${path}`, `file://${__dirname}`).href.slice(8)
@@ -111,8 +111,10 @@ async function boot (opts) {
 
   const entries = Object.entries(imports)
   const wrappers = []
-  const names = entries.map(([name]) => name)
+  const names = entries.map(get_entry_name)
   let current_selected_wrapper = null
+
+  function get_entry_name (entry) { return entry[0] }
 
   const url_params = new URLSearchParams(window.location.search)
   const checked_param = url_params.get('checked')
@@ -139,21 +141,29 @@ async function boot (opts) {
     on_resize_toggle: handle_resize_toggle
   }
   const item = resource()
-  io.on(port => {
+  io.on(register_io_port)
+
+  function register_io_port (port) {
     const { by, to } = port
     item.set(port.to, port)
-    port.onmessage = event => {
+
+    port.onmessage = on_port_message
+
+    function on_port_message (event) {
       const txt = event.data
       const key = `[${by} -> ${to}]`
       console.log('[ port-stuff ]', key)
 
       on[txt.type] && on[txt.type](...txt.data)
     }
-  })
+  }
 
   const editor_subs = await sdb.get_sub('page>../src/node_modules/quick_editor')
   // const subs = await sdb.watch(onbatch)
-  const subs = (await sdb.watch(onbatch)).filter((_, index) => index % 2 === 0)
+  const subs = (await sdb.watch(onbatch)).filter(is_even_index)
+
+  function is_even_index (_, index) { return index % 2 === 0 }
+
   console.log('Page subs', subs)
   const nav_menu_element = await navbar(subs[names.length], names, initial_checked_indices, menu_callbacks)
 
@@ -214,19 +224,23 @@ async function boot (opts) {
             const result_quick_actions = []
             let temp_actions = {}
             let temp_quick_actions = {}
-            data.forEach(element => {
+
+            data.forEach(add_component_action_entry)
+
+            function add_component_action_entry (action_entry) {
               temp_actions = {}
-              temp_actions.action = element.name
-              temp_actions.icon = element.icon
-              temp_actions.pinned = element.status.pinned
-              temp_actions.default = element.status.default
+              temp_actions.action = action_entry.name
+              temp_actions.icon = action_entry.icon
+              temp_actions.pinned = action_entry.status.pinned
+              temp_actions.default = action_entry.status.default
               result_actions.push(temp_actions)
 
               temp_quick_actions = {}
-              temp_quick_actions.name = element.name
-              temp_quick_actions.icon = element.icon
+              temp_quick_actions.name = action_entry.name
+              temp_quick_actions.icon = action_entry.icon
               result_quick_actions.push(temp_quick_actions)
-            })
+            }
+
             return {
               actions: result_actions,
               quick_actions: result_quick_actions,
@@ -268,7 +282,10 @@ async function boot (opts) {
 
       const modulepath = node_id.split(':')[0]
       const fields = admin.status.db.read_all(['state', modulepath])
-      const nodes = Object.keys(fields).filter(field => !isNaN(Number(field.split(':').at(-1))))
+      const nodes = Object.keys(fields).filter(is_state_node)
+
+      function is_state_node (field) { return !isNaN(Number(field.split(':').at(-1))) }
+
       for (const node of nodes) {
         result[node] = {}
         const datasets = drive.list('', node)
@@ -298,12 +315,14 @@ async function boot (opts) {
       if (index !== -1 && wrappers[index]) {
         const target_wrapper = wrappers[index].outer
         if (target_wrapper.style.display !== 'none') {
-          setTimeout(() => {
+          setTimeout(scroll_to_selected_wrapper, 100)
+
+          function scroll_to_selected_wrapper () {
             target_wrapper.scrollIntoView({ behavior: 'auto', block: 'center' })
             clear_selection_highlight()
             target_wrapper.style.backgroundColor = '#2e3440'
             current_selected_wrapper = target_wrapper
-          }, 100)
+          }
         }
       }
     }
@@ -317,10 +336,13 @@ async function boot (opts) {
   }
 
   function update_url (selected_name = url_params.get('selected')) {
-    const checked_indices = wrappers.reduce((acc, w, i) => {
-      if (w.checkbox_state) { acc.push(i + 1) }
+    const checked_indices = wrappers.reduce(collect_checked_index, [])
+
+    function collect_checked_index (acc, wrapper_entry, index) {
+      if (wrapper_entry.checkbox_state) { acc.push(index + 1) }
       return acc
-    }, [])
+    }
+
     const params = new URLSearchParams()
     if (checked_indices.length > 0 && checked_indices.length < wrappers.length) {
       params.set('checked', JSON.stringify(checked_indices))
@@ -364,10 +386,13 @@ async function boot (opts) {
 
   function handle_select_all_toggle (detail) {
     const { selectAll: select_all } = detail
-    wrappers.forEach((w, index) => {
-      w.outer.style.display = select_all ? 'block' : 'none'
-      w.checkbox_state = select_all
-    })
+    wrappers.forEach(update_wrapper_visibility)
+
+    function update_wrapper_visibility (wrapper_entry) {
+      wrapper_entry.outer.style.display = select_all ? 'block' : 'none'
+      wrapper_entry.checkbox_state = select_all
+    }
+
     clear_selection_highlight()
     update_url(null)
   }
@@ -380,49 +405,62 @@ async function boot (opts) {
 
   async function onbatch (batch) {
     for (const { type, paths } of batch) {
-      const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
+      const data = await Promise.all(paths.map(load_path_raw))
       const func = on[type] || fail
       func(data, type)
     }
+
+    function load_path_raw (path) { return drive.get(path).then(read_drive_file_raw) }
+    function read_drive_file_raw (file) { return file.raw }
   }
   function fail (data, type) { console.warn(__filename + 'invalid message', { cause: { data, type } }) }
-  function inject (data) {
-    style.innerHTML = data.join('\n')
-  }
+  function inject (data) { style.innerHTML = data.join('\n') }
   function update_resize (data) {
     console.log('[ update_resize ]', data)
     resize_enabled = data
-    wrappers.forEach(wrap => {
+    wrappers.forEach(update_wrapper_resize)
+
+    function update_wrapper_resize (wrap) {
       const wrapper = wrap.outer.querySelector('.component-wrapper')
       if (wrapper) {
         wrapper.style.resize = resize_enabled ? 'both' : 'none'
         wrapper.style.overflow = resize_enabled ? 'auto' : 'visible'
       }
-    })
+    }
   }
   async function send_quick_editor_data () {
     const roots = admin.status.db.read(['root_datasets'])
     const result = {}
-    roots.forEach(root_dataset => {
+    roots.forEach(add_root_dataset)
+
+    function add_root_dataset (root_dataset) {
       const root = root_dataset.name
       result[root] = {}
       const inputs = sdb.admin.get_dataset({ root }) || []
-      inputs.forEach(type => {
+      inputs.forEach(add_input_type)
+
+      function add_input_type (type) {
         result[root][type] = {}
         const datasets = sdb.admin.get_dataset({ root, type })
-        datasets && Object.values(datasets).forEach(name => {
-          result[root][type][name] = {}
-          const ds = sdb.admin.get_dataset({ root, type, name: name })
-          ds.forEach(ds_id => {
-            const files = admin.status.db.read([root, ds_id]).files || []
-            result[root][type][name][ds_id] = {}
-            files.forEach(file_id => {
-              result[root][type][name][ds_id][file_id] = admin.status.db.read([root, file_id])
-            })
-          })
-        })
-      })
-    })
+
+        if (!datasets) return
+        Object.values(datasets).forEach(add_dataset_name)
+
+        function add_dataset_name (dataset_name) {
+          result[root][type][dataset_name] = {}
+          const dataset_ids = sdb.admin.get_dataset({ root, type, name: dataset_name })
+          dataset_ids.forEach(add_dataset_id)
+
+          function add_dataset_id (dataset_id) {
+            const files = admin.status.db.read([root, dataset_id]).files || []
+            result[root][type][dataset_name][dataset_id] = {}
+            files.forEach(add_file_data)
+
+            function add_file_data (file_id) { result[root][type][dataset_name][dataset_id][file_id] = admin.status.db.read([root, file_id]) }
+          }
+        }
+      }
+    }
 
     const editor_id = admin.status.a2i[admin.status.s2i[editor_subs[0].sid]]
     const port = await item.get(editor_id)
@@ -817,4 +855,9 @@ function fallback_module () {
       }
     }
   }
+}
+
+function handle_admin_message (msg) {
+  const { type } = msg
+  admin_on[type] && admin_on[type]()
 }
