@@ -4944,7 +4944,7 @@ function fallback_module () {
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { get } = statedb(fallback_module)
-// const DOCS = require('DOCS')
+const DOCS = require('DOCS')
 
 module.exports = form_input
 async function form_input (opts, protocol) {
@@ -5164,7 +5164,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/form_input/form_input.js")
-},{"STATE":1}],10:[function(require,module,exports){
+},{"DOCS":3,"STATE":1}],10:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5443,7 +5443,7 @@ function resource (timeout = 1000) {
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { get } = statedb(fallback_module)
-// const DOCS = require('DOCS')
+const DOCS = require('DOCS')
 
 module.exports = input_test
 async function input_test (opts, protocol) {
@@ -5672,7 +5672,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/input_test/input_test.js")
-},{"STATE":1}],14:[function(require,module,exports){
+},{"DOCS":3,"STATE":1}],14:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -6085,8 +6085,8 @@ function fallback_module () {
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { get } = statedb(fallback_module)
-// const DOCS = require('DOCS')
-// const docs = DOCS(__filename)()
+const DOCS = require('DOCS')
+const docs = DOCS(__filename)()
 
 const console_history = require('console_history')
 const actions = require('actions')
@@ -6532,7 +6532,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/program_container/program_container.js")
-},{"STATE":1,"actions":6,"console_history":7,"docs_window":8,"graph_explorer_wrapper":10,"tabbed_editor":20}],17:[function(require,module,exports){
+},{"DOCS":3,"STATE":1,"actions":6,"console_history":7,"docs_window":8,"graph_explorer_wrapper":10,"tabbed_editor":20}],17:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -7872,7 +7872,7 @@ function fallback_module () {
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { get } = statedb(fallback_module)
-// const DOCS = require('DOCS')
+const DOCS = require('DOCS')
 
 module.exports = tabbed_editor
 
@@ -8293,7 +8293,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabbed_editor/tabbed_editor.js")
-},{"STATE":1}],21:[function(require,module,exports){
+},{"DOCS":3,"STATE":1}],21:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
