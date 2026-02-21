@@ -71,7 +71,9 @@ async function graph_explorer (opts, protocol) {
   el.className = 'graph-explorer-wrapper'
   const shadow = el.attachShadow({ mode: 'closed' })
   shadow.innerHTML = `
-    <div class="graph-container"></div>
+    <div>
+      <div class="graph-container"></div>
+    </div>
     <div class="searchbar"></div>
     <div class="menubar"></div>
   `
@@ -3207,7 +3209,7 @@ async function display_doc (content, sid) {
   let resolved_content = content
   if (typeof content === 'function') {
     resolved_content = await content()
-  } else if (content && typeof content.then === 'function') {
+  } else if (typeof content.then === 'function') {
     resolved_content = await content
   }
 
@@ -3240,7 +3242,7 @@ function wrap (handler, meta = {}, make_sys = create_sys_api) {
 
   return async function wrapped_handler (event) {
     if (sys.is_docs_mode()) {
-      if (event && event.preventDefault) {
+      if (event.preventDefault) {
         event.preventDefault()
         event.stopPropagation()
       }
@@ -3396,7 +3398,7 @@ async function action_bar (opts, protocol) {
   function on_protocol_message (msg) { onmessage(msg) }
   async function get_doc_content () {
     const doc_file = await drive.get('docs/README.md')
-    return doc_file && doc_file.raw ? doc_file.raw : 'No documentation available'
+    return doc_file.raw || 'No documentation available'
   }
 
   async function onbatch (batch) {
@@ -3445,14 +3447,17 @@ async function action_bar (opts, protocol) {
     }
   }
 
-  function quick_actions_filter_actions (msg) { _.up && _.up(msg) }
+  function quick_actions_filter_actions (msg) { _.up(msg) }
   function quick_actions__display_actions (msg) {
     const { data } = msg
-    _.up && _.up(msg)
-    if (data === 'none') {
+    _.up(msg)
+    const display = typeof data === 'string' ? data : data.display
+    const reason = typeof data === 'string' ? '' : data.reason
+    const should_clean = display === 'none' && reason !== 'selected'
+    if (should_clean) {
       const head = [by, to, mid++]
       const refs = msg.head ? { cause: msg.head } : undefined
-      _.up && _.up({ head, refs, type: 'clean_up', data: selected_action })
+      _.up({ head, refs, type: 'clean_up', data: selected_action })
     }
   }
 
@@ -3460,10 +3465,10 @@ async function action_bar (opts, protocol) {
     const result = JSON.stringify(actions_data[selected_action].map(get_step_data), null, 2)
     const head_to_quick = [by, quick_actions_sid, mid++]
     const refs_to_quick = msg.head ? { cause: msg.head } : undefined
-    _.send_quick_actions && _.send_quick_actions({ head: head_to_quick, refs: refs_to_quick, type: 'deactivate_input_field', data: null })
+    _.send_quick_actions({ head: head_to_quick, refs: refs_to_quick, type: 'deactivate_input_field', data: { reason: 'completed' } })
     const head = [by, to, mid++]
     const refs = msg.head ? { cause: msg.head } : undefined
-    _.up && _.up({ head, refs, type: 'action_submitted', data: { result, selected_action } })
+    _.up({ head, refs, type: 'action_submitted', data: { result, selected_action } })
 
     function get_step_data (step) { return step.data }
   }
@@ -3471,9 +3476,10 @@ async function action_bar (opts, protocol) {
   function onmessage (msg) {
     const { type } = msg
     if (type === 'docs_toggle') {
-      _.send_quick_actions && _.send_quick_actions(msg)
+      _.send_quick_actions(msg)
     } else {
-      parent_handler[type] && parent_handler[type](msg)
+      const handler = parent_handler[type] || fail
+      handler(msg)
     }
   }
 
@@ -3483,29 +3489,29 @@ async function action_bar (opts, protocol) {
   }
   function parent__selected_action (msg) {
     const head_to_quick = [by, quick_actions_sid, mid++]
-    _.send_quick_actions && _.send_quick_actions({ head: head_to_quick, ...msg })
+    _.send_quick_actions({ head: head_to_quick, ...msg })
   }
   function show_submit_btn (msg) {
     const head_to_quick = [by, quick_actions_sid, mid++]
-    _.send_quick_actions && _.send_quick_actions({ head: head_to_quick, type: 'show_submit_btn' })
+    _.send_quick_actions({ head: head_to_quick, type: 'show_submit_btn' })
   }
   function hide_submit_btn (msg) {
     const head_to_quick = [by, quick_actions_sid, mid++]
-    _.send_quick_actions && _.send_quick_actions({ head: head_to_quick, type: 'hide_submit_btn' })
+    _.send_quick_actions({ head: head_to_quick, type: 'hide_submit_btn' })
   }
 
   function update_quick_actions_for_app (msg) {
     const { data, type } = msg
     const head_to_quick_actions = [by, quick_actions_sid, mid++]
     const refs = msg.head ? { cause: msg.head } : {}
-    _.send_quick_actions && _.send_quick_actions({ head: head_to_quick_actions, refs, type, data })
+    _.send_quick_actions({ head: head_to_quick_actions, refs, type, data })
   }
 
   function update_quick_actions_input (msg) {
     const { data } = msg
     selected_action = data || null
     const head_to_quick = [by, quick_actions_sid, mid++]
-    _.send_quick_actions && _.send_quick_actions({
+    _.send_quick_actions({
       head: head_to_quick,
       type: 'update_input_command',
       data,
@@ -3513,15 +3519,15 @@ async function action_bar (opts, protocol) {
     })
   }
 
-  function quick_actions__activate_steps_wizard (msg) { _.up && _.up({ type: 'activate_steps_wizard', data: msg.data, head: msg.head ? [by, to, mid++] : undefined, refs: msg.head ? { cause: msg.head } : {} }) }
+  function quick_actions__activate_steps_wizard (msg) { _.up({ type: 'activate_steps_wizard', data: msg.data, head: msg.head ? [by, to, mid++] : undefined, refs: msg.head ? { cause: msg.head } : {} }) }
 
   function parent__step_clicked (msg) {
     const { data } = msg
     const head_to_quick = [by, quick_actions_sid, mid++]
-    _.send_quick_actions && _.send_quick_actions({ head: head_to_quick, type: 'update_current_step', data })
+    _.send_quick_actions({ head: head_to_quick, type: 'update_current_step', data })
     const head = [by, to, mid++]
     const refs = msg.head ? { cause: msg.head } : {}
-    _.up && _.up({ head, refs, type: 'render_form', data })
+    _.up({ head, refs, type: 'render_form', data })
   }
 
   function ui_focus_docs (msg) { _.up(msg) }
@@ -3788,7 +3794,7 @@ async function action_executor (opts, protocol) {
     variables = data
     const head = [by, to, mid++]
     const refs = msg.head ? { cause: msg.head } : {}
-    _.up && _.up({ head, refs, type, data })
+    _.up({ head, refs, type, data })
   }
 
   // -------------------------------
@@ -3806,7 +3812,7 @@ async function action_executor (opts, protocol) {
       const { type } = msg
       const handler = steps_handlers[type]
       if (handler) handler(msg)
-      else _.up && _.up(msg)
+      else _.up(msg)
     }
   }
 
@@ -3814,7 +3820,25 @@ async function action_executor (opts, protocol) {
     const { data } = msg
     const head = [by, to, mid++]
     const refs = msg.head ? { cause: msg.head } : {}
-    _.up && _.up({ head, refs, type: 'step_clicked', data })
+    _.up({ head, refs, type: 'step_clicked', data })
+
+    if (should_execute_step(data)) {
+      const execute_head = [by, to, mid++]
+      _.up({
+        head: execute_head,
+        refs,
+        type: 'execute_step',
+        data: {
+          action: selected_action,
+          step: data,
+          commands: data.commands
+        }
+      })
+    }
+
+    function should_execute_step (step_data) {
+      return step_data && Array.isArray(step_data.commands) && step_data.commands.length > 0
+    }
   }
 
   // -------------------------------
@@ -3843,7 +3867,7 @@ async function action_executor (opts, protocol) {
 
   function form__action_submitted (data, type, msg) {
     console.log('action_executor.on_form_submitted', data, variables, selected_action)
-    const step = variables[selected_action] && data && data.index !== undefined ? variables[selected_action][data.index] : undefined
+    const step = data.index !== undefined ? variables[selected_action][data.index] : undefined
     Object.assign(step, {
       is_completed: true,
       status: 'completed',
@@ -3851,37 +3875,37 @@ async function action_executor (opts, protocol) {
     })
     const refs = msg.head ? { cause: msg.head } : {}
     const head_to_program = [by, program_sid, mid++]
-    _.send_program && _.send_program({ head: head_to_program, refs, type: 'update_data', data: variables })
+    _.send_program({ head: head_to_program, refs, type: 'update_data', data: variables })
 
     const head_to_steps = [by, steps_wizard_sid, mid++]
-    _.send_steps_wizard && _.send_steps_wizard({ head: head_to_steps, type: 'init_data', data: variables[selected_action] })
+    _.send_steps_wizard({ head: head_to_steps, type: 'init_data', data: variables[selected_action] })
 
-    if (variables[selected_action] && variables[selected_action][variables[selected_action].length - 1] && variables[selected_action][variables[selected_action].length - 1].is_completed) {
+    if (variables[selected_action][variables[selected_action].length - 1].is_completed) {
       const head = [by, to, mid++]
-      _.up && _.up({ head, refs, type: 'show_submit_btn' })
+      _.up({ head, refs, type: 'show_submit_btn' })
     }
   }
 
   function form__action_incomplete (data, type, msg) {
     console.log('action_executor.on_form_incomplete', data, variables, selected_action)
-    const step = variables[selected_action] && data && data.index !== undefined ? variables[selected_action][data.index] : undefined
+    const step = data.index !== undefined ? variables[selected_action][data.index] : undefined
 
     if (!step.is_completed) return
 
     Object.assign(step, {
       is_completed: false,
       status: 'error',
-      data: data && data.value !== undefined ? data.value : undefined
+      data: data.value !== undefined ? data.value : undefined
     })
     const refs = msg.head ? { cause: msg.head } : {}
     const head_to_program = [by, program_sid, mid++]
-    _.send_program && _.send_program({ head: head_to_program, refs, type: 'update_data', data: variables })
+    _.send_program({ head: head_to_program, refs, type: 'update_data', data: variables })
 
     const head_to_steps = [by, steps_wizard_sid, mid++]
-    _.send_steps_wizard && _.send_steps_wizard({ head: head_to_steps, type: 'init_data', data: variables[selected_action] })
+    _.send_steps_wizard({ head: head_to_steps, type: 'init_data', data: variables[selected_action] })
 
     const head = [by, to, mid++]
-    _.up && _.up({ head, refs, type: 'hide_submit_btn' })
+    _.up({ head, refs, type: 'hide_submit_btn' })
   }
 
   // -------------------------------
@@ -3891,12 +3915,12 @@ async function action_executor (opts, protocol) {
   function onmessage (msg) {
     const { type } = msg
     if (type === 'docs_toggle') {
-      _.send_steps_wizard && _.send_steps_wizard(msg)
+      _.send_steps_wizard(msg)
       for (const name in _.send_form_input) {
         _.send_form_input[name](msg)
       }
     } else {
-      parent_handler[type] && parent_handler[type](msg)
+      parent_handler[type](msg)
     }
   }
 
@@ -3910,14 +3934,14 @@ async function action_executor (opts, protocol) {
     const { data, type } = msg
     const head = [by, program_sid, mid++]
     const refs = msg.head ? { cause: msg.head } : {}
-    _.send_program && _.send_program({ head, refs, type, data })
+    _.send_program({ head, refs, type, data })
   }
 
   function action_submitted (msg) {
     const { data } = msg
     const head = [by, program_sid, mid++]
     const refs = msg.head ? { cause: msg.head } : {}
-    _.send_program && _.send_program({ head, refs, type: 'display_result', data })
+    _.send_program({ head, refs, type: 'display_result', data })
   }
 
   function render_form (msg) {
@@ -3938,7 +3962,7 @@ async function action_executor (opts, protocol) {
     variables = data
     const head = [by, program_sid, mid++]
     const refs = msg.head ? { cause: msg.head } : {}
-    _.send_program && _.send_program({ head, refs, type, data })
+    _.send_program({ head, refs, type, data })
   }
 
   function activate_steps_wizard (msg) {
@@ -3948,7 +3972,7 @@ async function action_executor (opts, protocol) {
     steps_toggle_view('block')
     const head_to_steps = [by, steps_wizard_sid, mid++]
     const data = steps_data.steps
-    _.send_steps_wizard && _.send_steps_wizard({
+    _.send_steps_wizard({
       head: head_to_steps,
       refs: {},
       type: 'init_data',
@@ -3962,7 +3986,7 @@ async function action_executor (opts, protocol) {
     // forward init_data to steps_wizard with current action steps
     const { data } = msg
     const head_to_steps = [by, steps_wizard_sid, mid++]
-    _.send_steps_wizard && _.send_steps_wizard({ head: head_to_steps, type: 'init_data', data })
+    _.send_steps_wizard({ head: head_to_steps, type: 'init_data', data })
   }
 
   function clean_up (msg) {
@@ -4140,7 +4164,7 @@ async function actions (opts, protocol) {
   }
 
   function send_selected_action (msg) {
-    const action_data = msg && msg.data && msg.data.data ? msg.data.data : msg && msg.data ? msg.data : undefined
+    const action_data = msg.data.data || msg.data
 
     const head = [by, to, mid++]
     const refs = msg.head ? { cause: msg.head } : {}
@@ -4209,7 +4233,7 @@ async function actions (opts, protocol) {
     function on_action_item_click () { send_selected_action({ data: action_data.action }) }
     async function get_doc_content () {
       const doc_file = await drive.get('docs/README.md')
-      return doc_file?.raw || 'No documentation available'
+      return doc_file.raw || 'No documentation available'
     }
   }
 
@@ -4305,7 +4329,9 @@ function fallback_module () {
                 border: 1px solid #3c3c3c;
                 border-radius: 8px;
                 box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-                max-height: 200px;
+                height: auto;
+                max-height: 100%;
+                min-height: 0;
                 width: 100%;
                 overflow-y: auto;
                 color: #e8eaed;
@@ -4418,9 +4444,11 @@ async function console_history (opts, protocol) {
 
   // Register actions with DOCS system
   const actions_file = await drive.get('actions/commands.json')
-  if (actions_file && actions_file.raw) {
+  if (actions_file.raw) {
     const actions_data = typeof actions_file.raw === 'string' ? JSON.parse(actions_file.raw) : actions_file.raw
     docs.register_actions(actions_data)
+  } else {
+    console.error('actions.json not found')
   }
 
   await sdb.watch(onbatch)
@@ -4483,7 +4511,7 @@ async function console_history (opts, protocol) {
 
     async function get_doc_content () {
       const doc_file = await drive.get('docs/README.md')
-      return doc_file && doc_file.raw ? doc_file.raw : 'No documentation available'
+      return doc_file.raw || 'No documentation available'
     }
 
     return command_el
@@ -4847,7 +4875,7 @@ async function docs_window (opts, protocol) {
   function onclose () {
     const head = [by, to, mid++]
     const refs = {}
-    _.up && _.up({ head, refs, type: 'close_docs', data: null })
+    _.up({ head, refs, type: 'close_docs', data: null })
   }
 
   function onmessage (msg) {
@@ -4858,7 +4886,7 @@ async function docs_window (opts, protocol) {
   }
 
   function display_content (data) {
-    const content = data && data.content !== undefined ? data.content : undefined
+    const content = data.content || undefined
     docs_text.textContent = content || 'No documentation available'
   }
 
@@ -5004,7 +5032,7 @@ async function form_input (opts, protocol) {
         type: 'action_submitted',
         data: {
           value: input_field_el.value,
-          index: current_step && current_step.index !== undefined ? current_step.index : 0
+          index: current_step.index !== undefined ? current_step.index : 0
         }
       })
       console.log('mark_as_complete')
@@ -5017,7 +5045,7 @@ async function form_input (opts, protocol) {
         type: 'action_incomplete',
         data: {
           value: input_field_el.value,
-          index: current_step && current_step.index !== undefined ? current_step.index : 0
+          index: current_step.index !== undefined ? current_step.index : 0
         }
       })
     }
@@ -5055,9 +5083,9 @@ async function form_input (opts, protocol) {
   }
 
   function ondata (data) {
-    if (data && data.length > 0) {
+    if (data.length > 0) {
       const input_data = data[0]
-      if (input_data && input_data.input_field) {
+      if (input_data.input_field) {
         input_field_el.value = input_data.input_field
       }
     } else {
@@ -5067,13 +5095,14 @@ async function form_input (opts, protocol) {
 
   function onmessage ({ type, data }) {
     console.log('message from form_input', type, data)
-    parent_handler[type] && parent_handler[type](data, type)
+    const handler = parent_handler[type] || fail
+    handler(data, type)
   }
 
   function step_data (data, type) {
     current_step = data
 
-    input_accessible = data && data.is_accessible !== false
+    input_accessible = data.is_accessible !== false
 
     overlay_el.hidden = input_accessible
 
@@ -5182,12 +5211,24 @@ async function graph_explorer_wrapper (opts, protocol) {
     throw new Error(`Component ${__filename} requires ids.up to be provided`)
   }
   const by = id
-  // const to = ids.up
+  const to = ids.up
 
   let db = null
+  let latest_entries = null
+  const pending_to_graph_explorer = []
+  let graph_explorer_sid = null
+  let graph_explorer_channel_ready = false
+  let graph_explorer_db_ready = false
+
   // Protocol
   let send_to_graph_explorer = null
   let mid = 0
+  const _ = { up: null }
+
+  if (protocol) {
+    const send = protocol(onmessage)
+    _.up = send
+  }
 
   const on = {
     theme: inject,
@@ -5201,28 +5242,104 @@ async function graph_explorer_wrapper (opts, protocol) {
   shadow.adoptedStyleSheets = [sheet]
 
   const subs = await sdb.watch(onbatch)
-  const graph_explorer_sid = subs[0].sid
+  graph_explorer_sid = subs[0].sid
 
   const explorer_el = await graph_explorer(subs[0], graph_explorer_protocol)
   shadow.append(explorer_el)
 
   return el
 
+  function onmessage (msg) {
+    const parent_handlers = {
+      execute_step: parent__execute_step,
+      set_mode: parent__forward_to_graph_explorer,
+      set_search_query: parent__forward_to_graph_explorer,
+      select_nodes: parent__forward_to_graph_explorer,
+      expand_node: parent__forward_to_graph_explorer,
+      collapse_node: parent__forward_to_graph_explorer,
+      toggle_node: parent__forward_to_graph_explorer,
+      get_selected: parent__forward_to_graph_explorer,
+      get_confirmed: parent__forward_to_graph_explorer,
+      clear_selection: parent__forward_to_graph_explorer,
+      set_flag: parent__forward_to_graph_explorer,
+      scroll_to_node: parent__forward_to_graph_explorer,
+      docs_toggle: parent__forward_to_graph_explorer
+    }
+    const handler = parent_handlers[msg.type] || parent__noop
+    handler(msg)
+  }
+
+  function parent__execute_step (msg) {
+    const commands = get_step_commands(msg.data)
+    for (const command of commands) {
+      const refs = msg.head ? { cause: msg.head } : {}
+      send_to_graph_explorer_message(command.type, command.data !== undefined ? command.data : {}, refs)
+    }
+  }
+
+  function parent__forward_to_graph_explorer (msg) {
+    const refs = msg.head ? { cause: msg.head } : {}
+    send_to_graph_explorer_message(msg.type, msg.data, refs)
+  }
+
+  function parent__noop (msg) { fail(msg) }
+
+  function send_to_graph_explorer_message (type, data, refs) {
+    if (!can_send_to_graph_explorer()) {
+      pending_to_graph_explorer.push({ type, data, refs })
+      return
+    }
+    dispatch_to_graph_explorer_message(type, data, refs)
+  }
+
+  function flush_to_graph_explorer_queue () {
+    while (can_send_to_graph_explorer() && pending_to_graph_explorer.length) {
+      const next_msg = pending_to_graph_explorer.shift()
+      dispatch_to_graph_explorer_message(next_msg.type, next_msg.data, next_msg.refs)
+    }
+  }
+
+  function dispatch_to_graph_explorer_message (type, data, refs) {
+    const head = [by, graph_explorer_sid, mid++]
+    send_to_graph_explorer({ head, refs: refs || {}, type, data })
+  }
+
+  function can_send_to_graph_explorer () {
+    return Boolean(send_to_graph_explorer && graph_explorer_sid && graph_explorer_channel_ready && graph_explorer_db_ready)
+  }
+
+  function get_step_commands (data) {
+    if (!data) return []
+    if (Array.isArray(data.commands)) return data.commands.filter(has_command_type)
+    if (data.command && has_command_type(data.command)) return [data.command]
+    if (has_command_type(data)) {
+      return [{ type: data.type, data: data.data !== undefined ? data.data : {} }]
+    }
+    return []
+
+    function has_command_type (command) {
+      return command && typeof command.type === 'string' && command.type.length > 0
+    }
+  }
+
   async function onbatch (batch) {
     for (const { type, paths } of batch) {
       const data = await Promise.all(paths.map(load_path_raw))
-      on[type] && on[type](data)
+      const handler = on[type] || fail
+      handler(data, type)
     }
 
     function load_path_raw (path) { return drive.get(path).then(read_drive_file_raw) }
     function read_drive_file_raw (file) { return file.raw }
   }
-
+  
+  function fail (data, type) { console.warn('invalid message', { cause: { data, type } }) }
   function inject (data) { sheet.replaceSync(data.join('\n')) }
 
   function on_entries (data) {
     if (!data || !data[0]) {
       console.error('Entries data is missing or empty.')
+      latest_entries = {}
       db = graphdb({})
       notify_db_initialized({})
       return
@@ -5242,18 +5359,16 @@ async function graph_explorer_wrapper (opts, protocol) {
     }
 
     db = graphdb(parsed_data)
+    latest_entries = parsed_data
+    graph_explorer_db_ready = false
     notify_db_initialized(parsed_data)
   }
 
   function notify_db_initialized (entries) {
-    if (send_to_graph_explorer) {
-      const head = [by, graph_explorer_sid, mid++]
-      send_to_graph_explorer({
-        head,
-        type: 'db_initialized',
-        data: { entries }
-      })
-    }
+    if (!send_to_graph_explorer || !graph_explorer_sid || !graph_explorer_channel_ready) return
+    dispatch_to_graph_explorer_message('db_initialized', { entries })
+    graph_explorer_db_ready = true
+    flush_to_graph_explorer_queue()
   }
 
   // ---------------------------------------------------------
@@ -5262,15 +5377,23 @@ async function graph_explorer_wrapper (opts, protocol) {
 
   function graph_explorer_protocol (send) {
     send_to_graph_explorer = send
+    Promise.resolve().then(sync_initial_state_to_child)
     return on_graph_explorer_message
+
+    function sync_initial_state_to_child () {
+      graph_explorer_channel_ready = true
+      if (latest_entries !== null) {
+        notify_db_initialized(latest_entries)
+      }
+    }
 
     function on_graph_explorer_message (msg) {
       const { type } = msg
 
-      if (type === 'docs_toggle') {
-        // docs_toggle received
-      } else if (type.startsWith('db_')) {
+      if (type.startsWith('db_')) {
         handle_db_request(msg, send)
+      } else if (_.up) {
+        _.up(msg)
       }
     }
 
@@ -5367,11 +5490,46 @@ function fallback_module () {
             $ref: 'entries.json'
           }
         },
-        'runtime/': {},
-        'mode/': {},
-        'flags/': {},
-        'keybinds/': {},
-        'undo/': {},
+        'runtime/': {
+          'node_height.json': { raw: '16' },
+          'vertical_scroll_value.json': { raw: '0' },
+          'horizontal_scroll_value.json': { raw: '0' },
+          'selected_instance_paths.json': { raw: '[]' },
+          'confirmed_selected.json': { raw: '[]' },
+          'instance_states.json': { raw: '{}' },
+          'search_entry_states.json': { raw: '{}' },
+          'last_clicked_node.json': { raw: 'null' },
+          'view_order_tracking.json': { raw: '{}' }
+        },
+        'mode/': {
+          'current_mode.json': { raw: '"menubar"' },
+          'previous_mode.json': { raw: '"menubar"' },
+          'search_query.json': { raw: '""' },
+          'multi_select_enabled.json': { raw: 'false' },
+          'select_between_enabled.json': { raw: 'false' }
+        },
+        'flags/': {
+          'hubs.json': { raw: '"default"' },
+          'selection.json': { raw: 'true' },
+          'recursive_collapse.json': { raw: 'true' }
+        },
+        'keybinds/': {
+          'navigation.json': {
+            raw: JSON.stringify({
+              ArrowUp: 'navigate_up_current_node',
+              ArrowDown: 'navigate_down_current_node',
+              'Control+ArrowDown': 'toggle_subs_for_current_node',
+              'Control+ArrowUp': 'toggle_hubs_for_current_node',
+              'Alt+s': 'multiselect_current_node',
+              'Alt+b': 'select_between_current_node',
+              'Control+m': 'toggle_search_mode',
+              'Alt+j': 'jump_to_next_duplicate'
+            })
+          }
+        },
+        'undo/': {
+          'stack.json': { raw: '[]' }
+        },
         'docs/': {
           'README.md': {
             $ref: 'README.md'
@@ -5503,7 +5661,7 @@ async function input_test (opts, protocol) {
         type: 'action_submitted',
         data: {
           value: input_field_el.value,
-          index: current_step && current_step.index !== undefined ? current_step.index : 0
+          index: current_step.index !== undefined ? current_step.index : 0
         }
       })
       console.log('mark_as_complete')
@@ -5516,7 +5674,7 @@ async function input_test (opts, protocol) {
         type: 'action_incomplete',
         data: {
           value: input_field_el.value,
-          index: current_step && current_step.index !== undefined ? current_step.index : 0
+          index: current_step.index !== undefined ? current_step.index : 0
         }
       })
     }
@@ -5555,9 +5713,9 @@ async function input_test (opts, protocol) {
   }
 
   function ondata (data) {
-    if (data && data.length > 0) {
+    if (data.length > 0) {
       const input_data = data[0]
-      if (input_data && input_data.input_field) {
+      if (input_data.input_field) {
         input_field_el.value = input_data.input_field
       }
     } else {
@@ -5571,13 +5729,14 @@ async function input_test (opts, protocol) {
 
   function onmessage ({ type, data }) {
     console.log('message from input_test', type, data)
-    parent_handler[type] && parent_handler[type](data, type)
+    const handler = parent_handler[type] || fail
+    handler(data, type)
   }
 
   function step_data (data, type) {
     current_step = data
 
-    input_accessible = data && data.is_accessible !== false
+    input_accessible = data.is_accessible !== false
 
     overlay_el.hidden = input_accessible
 
@@ -5616,6 +5775,8 @@ function fallback_module () {
             .title {
               color: #e8eaed;
               font-size: 18px;
+              display: flex;
+              align-items: center;
             }
             .input-display {
               position: relative;
@@ -6038,10 +6199,13 @@ async function program (opts, protocol) {
     // Dont get why we have this module.
   }
 
-  function onmessage ({ type, data }) { parent_handler[type] && parent_handler[type](data, type) }
+  function onmessage ({ type, data }) { 
+    const handler = parent_handler[type](data, type) || fail
+    handler(data, type)
+  }
   function display_result (data) {
     console.log('Display Result:', data)
-    alert(`Result of action(${data && data.selected_action ? data.selected_action : 'unknown'}): ${data && data.result ? data.result : 'no result'}`)
+    alert(`Result of action(${data.selected_action ? data.selected_action : 'unknown'}): ${data.result ? data.result : 'no result'}`)
   }
   function update_data (data) { drive.put('variables/program.json', data) }
 }
@@ -6123,6 +6287,7 @@ async function program_container (opts, protocol) {
   </div>
   <style>
   </style>`
+  const program_main = shadow.querySelector('.program-container')
   const style = shadow.querySelector('style')
   const graph_explorer_placeholder = shadow.querySelector('graph-explorer-placeholder')
   const actions_placeholder = shadow.querySelector('actions-placeholder')
@@ -6143,6 +6308,14 @@ async function program_container (opts, protocol) {
     send = protocol(onmessage)
     _ = { up: send, actions: null, send_console_history: null, send_tabbed_editor: null, send_graph_explorer: null, send_docs_window: null }
   }
+  
+  actions_el = protocol ? await actions({ ...subs[1], ids: { up: id } }, actions_protocol) : await actions({ ...subs[1], ids: { up: id } })
+  actions_el.classList.add('actions')
+  actions_placeholder.replaceWith(actions_el)
+
+  tabbed_editor_el = protocol ? await tabbed_editor({ ...subs[2], ids: { up: id } }, tabbed_editor_protocol) : await tabbed_editor({ ...subs[2], ids: { up: id } })
+  tabbed_editor_el.classList.add('tabbed-editor')
+  tabbed_editor_placeholder.replaceWith(tabbed_editor_el)
 
   docs_window_el = protocol ? await docs_window({ ...subs[4], ids: { up: id } }, docs_window_protocol) : await docs_window({ ...subs[4], ids: { up: id } })
   docs_window_el.classList.add('docs-window')
@@ -6152,14 +6325,6 @@ async function program_container (opts, protocol) {
   graph_explorer_el = protocol ? await graph_explorer_wrapper({ ...subs[3], ids: { up: id } }, graph_explorer_protocol) : await graph_explorer_wrapper({ ...subs[3], ids: { up: id } })
   graph_explorer_el.classList.add('graph-explorer')
   graph_explorer_placeholder.replaceWith(graph_explorer_el)
-
-  actions_el = protocol ? await actions({ ...subs[1], ids: { up: id } }, actions_protocol) : await actions({ ...subs[1], ids: { up: id } })
-  actions_el.classList.add('actions')
-  actions_placeholder.replaceWith(actions_el)
-
-  tabbed_editor_el = protocol ? await tabbed_editor({ ...subs[2], ids: { up: id } }, tabbed_editor_protocol) : await tabbed_editor({ ...subs[2], ids: { up: id } })
-  tabbed_editor_el.classList.add('tabbed-editor')
-  tabbed_editor_placeholder.replaceWith(tabbed_editor_el)
 
   console_history_el = protocol ? await console_history({ ...subs[0], ids: { up: id } }, console_history_protocol) : await console_history({ ...subs[0], ids: { up: id } })
   console_history_el.classList.add('console-history')
@@ -6185,58 +6350,99 @@ async function program_container (opts, protocol) {
     })
   }
 
+  if (!protocol) {
+    actions_view = !actions_el.classList.contains('hide')
+    console_view = !console_history_el.classList.contains('hide')
+    graph_explorer_view = !graph_explorer_el.classList.contains('hide')
+  }
+  update_program_layout()
+
   return el
 
   function console_history_toggle_view () {
-    if (console_view) {
-      console_history_el.classList.remove('show')
-      console_history_el.classList.add('hide')
-    } else {
-      console_history_el.classList.remove('hide')
-      console_history_el.classList.add('show')
-    }
-    console_view = !console_view
+    const next_view = !console_view
+    set_panel_visibility(console_history_el, next_view)
+    console_view = next_view
+    update_program_layout()
   }
 
-  function actions_toggle_view () {
-    if (actions_view) {
-      actions_el.classList.remove('show')
-      actions_el.classList.add('hide')
-    } else {
-      actions_el.classList.remove('hide')
-      actions_el.classList.add('show')
-    }
-    actions_view = !actions_view
+  function actions_toggle_view (display_data) {
+    const next_view = resolve_display_state(display_data, actions_view)
+    set_panel_visibility(actions_el, next_view)
+    actions_view = next_view
+    update_program_layout()
   }
 
   function graph_explorer_toggle_view () {
-    if (graph_explorer_view) {
-      graph_explorer_el.classList.remove('show')
-      graph_explorer_el.classList.add('hide')
+    const next_view = !graph_explorer_view
+    set_panel_visibility(graph_explorer_el, next_view)
+    graph_explorer_view = next_view
+    update_program_layout()
+  }
+
+  function resolve_display_state (display_data, current_view) {
+    if (typeof display_data === 'boolean') return display_data
+    if (typeof display_data === 'string') return display_data !== 'none'
+    if (typeof display_data === 'object' && display_data.display !== undefined) return display_data.display !== 'none'
+    return !current_view
+  }
+
+  function set_panel_visibility (panel_el, visible) {
+    if (visible) {
+      panel_el.classList.remove('hide')
+      panel_el.classList.add('show')
     } else {
-      graph_explorer_el.classList.remove('hide')
-      graph_explorer_el.classList.add('show')
+      panel_el.classList.remove('show')
+      panel_el.classList.add('hide')
     }
-    graph_explorer_view = !graph_explorer_view
   }
 
   function tabbed_editor_toggle_view (show = true) {
     if (show) {
-      tabbed_editor_el.classList.remove('hide')
-      tabbed_editor_el.classList.add('show')
-      actions_el.classList.remove('show')
-      actions_el.classList.add('hide')
-      console_history_el.classList.remove('show')
-      console_history_el.classList.add('hide')
-      graph_explorer_el.classList.remove('show')
-      graph_explorer_el.classList.add('hide')
+      set_panel_visibility(tabbed_editor_el, true)
+      set_panel_visibility(actions_el, false)
+      set_panel_visibility(console_history_el, false)
+      set_panel_visibility(graph_explorer_el, false)
       actions_view = false
       console_view = false
       graph_explorer_view = false
     } else {
-      tabbed_editor_el.classList.remove('show')
-      tabbed_editor_el.classList.add('hide')
+      set_panel_visibility(tabbed_editor_el, false)
     }
+    update_program_layout()
+  }
+
+  function update_program_layout () {
+    const tabbed_visible = !tabbed_editor_el.classList.contains('hide')
+    const graph_visible = !graph_explorer_el.classList.contains('hide')
+    const actions_visible = !actions_el.classList.contains('hide')
+    const console_visible = !console_history_el.classList.contains('hide')
+    const has_primary = tabbed_visible || graph_visible
+
+    let tabbed_row = '0px'
+    let graph_row = '0px'
+    let actions_row = '0px'
+    let console_row = '0px'
+
+    if (tabbed_visible) {
+      tabbed_row = graph_visible ? 'minmax(120px, 1fr)' : 'minmax(80px, 1fr)'
+    }
+    if (graph_visible) {
+      graph_row = tabbed_visible ? 'minmax(150px, 1fr)' : 'minmax(200px, 1fr)'
+    }
+    if (actions_visible) {
+      if (!has_primary && !console_visible) actions_row = 'minmax(80px, 1fr)'
+      else actions_row = 'fit-content(260px)'
+    }
+    if (console_visible) {
+      if (!has_primary && !actions_visible) console_row = 'minmax(80px, 1fr)'
+      else console_row = 'fit-content(260px)'
+    }
+    if (!tabbed_visible && !graph_visible && !actions_visible && !console_visible) {
+      tabbed_row = '1fr'
+    }
+
+    program_main.style.gridTemplateRows = `${tabbed_row} ${graph_row} ${actions_row} ${console_row}`
   }
 
   async function onbatch (batch) {
@@ -6293,7 +6499,7 @@ async function program_container (opts, protocol) {
       handler(msg)
     }
 
-    function actions__forward_up (msg) { _.up && _.up(msg) }
+    function actions__forward_up (msg) { _.up(msg) }
   }
 
   function actions_selected_action (msg) {
@@ -6331,7 +6537,7 @@ async function program_container (opts, protocol) {
     function on (msg) {
       const handler = action_handlers[msg.type] || docs_window__noop
       handler(msg)
-      _.up && _.up(msg)
+      _.up(msg)
     }
 
     function docs_window__close_docs () { docs_window_el.classList.add('hide') }
@@ -6349,6 +6555,7 @@ async function program_container (opts, protocol) {
       tab_close_clicked: onmessage__tab_close_clicked,
       switch_tab: onmessage__switch_tab,
       entry_toggled: onmessage__entry_toggled,
+      execute_step: onmessage__execute_step,
       display_doc: onmessage__display_doc,
       load_actions: onmessage__send_actions,
       update_actions_for_app: onmessage__send_actions
@@ -6359,22 +6566,29 @@ async function program_container (opts, protocol) {
     function onmessage__console_history_toggle () { console_history_toggle_view() }
     function onmessage__graph_explorer_toggle () { graph_explorer_toggle_view() }
     function onmessage__display_actions (msg) { actions_toggle_view(msg.data) }
-    function onmessage__filter_actions (msg) { _.send_actions && _.send_actions(msg) }
-    function onmessage__tab_close_clicked (msg) { _.send_tabbed_editor && _.send_tabbed_editor({ ...msg, type: 'close_tab' }) }
-    function onmessage__entry_toggled (msg) { _.send_graph_explorer && _.send_graph_explorer(msg) }
-    function onmessage__send_actions (msg) { _.send_actions && _.send_actions(msg) }
-    function onmessage__noop () {}
+    function onmessage__filter_actions (msg) { _.send_actions(msg) }
+    function onmessage__tab_close_clicked (msg) { _.send_tabbed_editor({ ...msg, type: 'close_tab' }) }
+    function onmessage__entry_toggled (msg) { _.send_graph_explorer(msg) }
+    function onmessage__execute_step (msg) {
+      if (!msg.data || !Array.isArray(msg.data.commands) || msg.data.commands.length === 0) return
+      set_panel_visibility(graph_explorer_el, true)
+      graph_explorer_view = true
+      update_program_layout()
+      _.send_graph_explorer(msg)
+    }
+    function onmessage__send_actions (msg) { _.send_actions(msg) }
+    function onmessage__noop () {fail()}
     function onmessage__tab_name_clicked (msg) {
       tabbed_editor_toggle_view(true)
-      _.send_tabbed_editor && _.send_tabbed_editor({ ...msg, type: 'toggle_tab' })
+      _.send_tabbed_editor({ ...msg, type: 'toggle_tab' })
     }
     function onmessage__switch_tab (msg) {
       tabbed_editor_toggle_view(true)
-      _.send_tabbed_editor && _.send_tabbed_editor(msg)
+      _.send_tabbed_editor(msg)
     }
     function onmessage__display_doc (msg) {
       docs_window_el.classList.remove('hide')
-      _.send_docs_window && _.send_docs_window(msg)
+      _.send_docs_window(msg)
     }
   }
 }
@@ -6467,36 +6681,69 @@ function fallback_module () {
             raw: `
               .program-container {
                 display: grid;
-                grid-template-rows: 1fr auto auto;
+                grid-template-columns: minmax(0, 1fr);
                 min-height: 200px;
+                height: 100%;
                 background: linear-gradient(135deg, #0d1117 0%, #161b22 100%);
                 position: relative;
-                gap: 8px;
-                padding: 8px;
-                height: stretch;
-                padding-bottom: 0px;
+                gap: 0;
+                padding: 0;
+                overflow: hidden;
+                container-type: size;
               }
-              .console-history {
-                grid-row: 3;
-                position: relative;
-                width: 100%;
-                background-color: #161b22;
-                border: 1px solid #21262d;
-                border-radius: 6px;
-              }
-              .actions {
-                grid-row: 2;
-                position: relative;
-                width: 100%;
-                background-color: #161b22;
-                border: 1px solid #21262d;
-                border-radius: 6px;
+              .docs-window {
+                position: absolute;
+                inset: 12px;
+                z-index: 20;
               }
               .tabbed-editor {
                 grid-row: 1;
-                height: min-content;
+                grid-column: 1;
+                min-height: 0;
+                min-width: 0;
+                width: 100%;
+                height: 100%;
+              }
+              .graph-explorer {
+                grid-row: 2;
+                grid-column: 1;
+                min-height: 0;
+                min-width: 0;
+                width: 100%;
+                height: 100%;
+              }
+              .console-history {
+                grid-row: 4;
+                grid-column: 1;
                 position: relative;
                 width: 100%;
+                height: auto;
+                max-height: 100%;
+                min-height: 0;
+                min-width: 0;
+                background-color: #161b22;
+                border: 1px solid #21262d;
+                border-radius: 6px;
+                overflow: auto;
+              }
+              .actions {
+                grid-row: 3;
+                grid-column: 1;
+                position: relative;
+                width: 100%;
+                height: auto;
+                max-height: 100%;
+                min-height: 0;
+                min-width: 0;
+                background-color: #161b22;
+                border: 1px solid #21262d;
+                border-radius: 6px;
+                overflow: auto;
+              }
+              .tabbed-editor {
+                position: relative;
+                width: 100%;
+                min-width: 0;
                 background-color: #0d1117;
                 border: 1px solid #21262d;
                 border-radius: 6px;
@@ -6615,6 +6862,7 @@ async function quick_actions (opts, protocol) {
   let hardcons = {}
   let defaults = []
   let stored_selected_action = ''
+  let action_selected = false
   const docs = DOCS(__filename)(opts.sid)
 
   let send = null
@@ -6637,7 +6885,7 @@ async function quick_actions (opts, protocol) {
 
   async function get_doc_content () {
     const doc_file = await drive.get('docs/README.md')
-    return doc_file && doc_file.raw ? doc_file.raw : 'No documentation available'
+    return doc_file.raw || 'No documentation available'
   }
 
   function onsubmit () {
@@ -6661,11 +6909,12 @@ async function quick_actions (opts, protocol) {
 
   function update_input_display (selected_action = null) {
     if (selected_action) {
+      action_selected = true
       slash_prefix.style.display = 'inline'
       command_text.style.display = 'inline'
       command_text.textContent = `#${selected_action.action}`
-      current_step.textContent = selected_action && selected_action.current_step ? selected_action.current_step : 1
-      total_steps.textContent = selected_action && selected_action.total_steps ? selected_action.total_steps : 1
+      current_step.textContent = selected_action.current_step ? selected_action.current_step : 1
+      total_steps.textContent = selected_action.total_steps ? selected_action.total_steps : 1
       step_display.style.display = 'inline-flex'
 
       input_field.style.display = 'none'
@@ -6680,11 +6929,12 @@ async function quick_actions (opts, protocol) {
       step_display.style.display = 'none'
       input_field.placeholder = 'Type to search actions...'
       hide_input_tooltip()
+      action_selected = false
     }
   }
 
   function activate_input_field () {
-    console.log('activate_input_field')
+    if (action_selected) return
     default_actions.style.display = 'none'
     text_bar.style.display = 'none'
 
@@ -6695,7 +6945,7 @@ async function quick_actions (opts, protocol) {
 
     const head = [by, to, mid++]
     const refs = {}
-    _.up({ head, refs, type: 'display_actions', data: 'block' })
+    _.up({ head, refs, type: 'display_actions', data: { display: 'block', reason: 'browse' } })
   }
 
   function onmessage (msg) {
@@ -6714,6 +6964,8 @@ async function quick_actions (opts, protocol) {
   }
 
   function deactivate_input_field (data) {
+    const reason = data.reason ? data.reason : 'cancel'
+
     default_actions.style.display = 'flex'
     text_bar.style.display = 'flex'
 
@@ -6725,14 +6977,14 @@ async function quick_actions (opts, protocol) {
 
     const head = [by, to, mid++]
     const refs = {}
-    _.up({ head, refs, type: 'display_actions', data: 'none' })
+    _.up({ head, refs, type: 'display_actions', data: { display: 'none', reason } })
   }
 
   function show_submit_btn () { submit_btn.style.display = 'flex' }
   function hide_submit_btn () { submit_btn.style.display = 'none' }
 
   function update_current_step (data) {
-    const current_step_value = data && data.index !== undefined ? data.index + 1 : 1
+    const current_step_value = data.index !== undefined ? data.index + 1 : 1
     current_step.textContent = current_step_value
   }
 
@@ -6866,9 +7118,14 @@ async function quick_actions (opts, protocol) {
   }
 
   function update_input_command (command) {
+    if (action_selected) return
     stored_selected_action = command
     if (input_wrapper.style.display === 'none') {
-      activate_input_field()
+      default_actions.style.display = 'none'
+      text_bar.style.display = 'none'
+      input_wrapper.style.display = 'flex'
+      input_field.focus()
+      if (enable_input_field_tooltips) update_input_tooltip('')
     }
 
     // Find the action that matches the command
@@ -6890,6 +7147,10 @@ async function quick_actions (opts, protocol) {
       }
       update_input_display(pass_data)
     }
+
+    const head = [by, to, mid++]
+    const refs = {}
+    _.up({ head, refs, type: 'display_actions', data: { display: 'none', reason: 'selected' } })
 
     function matches_selected_command (action) { return action.name === command || action.action === command }
   }
@@ -7461,7 +7722,7 @@ async function quick_editor (opts) {
 
   function apply () {
     let raw = shadow.querySelector('.tab-content.active .tab-content.active textarea.active').value
-    if (current_data.file.split('.')[1] === 'json') { raw = JSON.parse(raw) }
+    if (current_data.Files.split('.')[1] === 'json') { raw = JSON.parse(raw) }
     port.postMessage({
       type: 'put',
       data: [
@@ -7775,12 +8036,12 @@ async function steps_wizard (opts, protocol) {
         currentActiveStep = index
         center_step(btn)
         render_steps(steps)
-        _ && _.up({ head, refs, type: 'step_clicked', data: { ...step, index, total_steps: steps.length, is_accessible: accessible } })
+        _.up({ head, refs, type: 'step_clicked', data: { ...step, index, total_steps: steps.length, is_accessible: accessible } })
       }
 
       async function get_doc_content () {
         const doc_file = await drive.get('docs/README.md')
-        return doc_file && doc_file.raw ? doc_file.raw : 'No documentation available'
+        return doc_file.raw || 'No documentation available'
       }
 
       steps_entries.appendChild(btn)
@@ -7947,7 +8208,7 @@ async function tabbed_editor (opts, protocol) {
 
     if (_) {
       const head = [by, to, mid++]
-      const refs = msg && msg.head ? { cause: msg.head } : undefined
+      const refs = msg?.head ? { cause: msg.head } : undefined
       _.up({
         head,
         refs,
@@ -7974,7 +8235,7 @@ async function tabbed_editor (opts, protocol) {
 
     if (_) {
       const head = [by, to, mid++]
-      const refs = msg && msg.head ? { cause: msg.head } : undefined
+      const refs = msg.head ? { cause: msg.head } : undefined
       _.up({
         head,
         refs,
@@ -8070,7 +8331,7 @@ async function tabbed_editor (opts, protocol) {
   function onfiles (data) { files = data[0] }
 
   function onactivetab (data) {
-    if (data && data.id !== active_tab) {
+    if (data.id !== active_tab) {
       switch_to_tab(data)
     }
   }
@@ -8159,7 +8420,8 @@ function fallback_module () {
             raw: `
               .tabbed-editor {
                 width: 100%;
-                height: min-content;
+                height: 100%;
+                min-height: 80px;
                 background-color: #0d1117;
                 color: #e6edf3;
                 font-family: 'SFMono-Regular', 'Consolas', 'Liberation Mono', 'Menlo', monospace;
@@ -8174,6 +8436,7 @@ function fallback_module () {
               .editor-content {
                 display: grid;
                 grid-template-rows: 1fr;
+                min-height: 0;
                 position: relative;
                 overflow: hidden;
                 background-color: #0d1117;
@@ -8192,7 +8455,7 @@ function fallback_module () {
 
               .code-editor {
                 height: 100%;
-                max-height: 350px;
+                min-height: 0;
                 display: grid;
                 grid-template-rows: 1fr;
                 background-color: #0d1117;
@@ -8201,6 +8464,8 @@ function fallback_module () {
               .editor-wrapper {
                 display: grid;
                 grid-template-columns: auto 1fr;
+                min-height: 0;
+                height: 100%;
                 position: relative;
                 overflow: auto;
                 background-color: #0d1117;
@@ -8335,7 +8600,7 @@ async function component (opts, protocol) {
 
   // Register actions with DOCS system
   const actions_file = await drive.get('actions/commands.json')
-  if (actions_file && actions_file.raw) {
+  if (actions_file.raw) {
     const actions_data = typeof actions_file.raw === 'string' ? JSON.parse(actions_file.raw) : actions_file.raw
     docs.register_actions(actions_data)
   }
@@ -8445,7 +8710,7 @@ async function component (opts, protocol) {
 
     async function get_doc_content () {
       const doc_file = await drive.get('docs/README.md')
-      return doc_file && doc_file.raw ? doc_file.raw : 'No documentation available'
+      return doc_file.raw || 'No documentation available'
     }
 
     // Add click handler for close button
@@ -8645,7 +8910,7 @@ async function tabsbar (opts, protocol) {
   const docs = DOCS(__filename)(opts.sid)
   // Register actions with DOCS system
   const actions_file = await drive.get('actions/command.json')
-  if (actions_file && actions_file.raw) {
+  if (actions_file.raw) {
     const actions_data = typeof actions_file.raw === 'string' ? JSON.parse(actions_file.raw) : actions_file.raw
     docs.register_actions(actions_data)
   }
@@ -8699,9 +8964,9 @@ async function tabsbar (opts, protocol) {
       const head_mgr = [by, to, mid++]
       const refs = {}
       // Send message to root module to set docs mode
-      _.up && _.up({ head, refs, type: 'set_docs_mode', data: { active: docs_toggle_active } })
+      _.up({ head, refs, type: 'set_docs_mode', data: { active: docs_toggle_active } })
       // Also send docs_toggle notification for UI updates
-      _.up && _.up({ head: [by, to, mid++], refs, type: 'docs_toggle', data: { active: docs_toggle_active } })
+      _.up({ head: [by, to, mid++], refs, type: 'docs_toggle', data: { active: docs_toggle_active } })
       bar_btn.classList.toggle('active', docs_toggle_active)
       _.task_manager({ head_mgr, refs, type: 'docs_toggle', data: { active: docs_toggle_active } })
     }
@@ -8718,7 +8983,7 @@ async function tabsbar (opts, protocol) {
 
   async function get_doc_content () {
     const doc_file = await drive.get('docs/README.md')
-    return doc_file && doc_file.raw ? doc_file.raw : 'No documentation available'
+    return doc_file.raw || 'No documentation available'
   }
 
   async function hat_click () {
@@ -8735,7 +9000,7 @@ async function tabsbar (opts, protocol) {
     handler(msg)
   }
 
-  function handle_docs_toggle (msg) { _.tabs && _.tabs(msg) }
+  function handle_docs_toggle (msg) { _.tabs(msg) }
 
   function onmessage_fail () {
     // Handle other message types
@@ -8869,7 +9134,18 @@ function fallback_module () {
                   default: true
                 },
                 steps: [
-                  { name: 'Enter File Name', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
+                  {
+                    name: 'Enter File Name',
+                    type: 'mandatory',
+                    is_completed: false,
+                    component: 'input_test',
+                    status: 'default',
+                    data: '',
+                    commands: [
+                      { type: 'set_mode', data: { mode: 'search' } },
+                      { type: 'set_search_query', data: { query: 'file' } }
+                    ]
+                  },
                   { name: 'Choose Location', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' }
                 ]
               },
@@ -8881,7 +9157,18 @@ function fallback_module () {
                   default: true
                 },
                 steps: [
-                  { name: 'Select File', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' }
+                  {
+                    name: 'Select File',
+                    type: 'mandatory',
+                    is_completed: false,
+                    component: 'form_input',
+                    status: 'default',
+                    data: '',
+                    commands: [
+                      { type: 'set_mode', data: { mode: 'default' } },
+                      { type: 'clear_selection', data: {} }
+                    ]
+                  }
                 ]
               },
               {
@@ -8904,7 +9191,17 @@ function fallback_module () {
                   default: true
                 },
                 steps: [
-                  { name: 'Configure Settings', type: 'optional', is_completed: false, component: 'form_input', status: 'default', data: '' }
+                  {
+                    name: 'Configure Settings',
+                    type: 'optional',
+                    is_completed: false,
+                    component: 'input_test',
+                    status: 'default',
+                    data: '',
+                    commands: [
+                      { type: 'set_flag', data: { flag_type: 'hubs', value: 'true' } }
+                    ]
+                  }
                 ]
               },
               {
@@ -8937,8 +9234,30 @@ function fallback_module () {
                   default: true
                 },
                 steps: [
-                  { name: 'Enter Search Query', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
-                  { name: 'Select Scope', type: 'optional', is_completed: false, component: 'form_input', status: 'default', data: '' }
+                  {
+                    name: 'Enter Search Query',
+                    type: 'mandatory',
+                    is_completed: false,
+                    component: 'form_input',
+                    status: 'default',
+                    data: '',
+                    commands: [
+                      { type: 'set_mode', data: { mode: 'search' } },
+                      { type: 'set_search_query', data: { query: 'action' } }
+                    ]
+                  },
+                  {
+                    name: 'Select Scope',
+                    type: 'optional',
+                    is_completed: false,
+                    component: 'input_test',
+                    status: 'default',
+                    data: '',
+                    commands: [
+                      { type: 'set_flag', data: { flag_type: 'selection', value: 'default' } },
+                      { type: 'get_selected', data: {} }
+                    ]
+                  }
                 ]
               }
             ])
@@ -8979,7 +9298,7 @@ async function task_manager (opts, protocol) {
 
   // Register actions with DOCS system
   const actions_file = await drive.get('actions/commands.json')
-  if (actions_file && actions_file.raw) {
+  if (actions_file.raw) {
     const actions_data = typeof actions_file.raw === 'string' ? JSON.parse(actions_file.raw) : actions_file.raw
     docs.register_actions(actions_data)
   }
@@ -9025,7 +9344,7 @@ async function task_manager (opts, protocol) {
 
   async function get_doc_content () {
     const doc_file = await drive.get('docs/README.md')
-    return doc_file && doc_file.raw ? doc_file.raw : 'No documentation available'
+    return doc_file.raw || 'No documentation available'
   }
 
   await sdb.watch(onbatch)
@@ -9262,8 +9581,8 @@ async function taskbar (opts, protocol) {
       handler(msg)
     }
 
-    function action_bar__forward_action_executor (msg) { _.action_executor && _.action_executor(msg) }
-    function action_bar__forward_up (msg) { _.up && _.up(msg) }
+    function action_bar__forward_action_executor (msg) { _.action_executor(msg) }
+    function action_bar__forward_up (msg) { _.up(msg) }
   }
 
   function action_executor_protocol (send) {
@@ -9278,10 +9597,10 @@ async function taskbar (opts, protocol) {
     function on (msg) {
       const handler = action_handlers[msg.type] || action_executor__noop
       handler(msg)
-      _.up && _.up(msg)
+      _.up(msg)
     }
 
-    function action_executor__forward_action_bar (msg) { _.action_bar && _.action_bar(msg) }
+    function action_executor__forward_action_bar (msg) { _.action_bar(msg) }
     function action_executor__noop () {}
   }
 
@@ -9294,12 +9613,12 @@ async function taskbar (opts, protocol) {
     function on (msg) {
       const handler = action_handlers[msg.type] || tabsbar__noop
       handler(msg)
-      _.up && _.up(msg)
+      _.up(msg)
     }
 
     function tabsbar__docs_toggle (msg) {
-      _.action_bar && _.action_bar(msg)
-      _.action_executor && _.action_executor(msg)
+      _.action_bar(msg)
+      _.action_executor(msg)
     }
 
     function tabsbar__noop () {}
@@ -9310,18 +9629,18 @@ async function taskbar (opts, protocol) {
     handler(msg)
   }
 
-  function handle_update_steps_wizard_for_app (msg) { _.action_executor && _.action_executor(msg) }
-  function handle_docs_toggle (msg) { _.action_bar && _.action_bar(msg) }
+  function handle_update_steps_wizard_for_app (msg) { _.action_executor(msg) }
+  function handle_docs_toggle (msg) { _.action_bar(msg) }
   function handle_load_actions (msg) { forward_to_action_bar(msg.type, msg.data, msg) }
-  function handle_step_clicked (msg) { _.action_bar && _.action_bar(msg) }
+  function handle_step_clicked (msg) { _.action_bar(msg) }
   function handle_update_quick_actions_for_app (msg) { forward_to_action_bar(msg.type, msg.data, msg) }
   function handle_update_quick_actions_input (msg) { forward_to_action_bar(msg.type, msg.data, msg) }
-  function handle_submit_btn_toggle (msg) { _.action_bar && _.action_bar(msg) }
-  function onmessage_forward_action_bar (msg) { _.action_bar && _.action_bar(msg) }
+  function handle_submit_btn_toggle (msg) { _.action_bar(msg) }
+  function onmessage_forward_action_bar (msg) { _.action_bar(msg) }
   function forward_to_action_bar (type, data, msg) {
     const head = [by, action_bar_sid, mid++]
     const refs = msg.head ? { cause: msg.head } : {}
-    _.action_bar && _.action_bar({ head, refs, type, data })
+    _.action_bar({ head, refs, type, data })
   }
 }
 
@@ -9495,12 +9814,13 @@ async function theme_widget (opts, protocol) {
       else setTimeout(root__retry_send_program_container, 500, msg)
     }
 
-    function root__retry_send_program_container (msg) { _.send_program_container && _.send_program_container(msg) }
-    function root__forward_taskbar (msg) { _.send_taskbar && _.send_taskbar(msg) }
+    function root__retry_send_program_container (msg) { _.send_program_container(msg) }
+    function root__forward_taskbar (msg) { _.send_taskbar(msg) }
     function root__noop () {}
   }
 
   taskbar_el = await taskbar({ ...subs[1], ids: { up: id } }, taskbar_protocol)
+  taskbar_el.classList.add('taskbar')
   taskbar_slot.replaceWith(taskbar_el)
 
   program_container_el = await program_container({ ...subs[0], ids: { up: id } }, program_container_protocol)
@@ -9540,7 +9860,7 @@ async function theme_widget (opts, protocol) {
     if (last_focused !== msg.data.type) {
       const head = [id, _.up ? opts.ids.up : id, mid++]
       const refs = {}
-      _.up && _.up({ head, refs, type: 'focused_app_changed', data: msg.data })
+      _.up({ head, refs, type: 'focused_app_changed', data: msg.data })
     }
     drive.put('focused/current.json', { value: msg.data.type })
   }
@@ -9561,8 +9881,8 @@ async function theme_widget (opts, protocol) {
     }
 
     function program_container__forward_ui_focus (msg) { handle_ui_focus(msg) }
-    function program_container__forward_up (msg) { _.up && _.up(msg) }
-    function program_container__forward_taskbar (msg) { _.send_taskbar && _.send_taskbar(msg) }
+    function program_container__forward_up (msg) { _.up(msg) }
+    function program_container__forward_taskbar (msg) { _.send_taskbar(msg) }
   }
 
   function taskbar_protocol (send) {
@@ -9579,11 +9899,11 @@ async function theme_widget (opts, protocol) {
     }
 
     function taskbar__forward_ui_focus (msg) { handle_ui_focus(msg) }
-    function taskbar__forward_up (msg) { _.up && _.up(msg) }
-    function taskbar__forward_program_container (msg) { _.send_program_container && _.send_program_container(msg) }
+    function taskbar__forward_up (msg) { _.up(msg) }
+    function taskbar__forward_program_container (msg) { _.send_program_container(msg) }
     function taskbar__docs_toggle (msg) {
       handle_ui_focus(msg)
-      _.send_program_container && _.send_program_container(msg)
+      _.send_program_container(msg)
     }
   }
 }
@@ -9657,9 +9977,17 @@ function fallback_module () {
                 width: 100%;
                 height: 100%;
                 background: #131315;
+                min-height: 0;
               }
               .program-container {
-                height: inherit;
+                flex: 1 1 auto;
+                min-height: 0;
+                height: 100%;
+              }
+              .taskbar {
+                flex: 0 0 auto;
+                width: 100%;
+                z-index: 10;
               }
             `
           }
@@ -9858,7 +10186,7 @@ async function boot (opts) {
       const key = `[${by} -> ${to}]`
       console.log('[ port-stuff ]', key)
 
-      on[txt.type] && on[txt.type](...txt.data)
+      on[txt.type](...txt.data)
     }
   }
 
@@ -9889,7 +10217,7 @@ async function boot (opts) {
         docs_admin.set_doc_display_handler(msg.data.callback)
       } else if (msg.type === 'focused_app_changed') {
         // Use DOCS admin to lookup actions by sid reference
-        const focused_sid = msg.data?.sid
+        const focused_sid = msg.data.sid
         let actions = null
 
         if (focused_sid && docs_admin) {
@@ -9898,7 +10226,7 @@ async function boot (opts) {
         update_actions_for_app(actions)
 
         async function update_actions_for_app (data) {
-          const focused_app = msg.data?.type
+          const focused_app = msg.data.type
           let actions_data = null
           let quick_actions_data = null
           let steps_wizard_data = null
@@ -10052,7 +10380,7 @@ async function boot (opts) {
       params.set('checked', JSON.stringify(checked_indices))
     }
     const selected_index = names.indexOf(selected_name)
-    if (selected_name && selected_index !== -1 && wrappers[selected_index]?.checkbox_state) {
+    if (selected_name && selected_index !== -1 && wrappers[selected_index].checkbox_state) {
       params.set('selected', selected_name)
     }
     const new_url = `${window.location.pathname}${params.toString() ? '?' + params.toString() : ''}`
