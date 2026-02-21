@@ -241,10 +241,12 @@ Then we define the functions used under the return statement.
 ```js
   function onbatch (batch) {
     for (const { type, data } of batch) {
-      on[type] && on[type](data)
+      const handler = on[type] || fail
+      handler(data)
     }
     // here we can create some elements after storing data
   }
+  function fail (data) { console.warn('invalid message', { cause: { data } }) }
   function inject(data) {
     const sheet = new CSSStyleSheet()
     sheet.replaceSync(data)

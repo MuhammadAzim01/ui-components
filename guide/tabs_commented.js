@@ -194,7 +194,7 @@ async function component (opts, protocol) {
 
   function onmessage__update_tab_data (msg) {
     // Example: Update tab data when parent sends new data
-    if (msg.data && msg.data.variables) {
+    if (msg.data.variables) {
       onvariables([msg.data.variables])
     }
   }

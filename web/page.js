@@ -154,7 +154,7 @@ async function boot (opts) {
       const key = `[${by} -> ${to}]`
       console.log('[ port-stuff ]', key)
 
-      on[txt.type] && on[txt.type](...txt.data)
+      on[txt.type](...txt.data)
     }
   }
 
@@ -185,7 +185,7 @@ async function boot (opts) {
         docs_admin.set_doc_display_handler(msg.data.callback)
       } else if (msg.type === 'focused_app_changed') {
         // Use DOCS admin to lookup actions by sid reference
-        const focused_sid = msg.data?.sid
+        const focused_sid = msg.data.sid
         let actions = null
 
         if (focused_sid && docs_admin) {
@@ -194,7 +194,7 @@ async function boot (opts) {
         update_actions_for_app(actions)
 
         async function update_actions_for_app (data) {
-          const focused_app = msg.data?.type
+          const focused_app = msg.data.type
           let actions_data = null
           let quick_actions_data = null
           let steps_wizard_data = null
@@ -348,7 +348,7 @@ async function boot (opts) {
       params.set('checked', JSON.stringify(checked_indices))
     }
     const selected_index = names.indexOf(selected_name)
-    if (selected_name && selected_index !== -1 && wrappers[selected_index]?.checkbox_state) {
+    if (selected_name && selected_index !== -1 && wrappers[selected_index].checkbox_state) {
       params.set('selected', selected_name)
     }
     const new_url = `${window.location.pathname}${params.toString() ? '?' + params.toString() : ''}`

@@ -145,3 +145,7 @@ button.addEventListener('click', () => { ... })
 
 - Use snake_case where practical.
 - Prefer named functions Instead of Anonymous.
+
+## 8) Handling Object undefined
+- When accessing any object we dont use `?.` optional chaining or either `&&` or `||` fallbacks.
+- Instead us simply use plain `.` operation e.g `object.property` or `object.method()` without any check. So in this early development phase we can catch undefined access errors easily.
