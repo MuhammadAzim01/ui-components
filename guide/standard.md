@@ -4,6 +4,10 @@ This file defines the baseline conventions for all components in `src/node_modul
 
 ## 1) Required module skeleton
 
+### 1a) Instance-level STATE (normal components)
+
+Every component in `src/node_modules/` or `lib/` etc uses the instance-level pattern. `get` is called inside the component function using the `sid` passed in from the parent via `opts.sid`. This gives an `sdb` and `id`. The main difference is that we define a fallback_instance function (api) alongside the fallback_module (defaults) as well.
+
 ```js
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -57,6 +61,38 @@ async function component (opts, protocol) {
   }
 
   function fail (data, type) { console.warn('invalid message', { cause: { data, type } }) }
+}
+```
+
+### 1b) Module-level STATE (page.js / demo-page pattern)
+
+Entry-point/Root files like `web/page.js` and any per-component demo page use `sdb`, `id` (and sometimes `io`) **directly at module scope**. There is no `get(opts.sid)` call because it is the root node/module and it doesn't receive a `sid` from a parent.
+
+```js
+const STATE = require('STATE')
+const statedb = STATE(__filename)
+const { sdb, io, id } = statedb(fallback_module)
+const { drive, admin } = sdb
+
+const my_component = require('../src/node_modules/my_component')
+
+boot()
+
+async function boot () {
+  const subs = await sdb.watch(onbatch)
+
+  const el = await my_component({ ...subs[0], ids: { up: id } }, component_protocol)
+  document.body.append(el)
+
+  async function onbatch (batch) {
+    for (const { type, paths } of batch) {
+      const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
+      const func = on[type] || fail
+      func(data, type)
+    }
+  }
+
+  function fail (data, type) { console.warn(__filename + ' invalid message', { cause: { data, type } }) }
 }
 ```
 
