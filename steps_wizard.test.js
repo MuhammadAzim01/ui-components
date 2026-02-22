@@ -102,34 +102,47 @@ describe('steps_wizard - Protocol Communication', () => {
     expect(testSteps[1].is_completed).toBe(true)
   })
 
-  it('should correctly determine step accessibility based on previous mandatory steps', () => {
-    // Test the can_access logic from steps_wizard
-    function can_access (index, steps) {
-      for (let i = 0; i < index; i++) {
-        if (!steps[i].is_completed && steps[i].type !== 'optional') {
-          return false
-        }
-      }
-      return true
+  it('should have correct can_access logic in component source', () => {
+    // Verify the actual can_access function exists in the component
+    const hasCan_accessFunction = componentSource.includes('function can_access')
+    expect(hasCan_accessFunction).toBe(true)
+    
+    // Extract the ACTUAL can_access function from steps_wizard.js
+    // Using Function constructor to create the function from source
+    const functionMatch = componentSource.match(/function can_access\s*\(([^)]*)\)\s*{\s*([\s\S]*?)\n\s*return true\s*\n\s*}/m)
+    
+    expect(functionMatch).toBeTruthy()  // Function must be found
+    
+    if (functionMatch) {
+      const params = functionMatch[1].trim()  
+      const body = functionMatch[2].trim()
+      
+      // Create the actual function from the source code
+      const can_access = new Function(params, `${body}\nreturn true`)
+      
+      // Now verify it has the CORRECT logic by checking what it actually does
+      const steps = [
+        { name: 'Step 1', type: 'mandatory', is_completed: true },
+        { name: 'Step 2', type: 'optional', is_completed: false },
+        { name: 'Step 3', type: 'mandatory', is_completed: false }
+      ]
+
+      // Test the EXPECTED behavior (what the function SHOULD do)
+      // Step 1 is complete, Step 2 is optional, so Step 3 should be accessible
+      const step3Result = can_access(2, steps)
+      
+      // If this fails, it means the component logic is wrong
+      expect(step3Result).toBe(true)  // Can skip optional step
+      
+      // First step always accessible
+      expect(can_access(0, steps)).toBe(true)
+      
+      // Cannot skip incomplete mandatory step
+      const stepsWithIncomplete = [
+        { name: 'Step 1', type: 'mandatory', is_completed: false },
+        { name: 'Step 2', type: 'mandatory', is_completed: false }
+      ]
+      expect(can_access(1, stepsWithIncomplete)).toBe(false)
     }
-
-    const steps = [
-      { name: 'Step 1', type: 'mandatory', is_completed: true },
-      { name: 'Step 2', type: 'optional', is_completed: false },
-      { name: 'Step 3', type: 'mandatory', is_completed: false }
-    ]
-
-    // First step always accessible
-    expect(can_access(0, steps)).toBe(true)
-    
-    // Can skip optional step 2
-    expect(can_access(2, steps)).toBe(true)
-    
-    // Cannot access if mandatory step incomplete
-    const stepsWithIncomplete = [
-      { name: 'Step 1', type: 'mandatory', is_completed: false },
-      { name: 'Step 2', type: 'mandatory', is_completed: false }
-    ]
-    expect(can_access(1, stepsWithIncomplete)).toBe(false)
   })
 })
