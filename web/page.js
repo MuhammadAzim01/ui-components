@@ -2,9 +2,7 @@ const STATE = require('STATE')
 const statedb = STATE(__filename)
 const admin_api = statedb.admin()
 const admin_on = {}
-admin_api.on(({ type, data }) => {
-  admin_on[type] && admin_on[type]()
-})
+admin_api.on(handle_admin_message)
 const { sdb, io, id } = statedb(fallback_module)
 const { drive, admin } = sdb
 const DOCS = require('../src/node_modules/DOCS')
@@ -22,7 +20,7 @@ const theme_widget = require('../src/node_modules/theme_widget')
 const taskbar = require('../src/node_modules/taskbar')
 const tabsbar = require('../src/node_modules/tabsbar')
 const action_bar = require('../src/node_modules/action_bar')
-const space = require('../src/node_modules/space')
+const program_container = require('../src/node_modules/program_container')
 const tabs = require('../src/node_modules/tabs')
 const console_history = require('../src/node_modules/console_history')
 const actions = require('../src/node_modules/actions')
@@ -31,17 +29,16 @@ const task_manager = require('../src/node_modules/task_manager')
 const quick_actions = require('../src/node_modules/quick_actions')
 const graph_explorer_wrapper = require('../src/node_modules/graph_explorer_wrapper')
 const editor = require('../src/node_modules/quick_editor')
-const manager = require('../src/node_modules/manager')
+const action_executor = require('../src/node_modules/action_executor')
 const steps_wizard = require('../src/node_modules/steps_wizard')
 const { resource } = require('../src/node_modules/helpers')
-const exec = require('../src/node_modules/exec')
 
 const imports = {
   theme_widget,
   taskbar,
   tabsbar,
   action_bar,
-  space,
+  program_container,
   tabs,
   console_history,
   actions,
@@ -49,11 +46,12 @@ const imports = {
   task_manager,
   quick_actions,
   graph_explorer_wrapper,
-  manager,
-  steps_wizard,
-  exec
+  action_executor,
+  steps_wizard
 }
-config().then(() => boot({ sid: '' }))
+config().then(boot_default_page)
+
+function boot_default_page () { return boot({ sid: '' }) }
 
 async function config () {
   // const path = path => new URL(`../src/node_modules/${path}`, `file://${__dirname}`).href.slice(8)
@@ -113,8 +111,10 @@ async function boot (opts) {
 
   const entries = Object.entries(imports)
   const wrappers = []
-  const names = entries.map(([name]) => name)
+  const names = entries.map(get_entry_name)
   let current_selected_wrapper = null
+
+  function get_entry_name (entry) { return entry[0] }
 
   const url_params = new URLSearchParams(window.location.search)
   const checked_param = url_params.get('checked')
@@ -141,21 +141,29 @@ async function boot (opts) {
     on_resize_toggle: handle_resize_toggle
   }
   const item = resource()
-  io.on(port => {
+  io.on(register_io_port)
+
+  function register_io_port (port) {
     const { by, to } = port
     item.set(port.to, port)
-    port.onmessage = event => {
+
+    port.onmessage = on_port_message
+
+    function on_port_message (event) {
       const txt = event.data
       const key = `[${by} -> ${to}]`
       console.log('[ port-stuff ]', key)
 
-      on[txt.type] && on[txt.type](...txt.data)
+      on[txt.type](...txt.data)
     }
-  })
+  }
 
   const editor_subs = await sdb.get_sub('page>../src/node_modules/quick_editor')
   // const subs = await sdb.watch(onbatch)
-  const subs = (await sdb.watch(onbatch)).filter((_, index) => index % 2 === 0)
+  const subs = (await sdb.watch(onbatch)).filter(is_even_index)
+
+  function is_even_index (_, index) { return index % 2 === 0 }
+
   console.log('Page subs', subs)
   const nav_menu_element = await navbar(subs[names.length], names, initial_checked_indices, menu_callbacks)
 
@@ -177,7 +185,7 @@ async function boot (opts) {
         docs_admin.set_doc_display_handler(msg.data.callback)
       } else if (msg.type === 'focused_app_changed') {
         // Use DOCS admin to lookup actions by sid reference
-        const focused_sid = msg.data?.sid
+        const focused_sid = msg.data.sid
         let actions = null
 
         if (focused_sid && docs_admin) {
@@ -186,7 +194,7 @@ async function boot (opts) {
         update_actions_for_app(actions)
 
         async function update_actions_for_app (data) {
-          const focused_app = msg.data?.type
+          const focused_app = msg.data.type
           let actions_data = null
           let quick_actions_data = null
           let steps_wizard_data = null
@@ -216,20 +224,24 @@ async function boot (opts) {
             const result_quick_actions = []
             let temp_actions = {}
             let temp_quick_actions = {}
-            data.forEach(element => {
+
+            data.forEach(add_component_action_entry)
+
+            function add_component_action_entry (action_entry) {
               temp_actions = {}
-              temp_actions.action = element.name
-              temp_actions.icon = element.icon
-              temp_actions.pinned = element.status.pinned
-              temp_actions.default = element.status.default
+              temp_actions.action = action_entry.name
+              temp_actions.icon = action_entry.icon
+              temp_actions.pinned = action_entry.status.pinned
+              temp_actions.default = action_entry.status.default
               result_actions.push(temp_actions)
 
               temp_quick_actions = {}
-              temp_quick_actions.name = element.name
-              temp_quick_actions.icon = element.icon
-              temp_quick_actions.total_steps = element.steps.length
+              temp_quick_actions.name = action_entry.name
+              temp_quick_actions.icon = action_entry.icon
+              temp_quick_actions.total_steps = action_entry.steps.length
               result_quick_actions.push(temp_quick_actions)
-            })
+            }
+
             return {
               actions: result_actions,
               quick_actions: result_quick_actions,
@@ -271,7 +283,10 @@ async function boot (opts) {
 
       const modulepath = node_id.split(':')[0]
       const fields = admin.status.db.read_all(['state', modulepath])
-      const nodes = Object.keys(fields).filter(field => !isNaN(Number(field.split(':').at(-1))))
+      const nodes = Object.keys(fields).filter(is_state_node)
+
+      function is_state_node (field) { return !isNaN(Number(field.split(':').at(-1))) }
+
       for (const node of nodes) {
         result[node] = {}
         const datasets = drive.list('', node)
@@ -301,12 +316,14 @@ async function boot (opts) {
       if (index !== -1 && wrappers[index]) {
         const target_wrapper = wrappers[index].outer
         if (target_wrapper.style.display !== 'none') {
-          setTimeout(() => {
+          setTimeout(scroll_to_selected_wrapper, 100)
+
+          function scroll_to_selected_wrapper () {
             target_wrapper.scrollIntoView({ behavior: 'auto', block: 'center' })
             clear_selection_highlight()
             target_wrapper.style.backgroundColor = '#2e3440'
             current_selected_wrapper = target_wrapper
-          }, 100)
+          }
         }
       }
     }
@@ -320,16 +337,19 @@ async function boot (opts) {
   }
 
   function update_url (selected_name = url_params.get('selected')) {
-    const checked_indices = wrappers.reduce((acc, w, i) => {
-      if (w.checkbox_state) { acc.push(i + 1) }
+    const checked_indices = wrappers.reduce(collect_checked_index, [])
+
+    function collect_checked_index (acc, wrapper_entry, index) {
+      if (wrapper_entry.checkbox_state) { acc.push(index + 1) }
       return acc
-    }, [])
+    }
+
     const params = new URLSearchParams()
     if (checked_indices.length > 0 && checked_indices.length < wrappers.length) {
       params.set('checked', JSON.stringify(checked_indices))
     }
     const selected_index = names.indexOf(selected_name)
-    if (selected_name && selected_index !== -1 && wrappers[selected_index]?.checkbox_state) {
+    if (selected_name && selected_index !== -1 && wrappers[selected_index].checkbox_state) {
       params.set('selected', selected_name)
     }
     const new_url = `${window.location.pathname}${params.toString() ? '?' + params.toString() : ''}`
@@ -367,10 +387,13 @@ async function boot (opts) {
 
   function handle_select_all_toggle (detail) {
     const { selectAll: select_all } = detail
-    wrappers.forEach((w, index) => {
-      w.outer.style.display = select_all ? 'block' : 'none'
-      w.checkbox_state = select_all
-    })
+    wrappers.forEach(update_wrapper_visibility)
+
+    function update_wrapper_visibility (wrapper_entry) {
+      wrapper_entry.outer.style.display = select_all ? 'block' : 'none'
+      wrapper_entry.checkbox_state = select_all
+    }
+
     clear_selection_highlight()
     update_url(null)
   }
@@ -383,49 +406,62 @@ async function boot (opts) {
 
   async function onbatch (batch) {
     for (const { type, paths } of batch) {
-      const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
+      const data = await Promise.all(paths.map(load_path_raw))
       const func = on[type] || fail
       func(data, type)
     }
+
+    function load_path_raw (path) { return drive.get(path).then(read_drive_file_raw) }
+    function read_drive_file_raw (file) { return file.raw }
   }
   function fail (data, type) { console.warn(__filename + 'invalid message', { cause: { data, type } }) }
-  function inject (data) {
-    style.innerHTML = data.join('\n')
-  }
+  function inject (data) { style.innerHTML = data.join('\n') }
   function update_resize (data) {
     console.log('[ update_resize ]', data)
     resize_enabled = data
-    wrappers.forEach(wrap => {
+    wrappers.forEach(update_wrapper_resize)
+
+    function update_wrapper_resize (wrap) {
       const wrapper = wrap.outer.querySelector('.component-wrapper')
       if (wrapper) {
         wrapper.style.resize = resize_enabled ? 'both' : 'none'
         wrapper.style.overflow = resize_enabled ? 'auto' : 'visible'
       }
-    })
+    }
   }
   async function send_quick_editor_data () {
     const roots = admin.status.db.read(['root_datasets'])
     const result = {}
-    roots.forEach(root_dataset => {
+    roots.forEach(add_root_dataset)
+
+    function add_root_dataset (root_dataset) {
       const root = root_dataset.name
       result[root] = {}
       const inputs = sdb.admin.get_dataset({ root }) || []
-      inputs.forEach(type => {
+      inputs.forEach(add_input_type)
+
+      function add_input_type (type) {
         result[root][type] = {}
         const datasets = sdb.admin.get_dataset({ root, type })
-        datasets && Object.values(datasets).forEach(name => {
-          result[root][type][name] = {}
-          const ds = sdb.admin.get_dataset({ root, type, name: name })
-          ds.forEach(ds_id => {
-            const files = admin.status.db.read([root, ds_id]).files || []
-            result[root][type][name][ds_id] = {}
-            files.forEach(file_id => {
-              result[root][type][name][ds_id][file_id] = admin.status.db.read([root, file_id])
-            })
-          })
-        })
-      })
-    })
+
+        if (!datasets) return
+        Object.values(datasets).forEach(add_dataset_name)
+
+        function add_dataset_name (dataset_name) {
+          result[root][type][dataset_name] = {}
+          const dataset_ids = sdb.admin.get_dataset({ root, type, name: dataset_name })
+          dataset_ids.forEach(add_dataset_id)
+
+          function add_dataset_id (dataset_id) {
+            const files = admin.status.db.read([root, dataset_id]).files || []
+            result[root][type][dataset_name][dataset_id] = {}
+            files.forEach(add_file_data)
+
+            function add_file_data (file_id) { result[root][type][dataset_name][dataset_id][file_id] = admin.status.db.read([root, file_id]) }
+          }
+        }
+      }
+    }
 
     const editor_id = admin.status.a2i[admin.status.s2i[editor_subs[0].sid]]
     const port = await item.get(editor_id)
@@ -440,7 +476,7 @@ function fallback_module () {
     '../src/node_modules/taskbar',
     '../src/node_modules/tabsbar',
     '../src/node_modules/action_bar',
-    '../src/node_modules/space',
+    '../src/node_modules/program_container',
     '../src/node_modules/tabs',
     '../src/node_modules/console_history',
     '../src/node_modules/actions',
@@ -448,7 +484,7 @@ function fallback_module () {
     '../src/node_modules/task_manager',
     '../src/node_modules/quick_actions',
     '../src/node_modules/graph_explorer_wrapper',
-    '../src/node_modules/manager',
+    '../src/node_modules/action_executor',
     '../src/node_modules/steps_wizard'
   ]
   const subs = {}
@@ -481,7 +517,7 @@ function fallback_module () {
       actions: 'actions'
     }
   }
-  subs['../src/node_modules/space'] = {
+  subs['../src/node_modules/program_container'] = {
     $: '',
     0: '',
     mapping: {
@@ -504,21 +540,7 @@ function fallback_module () {
       docs: 'docs'
     }
   }
-  subs['../src/node_modules/manager'] = {
-    $: '',
-    0: '',
-    mapping: {
-      icons: 'icons',
-      style: 'style',
-      variables: 'variables',
-      data: 'data',
-      actions: 'actions',
-      hardcons: 'hardcons',
-      prefs: 'prefs',
-      docs: 'docs'
-    }
-  }
-  subs['../src/node_modules/exec'] = {
+  subs['../src/node_modules/action_executor'] = {
     $: '',
     0: '',
     mapping: {
@@ -834,4 +856,9 @@ function fallback_module () {
       }
     }
   }
+}
+
+function handle_admin_message (msg) {
+  const { type } = msg
+  admin_on[type] && admin_on[type]()
 }
