@@ -71,9 +71,7 @@ async function graph_explorer (opts, protocol) {
   el.className = 'graph-explorer-wrapper'
   const shadow = el.attachShadow({ mode: 'closed' })
   shadow.innerHTML = `
-    <div>
-      <div class="graph-container"></div>
-    </div>
+    <div class="graph-container"></div>
     <div class="searchbar"></div>
     <div class="menubar"></div>
   `
@@ -3462,15 +3460,12 @@ async function action_bar (opts, protocol) {
   }
 
   function quick_actions__action_submitted (msg) {
-    const result = JSON.stringify(actions_data[selected_action].map(get_step_data), null, 2)
     const head_to_quick = [by, quick_actions_sid, mid++]
     const refs_to_quick = msg.head ? { cause: msg.head } : undefined
     _.send_quick_actions({ head: head_to_quick, refs: refs_to_quick, type: 'deactivate_input_field', data: { reason: 'completed' } })
     const head = [by, to, mid++]
     const refs = msg.head ? { cause: msg.head } : undefined
-    _.up({ head, refs, type: 'action_submitted', data: { result, selected_action } })
-
-    function get_step_data (step) { return step.data }
+    _.up?.({ head, refs, type: 'action_submitted', data: { selected_action } })
   }
 
   function onmessage (msg) {
@@ -3502,6 +3497,7 @@ async function action_bar (opts, protocol) {
 
   function update_quick_actions_for_app (msg) {
     const { data, type } = msg
+    actions_data = data
     const head_to_quick_actions = [by, quick_actions_sid, mid++]
     const refs = msg.head ? { cause: msg.head } : {}
     _.send_quick_actions({ head: head_to_quick_actions, refs, type, data })
@@ -3866,29 +3862,30 @@ async function action_executor (opts, protocol) {
   }
 
   function form__action_submitted (data, type, msg) {
-    console.log('action_executor.on_form_submitted', data, variables, selected_action)
-    const step = data.index !== undefined ? variables[selected_action][data.index] : undefined
+    console.log('exec.on_form_submitted', data, variables, selected_action)
+    const step = selected_action.steps[data?.index]
     Object.assign(step, {
       is_completed: true,
       status: 'completed',
       data: data.value
     })
+
     const refs = msg.head ? { cause: msg.head } : {}
     const head_to_program = [by, program_sid, mid++]
-    _.send_program({ head: head_to_program, refs, type: 'update_data', data: variables })
+    _.send_program?.({ head: head_to_program, refs, type: 'update_data', data: all_data })
 
     const head_to_steps = [by, steps_wizard_sid, mid++]
-    _.send_steps_wizard({ head: head_to_steps, type: 'init_data', data: variables[selected_action] })
+    _.send_steps_wizard?.({ head: head_to_steps, type: 'init_data', data: selected_action.steps })
 
-    if (variables[selected_action][variables[selected_action].length - 1].is_completed) {
+    if (selected_action.steps[selected_action.steps.length - 1]?.is_completed) {
       const head = [by, to, mid++]
       _.up({ head, refs, type: 'show_submit_btn' })
     }
   }
 
   function form__action_incomplete (data, type, msg) {
-    console.log('action_executor.on_form_incomplete', data, variables, selected_action)
-    const step = data.index !== undefined ? variables[selected_action][data.index] : undefined
+    console.log('exec.on_form_incomplete', data, variables, selected_action)
+    const step = selected_action.steps[data?.index]
 
     if (!step.is_completed) return
 
@@ -3899,10 +3896,10 @@ async function action_executor (opts, protocol) {
     })
     const refs = msg.head ? { cause: msg.head } : {}
     const head_to_program = [by, program_sid, mid++]
-    _.send_program({ head: head_to_program, refs, type: 'update_data', data: variables })
+    _.send_program?.({ head: head_to_program, refs, type: 'update_data', data: all_data })
 
     const head_to_steps = [by, steps_wizard_sid, mid++]
-    _.send_steps_wizard({ head: head_to_steps, type: 'init_data', data: variables[selected_action] })
+    _.send_steps_wizard?.({ head: head_to_steps, type: 'init_data', data: selected_action.steps })
 
     const head = [by, to, mid++]
     _.up({ head, refs, type: 'hide_submit_btn' })
@@ -3939,6 +3936,7 @@ async function action_executor (opts, protocol) {
 
   function action_submitted (msg) {
     const { data } = msg
+    data.result = JSON.stringify(selected_action.steps.map(step => step.data), null, 2)
     const head = [by, program_sid, mid++]
     const refs = msg.head ? { cause: msg.head } : {}
     _.send_program({ head, refs, type: 'display_result', data })
@@ -3968,6 +3966,7 @@ async function action_executor (opts, protocol) {
   function activate_steps_wizard (msg) {
     if (!all_data) return
     const steps_data = all_data.find(matches_selected_action)
+    selected_action = steps_data
     if (!steps_data) return
     steps_toggle_view('block')
     const head_to_steps = [by, steps_wizard_sid, mid++]
@@ -5101,6 +5100,7 @@ async function form_input (opts, protocol) {
 
   function step_data (data, type) {
     current_step = data
+    input_field_el.value = data?.data
 
     input_accessible = data.is_accessible !== false
 
@@ -6980,7 +6980,10 @@ async function quick_actions (opts, protocol) {
     _.up({ head, refs, type: 'display_actions', data: { display: 'none', reason } })
   }
 
-  function show_submit_btn () { submit_btn.style.display = 'flex' }
+  function show_submit_btn () {
+    submit_btn.style.display = 'flex'
+    confirm_btn.style.display = 'none'
+  }
   function hide_submit_btn () { submit_btn.style.display = 'none' }
 
   function update_current_step (data) {
@@ -7135,7 +7138,7 @@ async function quick_actions (opts, protocol) {
       const pass_data = {
         action: matching_action.name,
         current_step: 1,
-        total_steps: 3
+        total_steps: matching_action.total_steps || 1
       }
       update_input_display(pass_data)
     } else {
@@ -10270,6 +10273,7 @@ async function boot (opts) {
               temp_quick_actions = {}
               temp_quick_actions.name = action_entry.name
               temp_quick_actions.icon = action_entry.icon
+              temp_quick_actions.total_steps = action_entry.steps.length
               result_quick_actions.push(temp_quick_actions)
             }
 
