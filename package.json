@@ -17,12 +17,14 @@
   "scripts": {
     "start": "budo web/page.js:bundle.js --dir . --live --open -- -i STATE",
     "build": "browserify web/page.js -i STATE -o bundle.js",
-    "lint": "standardx --fix"
+    "lint": "standardx --fix",
+    "test": "vitest run"
   },
   "devDependencies": {
     "browserify": "^17.0.1",
     "budo": "^11.8.4",
-    "standardx": "^7.0.0"
+    "standardx": "^7.0.0",
+    "vitest": "^1.2.0" 
   },
   "eslintConfig": {
     "env": {
