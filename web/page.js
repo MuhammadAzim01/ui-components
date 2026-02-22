@@ -95,9 +95,7 @@ async function boot (opts) {
   <div class="navbar-slot"></div>
   <div class="components-wrapper-container">
     <div class="components-wrapper"></div>
-  </div>
-  <style>
-  </style>`
+  </div>`
   el.style.margin = 0
   el.style.backgroundColor = '#d8dee9'
 
@@ -107,7 +105,8 @@ async function boot (opts) {
 
   const navbar_slot = shadow.querySelector('.navbar-slot')
   const components_wrapper = shadow.querySelector('.components-wrapper')
-  const style = shadow.querySelector('style')
+  const sheet = new CSSStyleSheet()
+  shadow.adoptedStyleSheets = [sheet]
 
   const entries = Object.entries(imports)
   const wrappers = []
@@ -174,9 +173,9 @@ async function boot (opts) {
   send_quick_editor_data()
   admin_on.import = send_quick_editor_data
 
-    function theme_widget_protocol (send) {
+  function theme_widget_protocol (send) {
     send_to_theme_widget = send
-const action_handlers = {
+    const action_handlers = {
       set_docs_mode: handle_set_docs_mode,
       set_doc_display_handler: handle_set_doc_display_handler,
       focused_app_changed: handle_focused_app_changed
@@ -194,40 +193,40 @@ const action_handlers = {
 
     function handle_focused_app_changed (msg) {
       const actions = docs_admin.get_actions(msg.data.sid)
-                update_actions_for_app(actions, msg)
+      update_actions_for_app(actions, msg)
     }
 
-        async function update_actions_for_app (data, msg) {
-          const focused_app = msg.data.type
-          let actions_data = null
-          let quick_actions_data = null
-          let steps_wizard_data = null
+    async function update_actions_for_app (data, msg) {
+      const focused_app = msg.data.type
+      let actions_data = null
+      let quick_actions_data = null
+      let steps_wizard_data = null
 
-          if (focused_app) {
-            const component_actions = await get_component_actions(data)
-            actions_data = component_actions.actions
-            quick_actions_data = component_actions.quick_actions
-            steps_wizard_data = component_actions.steps_wizard
-          }
+      if (focused_app) {
+        const component_actions = await get_component_actions(data)
+        actions_data = component_actions.actions
+        quick_actions_data = component_actions.quick_actions
+        steps_wizard_data = component_actions.steps_wizard
+      }
 
-                    const refs = msg.head ? { cause: msg.head } : {}
-          send_to_theme_widget({ head: [by, to, mid++], refs, type: 'update_actions_for_app', data: actions_data })
-send_to_theme_widget({ head: [by, to, mid++], refs, type: 'update_quick_actions_for_app', data: quick_actions_data })
-send_to_theme_widget({ head: [by, to, mid++], refs, type: 'update_steps_wizard_for_app', data: steps_wizard_data })
-}
+      const refs = msg.head ? { cause: msg.head } : {}
+      send_to_theme_widget({ head: [by, to, mid++], refs, type: 'update_actions_for_app', data: actions_data })
+      send_to_theme_widget({ head: [by, to, mid++], refs, type: 'update_quick_actions_for_app', data: quick_actions_data })
+      send_to_theme_widget({ head: [by, to, mid++], refs, type: 'update_steps_wizard_for_app', data: steps_wizard_data })
+    }
 
-          async function get_component_actions (data) {
-            const result_actions = []
-            const result_quick_actions = []
-            
-            data.forEach(add_action_entry)
+    async function get_component_actions (data) {
+      const result_actions = []
+      const result_quick_actions = []
 
-            return {
-              actions: result_actions,
-              quick_actions: result_quick_actions,
-              steps_wizard: data
-            }
-          
+      data.forEach(add_action_entry)
+
+      return {
+        actions: result_actions,
+        quick_actions: result_quick_actions,
+        steps_wizard: data
+      }
+
       function add_action_entry (entry) {
         result_actions.push({ 
           action: entry.name, 
@@ -406,7 +405,7 @@ send_to_theme_widget({ head: [by, to, mid++], refs, type: 'update_steps_wizard_f
     function read_drive_file_raw (file) { return file.raw }
   }
   function fail (data, type) { console.warn(__filename + 'invalid message', { cause: { data, type } }) }
-  function inject (data) { style.innerHTML = data.join('\n') }
+    function inject (data) { sheet.replaceSync(data[0]) }
   function update_resize (data) {
     console.log('[ update_resize ]', data)
     resize_enabled = data
