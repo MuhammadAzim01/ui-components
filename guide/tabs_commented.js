@@ -34,8 +34,8 @@ async function component (opts, protocol) {
     scroll: onscroll
   }
   const on_message = {
-    update_tab_data: onmessage__update_tab_data,
-    scroll_to_tab: onmessage__scroll_to_tab
+    update_tab_data: onmessage_update_tab_data,
+    scroll_to_tab: onmessage_scroll_to_tab
   }
   // creating the main element and attaching shadow DOM to it.
   const div = document.createElement('div')
@@ -192,14 +192,14 @@ async function component (opts, protocol) {
     handler(msg)
   }
 
-  function onmessage__update_tab_data (msg) {
+  function onmessage_update_tab_data (msg) {
     // Example: Update tab data when parent sends new data
     if (msg.data.variables) {
       onvariables([msg.data.variables])
     }
   }
 
-  function onmessage__scroll_to_tab (msg) {
+  function onmessage_scroll_to_tab (msg) {
     // Example: Scroll to specific tab when requested
     if (!entries || msg.data === undefined || msg.data.index === undefined) return
     const tab_elements = entries.querySelectorAll('.tabsbtn')

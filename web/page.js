@@ -95,9 +95,7 @@ async function boot (opts) {
   <div class="navbar-slot"></div>
   <div class="components-wrapper-container">
     <div class="components-wrapper"></div>
-  </div>
-  <style>
-  </style>`
+  </div>`
   el.style.margin = 0
   el.style.backgroundColor = '#d8dee9'
 
@@ -107,7 +105,8 @@ async function boot (opts) {
 
   const navbar_slot = shadow.querySelector('.navbar-slot')
   const components_wrapper = shadow.querySelector('.components-wrapper')
-  const style = shadow.querySelector('style')
+  const sheet = new CSSStyleSheet()
+  shadow.adoptedStyleSheets = [sheet]
 
   const entries = Object.entries(imports)
   const wrappers = []
@@ -174,81 +173,72 @@ async function boot (opts) {
   send_quick_editor_data()
   admin_on.import = send_quick_editor_data
 
-  // DOCS admin handlers for theme widget
   function theme_widget_protocol (send) {
     send_to_theme_widget = send
+    const action_handlers = {
+      set_docs_mode: handle_set_docs_mode,
+      set_doc_display_handler: handle_set_doc_display_handler,
+      focused_app_changed: handle_focused_app_changed
+    }
     return on
+
     function on (msg) {
-      if (msg.type === 'set_docs_mode') {
-        docs_admin.set_docs_mode(msg.data.active)
-      } else if (msg.type === 'set_doc_display_handler') {
-        docs_admin.set_doc_display_handler(msg.data.callback)
-      } else if (msg.type === 'focused_app_changed') {
-        // Use DOCS admin to lookup actions by sid reference
-        const focused_sid = msg.data.sid
-        let actions = null
+      const handler = action_handlers[msg.type] || handle_fail
+      handler(msg)
+    }
 
-        if (focused_sid && docs_admin) {
-          actions = docs_admin.get_actions(focused_sid)
-        }
-        update_actions_for_app(actions)
+    function handle_set_docs_mode (msg) { docs_admin.set_docs_mode(msg.data.active) }
+    function handle_set_doc_display_handler (msg) { docs_admin.set_doc_display_handler(msg.data.callback) }
+    function handle_fail (msg) { console.warn('page: unhandled message from theme_widget', msg) }
 
-        async function update_actions_for_app (data) {
-          const focused_app = msg.data.type
-          let actions_data = null
-          let quick_actions_data = null
-          let steps_wizard_data = null
+    function handle_focused_app_changed (msg) {
+      const actions = docs_admin.get_actions(msg.data.sid)
+      update_actions_for_app(actions, msg)
+    }
 
-          if (focused_app) {
-            const component_actions = await get_component_actions(data)
-            actions_data = component_actions.actions
-            quick_actions_data = component_actions.quick_actions
-            steps_wizard_data = component_actions.steps_wizard
-          }
+    async function update_actions_for_app (data, msg) {
+      const focused_app = msg.data.type
+      let actions_data = null
+      let quick_actions_data = null
+      let steps_wizard_data = null
 
-          const actions_message_data = actions_data
-          const head = [by, to, mid++]
-          const refs = msg.head ? { cause: msg.head } : {}
-          send_to_theme_widget({ head, refs, type: 'update_actions_for_app', data: actions_message_data })
+      if (focused_app) {
+        const component_actions = await get_component_actions(data)
+        actions_data = component_actions.actions
+        quick_actions_data = component_actions.quick_actions
+        steps_wizard_data = component_actions.steps_wizard
+      }
 
-          const quick_actions_message_data = quick_actions_data
-          const quick_actions_head = [by, to, mid++]
-          const quick_actions_refs = msg.head ? { cause: msg.head } : {}
-          send_to_theme_widget({ head: quick_actions_head, refs: quick_actions_refs, type: 'update_quick_actions_for_app', data: quick_actions_message_data })
+      const refs = msg.head ? { cause: msg.head } : {}
+      send_to_theme_widget({ head: [by, to, mid++], refs, type: 'update_actions_for_app', data: actions_data })
+      send_to_theme_widget({ head: [by, to, mid++], refs, type: 'update_quick_actions_for_app', data: quick_actions_data })
+      send_to_theme_widget({ head: [by, to, mid++], refs, type: 'update_steps_wizard_for_app', data: steps_wizard_data })
+    }
 
-          const steps_wizard_head = [by, to, mid++]
-          const steps_wizard_refs = msg.head ? { cause: msg.head } : {}
-          send_to_theme_widget({ head: steps_wizard_head, refs: steps_wizard_refs, type: 'update_steps_wizard_for_app', data: steps_wizard_data })
-          async function get_component_actions (data) {
-            const result_actions = []
-            const result_quick_actions = []
-            let temp_actions = {}
-            let temp_quick_actions = {}
+    async function get_component_actions (data) {
+      const result_actions = []
+      const result_quick_actions = []
 
-            data.forEach(add_component_action_entry)
+      data.forEach(add_action_entry)
 
-            function add_component_action_entry (action_entry) {
-              temp_actions = {}
-              temp_actions.action = action_entry.name
-              temp_actions.icon = action_entry.icon
-              temp_actions.pinned = action_entry.status.pinned
-              temp_actions.default = action_entry.status.default
-              result_actions.push(temp_actions)
+      return {
+        actions: result_actions,
+        quick_actions: result_quick_actions,
+        steps_wizard: data
+      }
 
-              temp_quick_actions = {}
-              temp_quick_actions.name = action_entry.name
-              temp_quick_actions.icon = action_entry.icon
-              temp_quick_actions.total_steps = action_entry.steps.length
-              result_quick_actions.push(temp_quick_actions)
-            }
-
-            return {
-              actions: result_actions,
-              quick_actions: result_quick_actions,
-              steps_wizard: data
-            }
-          }
-        }
+      function add_action_entry (entry) {
+        result_actions.push({ 
+          action: entry.name, 
+          icon: entry.icon, 
+          pinned: entry.status.pinned, 
+          default: entry.status.default 
+        })
+        result_quick_actions.push({
+          name: entry.name, 
+          icon: entry.icon, 
+          total_steps: entry.steps.length 
+        })
       }
     }
   }
@@ -415,7 +405,7 @@ async function boot (opts) {
     function read_drive_file_raw (file) { return file.raw }
   }
   function fail (data, type) { console.warn(__filename + 'invalid message', { cause: { data, type } }) }
-  function inject (data) { style.innerHTML = data.join('\n') }
+    function inject (data) { sheet.replaceSync(data[0]) }
   function update_resize (data) {
     console.log('[ update_resize ]', data)
     resize_enabled = data
