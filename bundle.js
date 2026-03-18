@@ -3388,7 +3388,9 @@ async function action_bar (opts, protocol) {
     hide_submit_btn,
     step_clicked: parent__step_clicked,
     update_quick_actions_for_app,
-    update_quick_actions_input
+    update_quick_actions_input,
+    action_submitted: parent__action_submitted,
+    clean_up: parent__clean_up
   }
 
   return el
@@ -3526,6 +3528,28 @@ async function action_bar (opts, protocol) {
     _.up({ head, refs, type: 'render_form', data })
   }
 
+  // Handle action_submitted from parent (forwarded from action_executor via taskbar)
+  function parent__action_submitted (msg) {
+    // Deactivate quick actions input field and forward to parent
+    const head_to_quick = [by, quick_actions_sid, mid++]
+    const refs_to_quick = msg.head ? { cause: msg.head } : undefined
+    _.send_quick_actions({ head: head_to_quick, refs: refs_to_quick, type: 'deactivate_input_field', data: { reason: 'completed' } })
+    const head = [by, to, mid++]
+    const refs = msg.head ? { cause: msg.head } : undefined
+    _.up?.({ head, refs, type: 'action_submitted', data: msg.data })
+  }
+
+  // Handle clean_up from parent (forwarded from action_executor via taskbar - for cancellations)
+  function parent__clean_up (msg) {
+    // Deactivate quick actions input field with cancel reason
+    const head_to_quick = [by, quick_actions_sid, mid++]
+    const refs_to_quick = msg.head ? { cause: msg.head } : undefined
+    _.send_quick_actions({ head: head_to_quick, refs: refs_to_quick, type: 'deactivate_input_field', data: { reason: 'cancel' } })
+    const head = [by, to, mid++]
+    const refs = msg.head ? { cause: msg.head } : undefined
+    _.up?.({ head, refs, type: 'clean_up', data: msg.data })
+  }
+
   function ui_focus_docs (msg) { _.up(msg) }
 }
 
@@ -3633,7 +3657,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/action_bar/action_bar.js")
-},{"DOCS":3,"STATE":1,"quick_actions":17}],5:[function(require,module,exports){
+},{"DOCS":3,"STATE":1,"quick_actions":18}],5:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -3642,12 +3666,12 @@ const { get } = statedb(fallback_module)
 const program = require('program')
 const steps_wizard = require('steps_wizard')
 
-const { form_input, input_test, tile_split_choice } = program
+const { form_input, input_test, form_tile_split_choice } = program
 
 const component_modules = {
   form_input,
   input_test,
-  tile_split_choice
+  form_tile_split_choice
   // Add more form input components here if needed
 }
 
@@ -3852,7 +3876,8 @@ async function action_executor (opts, protocol) {
 
       const form_input_handlers = {
         action_submitted: form__action_submitted,
-        action_incomplete: form__action_incomplete
+        action_incomplete: form__action_incomplete,
+        action_complete: form__action_complete
       }
 
       return on
@@ -3906,6 +3931,26 @@ async function action_executor (opts, protocol) {
 
     const head = [by, to, mid++]
     _.up({ head, refs, type: 'hide_submit_btn' })
+  }
+
+  // Form requested action completion - check if all required steps are done and auto-submit
+  function form__action_complete (data, type, msg) {
+    console.log('exec.form_action_complete', data, selected_action)
+    if (!selected_action || !selected_action.steps) return
+
+    // Check if all mandatory steps are completed
+    const all_mandatory_complete = selected_action.steps.every(is_step_complete_or_optional)
+
+    if (all_mandatory_complete) {
+      // Auto-submit the action
+      const refs = msg.head ? { cause: msg.head } : {}
+      const head = [by, to, mid++]
+      _.up({ head, refs, type: 'action_auto_completed', data: { selected_action, trigger: 'form' } })
+    }
+
+    function is_step_complete_or_optional (step) {
+      return step.is_completed || step.type === 'optional'
+    }
   }
 
   // -------------------------------
@@ -4053,7 +4098,7 @@ function fallback_module () {
             docs: 'docs'
           }
         },
-        'program>tile_split_choice': {
+        'program>form_tile_split_choice': {
           0: '',
           mapping: {
             style: 'style',
@@ -4098,7 +4143,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/action_executor/action_executor.js")
-},{"STATE":1,"program":15,"steps_wizard":19}],6:[function(require,module,exports){
+},{"STATE":1,"program":16,"steps_wizard":20}],6:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5220,6 +5265,184 @@ function fallback_module () {
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { get } = statedb(fallback_module)
+const DOCS = require('DOCS')
+
+module.exports = form_tile_split_choice
+async function form_tile_split_choice (opts, protocol) {
+  const { id, sdb } = await get(opts.sid)
+  const { drive } = sdb
+  const ids = opts.ids
+  if (!ids || !ids.up) {
+    throw new Error(`Component ${__filename} requires ids.up to be provided`)
+  }
+  const by = id
+  const to = ids.up
+
+  const on = {
+    style: inject,
+    data: ondata
+  }
+
+  let current_step = null
+  let mid = 0
+  let _ = { up: null }
+
+
+  const el = document.createElement('div')
+  const shadow = el.attachShadow({ mode: 'closed' })
+  shadow.innerHTML = `
+  <div class="tile-split-chooser">
+    <div class="title">Split Tile</div>
+    <div class="choices">
+      <button class="choice-btn" data-choice="up">
+        <span class="arrow up"></span>
+        <span class="label">Up</span>
+      </button>
+      <button class="choice-btn" data-choice="left">
+        <span class="arrow left"></span>
+        <span class="label">Left</span>
+      </button>
+      <button class="choice-btn" data-choice="right">
+        <span class="arrow right"></span>
+        <span class="label">Right</span>
+      </button>
+      <button class="choice-btn" data-choice="down">
+        <span class="arrow down"></span>
+        <span class="label">Down</span>
+      </button>
+    </div>
+    <div class="hint">Choose direction to split the tile</div>
+  </div>
+  <style></style>
+  `
+  const style = shadow.querySelector('style')
+  const buttons = Array.from(shadow.querySelectorAll('.choice-btn'))
+
+  buttons.forEach(btn => btn.addEventListener('click', on_choice_click))
+
+  await sdb.watch(onbatch)
+  
+  const parent_handler = {
+    step_data,
+    reset_data
+  }
+
+  // register protocol after handlers are defined to avoid TDZ issues
+  if (protocol) {
+    const send = protocol(onmessage)
+    _ = { up: send }
+  }
+
+  return el
+
+  function onmessage ({ type, data }) {
+    const handler = parent_handler[type] || fail
+    handler(data, type)
+  }
+
+  async function onbatch (batch) {
+    for (const { type, paths } of batch) {
+      const data = await Promise.all(paths.map(load_path_raw))
+      const func = on[type] || fail
+      func(data, type)
+    }
+
+    function load_path_raw (path) { return drive.get(path).then(read_drive_file_raw) }
+    function read_drive_file_raw (file) { return file.raw }
+  }
+
+  function fail (data, type) { console.warn('invalid message', { cause: { data, type } }) }
+
+  function inject (data) {
+    style.replaceChildren(create_style_element())
+
+    function create_style_element () {
+      const style_el = document.createElement('style')
+      style_el.textContent = data[0]
+      return style_el
+    }
+  }
+
+  function ondata (data) {
+    // support persisted/default choice if present
+    if (data.length > 0 && data[0] && data[0].choice) {
+      highlight_choice(String(data[0].choice))
+    }
+  }
+
+  function step_data (data) {
+    current_step = data
+  }
+
+  function reset_data () {
+    // nothing for now
+  }
+
+  async function on_choice_click (ev) {
+    const choice = ev.currentTarget.getAttribute('data-choice')
+    await drive.put('data/form_tile_split_choice.json', { choice })
+    highlight_choice(choice)
+    const head = [by, to, mid++]
+    const refs = {}
+    _.up({ head, refs, type: 'action_submitted', data: { value: choice, index: current_step?.index ?? 0 } })
+
+    // If this is a single-step action, auto-complete the action
+    if (current_step && current_step.total_steps === 1) {
+      const complete_head = [by, to, mid++]
+      _.up({ head: complete_head, refs: {}, type: 'action_complete', data: { value: choice } })
+    }
+  }
+
+  function highlight_choice (choice) {
+    buttons.forEach(b => {
+      const isActive = b.getAttribute('data-choice') === choice
+      b.classList.toggle('active', isActive)
+      b.setAttribute('aria-pressed', isActive ? 'true' : 'false')
+      if (isActive) {
+        b.style.background = 'linear-gradient(180deg, rgba(103,195,255,0.06), rgba(103,195,255,0.02))'
+        b.style.boxShadow = '0 12px 36px rgba(103,195,255,0.16)'
+        b.style.borderColor = 'rgba(103,195,255,0.36)'
+        b.style.transform = 'translateY(-2px) scale(1.01)'
+      } else {
+        b.style.background = ''
+        b.style.boxShadow = ''
+        b.style.borderColor = ''
+        b.style.transform = ''
+      }
+    })
+  }
+}
+
+function fallback_module () {
+  return {
+    api: fallback_instance,
+    _: {
+      DOCS: { $: '' }
+    }
+  }
+
+  function fallback_instance () {
+    return {
+      _: { DOCS: { 0: '' } },
+      drive: {
+        'style/': {
+          'form_tile_split_choice.css': { $ref: 'form_tile_split_choice.css' }
+        },
+        'data/': {
+          'form_tile_split_choice.json': { raw: { choice: null } }
+        },
+        'docs/': { 'README.md': { $ref: 'README.md' } }
+      }
+    }
+  }
+}
+
+}).call(this)}).call(this,"/src/node_modules/form_tile_split_choice/form_tile_split_choice.js")
+},{"DOCS":3,"STATE":1}],11:[function(require,module,exports){
+(function (__filename){(function (){
+const STATE = require('STATE')
+const statedb = STATE(__filename)
+const { get } = statedb(fallback_module)
 const graph_explorer = require('graph-explorer')
 const graphdb = require('./graphdb')
 
@@ -5563,7 +5786,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/graph_explorer_wrapper/graph_explorer_wrapper.js")
-},{"./graphdb":11,"STATE":1,"graph-explorer":2}],11:[function(require,module,exports){
+},{"./graphdb":12,"STATE":1,"graph-explorer":2}],12:[function(require,module,exports){
 module.exports = graphdb
 
 function graphdb (entries) {
@@ -5592,7 +5815,7 @@ function graphdb (entries) {
   function raw () { return entries }
 }
 
-},{}],12:[function(require,module,exports){
+},{}],13:[function(require,module,exports){
 module.exports = { resource }
 
 function resource (timeout = 1000) {
@@ -5618,7 +5841,7 @@ function resource (timeout = 1000) {
   }
 }
 
-},{}],13:[function(require,module,exports){
+},{}],14:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5855,7 +6078,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/input_test/input_test.js")
-},{"DOCS":3,"STATE":1}],14:[function(require,module,exports){
+},{"DOCS":3,"STATE":1}],15:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -6138,7 +6361,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/menu/menu.js")
-},{"STATE":1}],15:[function(require,module,exports){
+},{"STATE":1}],16:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -6146,11 +6369,11 @@ const { get } = statedb(fallback_module)
 
 const form_input = require('form_input')
 const input_test = require('input_test')
-const tile_split_choice = require('tile_split_choice')
+const form_tile_split_choice = require('form_tile_split_choice')
 
 program.form_input = form_input
 program.input_test = input_test
-program.tile_split_choice = tile_split_choice
+program.form_tile_split_choice = form_tile_split_choice
 
 module.exports = program
 
@@ -6242,7 +6465,7 @@ function fallback_module () {
 
       form_input: { $: '' },
       input_test: { $: '' },
-      tile_split_choice: { $: '' }
+      form_tile_split_choice: { $: '' }
     }
   }
 
@@ -6269,7 +6492,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/program/program.js")
-},{"STATE":1,"form_input":9,"input_test":13,"tile_split_choice":26}],16:[function(require,module,exports){
+},{"STATE":1,"form_input":9,"form_tile_split_choice":10,"input_test":14}],17:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -6804,7 +7027,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/program_container/program_container.js")
-},{"DOCS":3,"STATE":1,"actions":6,"console_history":7,"docs_window":8,"graph_explorer_wrapper":10,"tabbed_editor":20}],17:[function(require,module,exports){
+},{"DOCS":3,"STATE":1,"actions":6,"console_history":7,"docs_window":8,"graph_explorer_wrapper":11,"tabbed_editor":21}],18:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -7180,6 +7403,9 @@ async function quick_actions (opts, protocol) {
     const refs = {}
     _.up({ head, refs, type: 'display_actions', data: { display: 'none', reason: 'selected' } })
 
+    const activate_head = [by, to, mid++]
+    _.up({ head: activate_head, refs: {}, type: 'activate_steps_wizard', data: stored_selected_action })
+
     function matches_selected_command (action) { return action.name === command || action.action === command }
   }
 
@@ -7496,7 +7722,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/quick_actions/quick_actions.js")
-},{"DOCS":3,"STATE":1}],18:[function(require,module,exports){
+},{"DOCS":3,"STATE":1}],19:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -7940,7 +8166,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/quick_editor/quick_editor.js")
-},{"STATE":1,"helpers":12}],19:[function(require,module,exports){
+},{"STATE":1,"helpers":13}],20:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -7987,17 +8213,18 @@ async function steps_wizard (opts, protocol) {
   `
 
   const style = shadow.querySelector('style')
+  const steps_wizard_main = shadow.querySelector('.steps-wizard')
   const steps_entries = shadow.querySelector('.steps-slot')
   await sdb.watch(onbatch)
 
   // for demo purpose
   render_steps([
     { name: 'Optional Step', type: 'optional', is_completed: false, component: 'form_input', status: 'default', data: '' },
-    { name: 'Split Tile', type: 'mandatory', is_completed: false, component: 'tile_split_choice', status: 'default', data: '' },
+    { name: 'Split Tile', type: 'mandatory', is_completed: false, component: 'form_tile_split_choice', status: 'default', data: '' },
     { name: 'Step 3', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
     { name: 'Step 4', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
     { name: 'Step 5', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' }
-  ])
+  ], false)
 
   return el
 
@@ -8006,25 +8233,29 @@ async function steps_wizard (opts, protocol) {
     if (type === 'init_data') {
       // If data contains steps from the new action format, use them
       if (data) {
-        render_steps(data)
+        render_steps(data, true)
       } else {
         // Fallback to default steps
         variables = [
           { name: 'Optional Step', type: 'optional', is_completed: false, component: 'form_input', status: 'default', data: '' },
-          { name: 'Split Tile', type: 'mandatory', is_completed: false, component: 'tile_split_choice', status: 'default', data: '' },
+          { name: 'Split Tile', type: 'mandatory', is_completed: false, component: 'form_tile_split_choice', status: 'default', data: '' },
           { name: 'Step 3', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: 'asdasd' },
           { name: 'Step 4', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
           { name: 'Step 5', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' }
         ]
-        render_steps(variables)
+        render_steps(variables, true)
       }
     }
   }
 
-  function render_steps (steps) {
+  function render_steps (steps, auto_focus_first) {
     if (!steps) { return }
 
+    const is_single_step = steps.length === 1
+    steps_wizard_main.style.display = is_single_step ? 'none' : ''
+
     steps_entries.innerHTML = ''
+    currentActiveStep = 0
 
     steps.forEach(create_step_button)
 
@@ -8063,7 +8294,7 @@ async function steps_wizard (opts, protocol) {
         console.log('Clicked:', step)
         currentActiveStep = index
         center_step(btn)
-        render_steps(steps)
+        render_steps(steps, false)
         _.up({ head, refs, type: 'step_clicked', data: { ...step, index, total_steps: steps.length, is_accessible: accessible } })
       }
 
@@ -8073,6 +8304,14 @@ async function steps_wizard (opts, protocol) {
       }
 
       steps_entries.appendChild(btn)
+
+      if (auto_focus_first && index === 0) {
+        btn.classList.add('active')
+        center_step(btn)
+        const head = [by, to, mid++]
+        const refs = {}
+        _.up({ head, refs, type: 'step_clicked', data: { ...step, index: 0, total_steps: steps.length, is_accessible: accessible } })
+      }
     }
   }
 
@@ -8156,7 +8395,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/steps_wizard/steps_wizard.js")
-},{"DOCS":3,"STATE":1}],20:[function(require,module,exports){
+},{"DOCS":3,"STATE":1}],21:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -8586,7 +8825,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabbed_editor/tabbed_editor.js")
-},{"DOCS":3,"STATE":1}],21:[function(require,module,exports){
+},{"DOCS":3,"STATE":1}],22:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -8900,7 +9139,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabs/tabs.js")
-},{"DOCS":3,"STATE":1}],22:[function(require,module,exports){
+},{"DOCS":3,"STATE":1}],23:[function(require,module,exports){
 (function (__filename){(function (){
 const state = require('STATE')
 const state_db = state(__filename)
@@ -9320,7 +9559,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabsbar/tabsbar.js")
-},{"DOCS":3,"STATE":1,"tabs":21,"task_manager":23}],23:[function(require,module,exports){
+},{"DOCS":3,"STATE":1,"tabs":22,"task_manager":24}],24:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -9512,7 +9751,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/task_manager/task_manager.js")
-},{"DOCS":3,"STATE":1}],24:[function(require,module,exports){
+},{"DOCS":3,"STATE":1}],25:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -9637,7 +9876,8 @@ async function taskbar (opts, protocol) {
       load_actions: action_executor__forward_action_bar,
       step_clicked: action_executor__forward_action_bar,
       show_submit_btn: action_executor__forward_action_bar,
-      hide_submit_btn: action_executor__forward_action_bar
+      hide_submit_btn: action_executor__forward_action_bar,
+      action_auto_completed: action_executor__auto_completed
     }
     return on
     function on (msg) {
@@ -9648,6 +9888,12 @@ async function taskbar (opts, protocol) {
 
     function action_executor__forward_action_bar (msg) { _.action_bar(msg) }
     function action_executor__noop () {}
+
+    // Handle form-triggered auto-completion
+    function action_executor__auto_completed (msg) {
+      // Forward to action_bar to trigger submit behavior
+      _.action_bar({ ...msg, type: 'action_submitted' })
+    }
   }
 
   function tabsbar_protocol (send) {
@@ -9798,7 +10044,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/taskbar/taskbar.js")
-},{"STATE":1,"action_bar":4,"action_executor":5,"tabsbar":22}],25:[function(require,module,exports){
+},{"STATE":1,"action_bar":4,"action_executor":5,"tabsbar":23}],26:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -10074,179 +10320,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/theme_widget/theme_widget.js")
-},{"STATE":1,"program_container":16,"taskbar":24}],26:[function(require,module,exports){
-(function (__filename){(function (){
-const STATE = require('STATE')
-const statedb = STATE(__filename)
-const { get } = statedb(fallback_module)
-const DOCS = require('DOCS')
-
-module.exports = tile_split_choice
-async function tile_split_choice (opts, protocol) {
-  const { id, sdb } = await get(opts.sid)
-  const { drive } = sdb
-  const ids = opts.ids
-  if (!ids || !ids.up) {
-    throw new Error(`Component ${__filename} requires ids.up to be provided`)
-  }
-  const by = id
-  const to = ids.up
-
-  const on = {
-    style: inject,
-    data: ondata
-  }
-
-  let current_step = null
-  let mid = 0
-  let _ = { up: null }
-
-
-  const el = document.createElement('div')
-  const shadow = el.attachShadow({ mode: 'closed' })
-  shadow.innerHTML = `
-  <div class="tile-split-chooser">
-    <div class="title">Split Tile</div>
-    <div class="choices">
-      <button class="choice-btn" data-choice="up">
-        <span class="arrow up"></span>
-        <span class="label">Up</span>
-      </button>
-      <button class="choice-btn" data-choice="left">
-        <span class="arrow left"></span>
-        <span class="label">Left</span>
-      </button>
-      <button class="choice-btn" data-choice="right">
-        <span class="arrow right"></span>
-        <span class="label">Right</span>
-      </button>
-      <button class="choice-btn" data-choice="down">
-        <span class="arrow down"></span>
-        <span class="label">Down</span>
-      </button>
-    </div>
-    <div class="hint">Choose direction to split the tile</div>
-  </div>
-  <style></style>
-  `
-  const style = shadow.querySelector('style')
-  const buttons = Array.from(shadow.querySelectorAll('.choice-btn'))
-
-  buttons.forEach(btn => btn.addEventListener('click', on_choice_click))
-
-  await sdb.watch(onbatch)
-  
-  const parent_handler = {
-    step_data,
-    reset_data
-  }
-
-  // register protocol after handlers are defined to avoid TDZ issues
-  if (protocol) {
-    const send = protocol(onmessage)
-    _ = { up: send }
-  }
-
-  return el
-
-  function onmessage ({ type, data }) {
-    const handler = parent_handler[type] || fail
-    handler(data, type)
-  }
-
-  async function onbatch (batch) {
-    for (const { type, paths } of batch) {
-      const data = await Promise.all(paths.map(load_path_raw))
-      const func = on[type] || fail
-      func(data, type)
-    }
-
-    function load_path_raw (path) { return drive.get(path).then(read_drive_file_raw) }
-    function read_drive_file_raw (file) { return file.raw }
-  }
-
-  function fail (data, type) { console.warn('invalid message', { cause: { data, type } }) }
-
-  function inject (data) {
-    style.replaceChildren(create_style_element())
-
-    function create_style_element () {
-      const style_el = document.createElement('style')
-      style_el.textContent = data[0]
-      return style_el
-    }
-  }
-
-  function ondata (data) {
-    // support persisted/default choice if present
-    if (data.length > 0 && data[0] && data[0].choice) {
-      highlight_choice(String(data[0].choice))
-    }
-  }
-
-  function step_data (data) {
-    current_step = data
-  }
-
-  function reset_data () {
-    // nothing for now
-  }
-
-  async function on_choice_click (ev) {
-    const choice = ev.currentTarget.getAttribute('data-choice')
-    await drive.put('data/tile_split_choice.json', { choice })
-    highlight_choice(choice)
-    const head = [by, to, mid++]
-    const refs = {}
-    _.up({ head, refs, type: 'action_submitted', data: { value: choice, index: current_step?.index ?? 0 } })
-  }
-
-  function highlight_choice (choice) {
-    buttons.forEach(b => {
-      const isActive = b.getAttribute('data-choice') === choice
-      b.classList.toggle('active', isActive)
-      b.setAttribute('aria-pressed', isActive ? 'true' : 'false')
-      if (isActive) {
-        b.style.background = 'linear-gradient(180deg, rgba(103,195,255,0.06), rgba(103,195,255,0.02))'
-        b.style.boxShadow = '0 12px 36px rgba(103,195,255,0.16)'
-        b.style.borderColor = 'rgba(103,195,255,0.36)'
-        b.style.transform = 'translateY(-2px) scale(1.01)'
-      } else {
-        b.style.background = ''
-        b.style.boxShadow = ''
-        b.style.borderColor = ''
-        b.style.transform = ''
-      }
-    })
-  }
-}
-
-function fallback_module () {
-  return {
-    api: fallback_instance,
-    _: {
-      DOCS: { $: '' }
-    }
-  }
-
-  function fallback_instance () {
-    return {
-      _: { DOCS: { 0: '' } },
-      drive: {
-        'style/': {
-          'tile_split_choice.css': { $ref: 'tile_split_choice.css' }
-        },
-        'data/': {
-          'tile_split_choice.json': { raw: { choice: null } }
-        },
-        'docs/': { 'README.md': { $ref: 'README.md' } }
-      }
-    }
-  }
-}
-
-}).call(this)}).call(this,"/src/node_modules/tile_split_choice/tile_split_choice.js")
-},{"DOCS":3,"STATE":1}],27:[function(require,module,exports){
+},{"STATE":1,"program_container":17,"taskbar":25}],27:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -11114,4 +11188,4 @@ function handle_admin_message (msg) {
 }
 
 }).call(this)}).call(this,"/web/page.js")
-},{"../src/node_modules/DOCS":3,"../src/node_modules/action_bar":4,"../src/node_modules/action_executor":5,"../src/node_modules/actions":6,"../src/node_modules/console_history":7,"../src/node_modules/graph_explorer_wrapper":10,"../src/node_modules/helpers":12,"../src/node_modules/menu":14,"../src/node_modules/program_container":16,"../src/node_modules/quick_actions":17,"../src/node_modules/quick_editor":18,"../src/node_modules/steps_wizard":19,"../src/node_modules/tabbed_editor":20,"../src/node_modules/tabs":21,"../src/node_modules/tabsbar":22,"../src/node_modules/task_manager":23,"../src/node_modules/taskbar":24,"../src/node_modules/theme_widget":25,"STATE":1}]},{},[27]);
+},{"../src/node_modules/DOCS":3,"../src/node_modules/action_bar":4,"../src/node_modules/action_executor":5,"../src/node_modules/actions":6,"../src/node_modules/console_history":7,"../src/node_modules/graph_explorer_wrapper":11,"../src/node_modules/helpers":13,"../src/node_modules/menu":15,"../src/node_modules/program_container":17,"../src/node_modules/quick_actions":18,"../src/node_modules/quick_editor":19,"../src/node_modules/steps_wizard":20,"../src/node_modules/tabbed_editor":21,"../src/node_modules/tabs":22,"../src/node_modules/tabsbar":23,"../src/node_modules/task_manager":24,"../src/node_modules/taskbar":25,"../src/node_modules/theme_widget":26,"STATE":1}]},{},[27]);
