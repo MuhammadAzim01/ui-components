@@ -5,6 +5,7 @@ const admin_on = {}
 admin_api.on(handle_admin_message)
 const { sdb, io, id } = statedb(fallback_module)
 const { drive, admin } = sdb
+const net = require('../src/node_modules/net_helper')
 const DOCS = require('../src/node_modules/DOCS')
 const docs = DOCS(__filename)()
 const docs_admin = docs.admin
@@ -141,6 +142,8 @@ async function boot (opts) {
   }
   const item = resource()
   io.on(register_io_port)
+  const { io: theme_widget_io, _: theme_widget_send } = net(id)
+  theme_widget_io.on.theme_widget = theme_widget_protocol
 
   function register_io_port (port) {
     const { by, to } = port
@@ -173,19 +176,14 @@ async function boot (opts) {
   send_quick_editor_data()
   admin_on.import = send_quick_editor_data
 
-  function theme_widget_protocol (send) {
-    send_to_theme_widget = send
+  function theme_widget_protocol (msg) {
     const action_handlers = {
       set_docs_mode: handle_set_docs_mode,
       set_doc_display_handler: handle_set_doc_display_handler,
       focused_app_changed: handle_focused_app_changed
     }
-    return on
-
-    function on (msg) {
-      const handler = action_handlers[msg.type] || handle_fail
-      handler(msg)
-    }
+    const handler = action_handlers[msg.type] || handle_fail
+    handler(msg)
 
     function handle_set_docs_mode (msg) { docs_admin.set_docs_mode(msg.data.active) }
     function handle_set_doc_display_handler (msg) { docs_admin.set_doc_display_handler(msg.data.callback) }
@@ -210,9 +208,9 @@ async function boot (opts) {
       }
 
       const refs = msg.head ? { cause: msg.head } : {}
-      send_to_theme_widget({ head: [by, to, mid++], refs, type: 'update_actions_for_app', data: actions_data })
-      send_to_theme_widget({ head: [by, to, mid++], refs, type: 'update_quick_actions_for_app', data: quick_actions_data })
-      send_to_theme_widget({ head: [by, to, mid++], refs, type: 'update_steps_wizard_for_app', data: steps_wizard_data })
+      theme_widget_send.theme_widget('update_actions_for_app', actions_data, refs)
+      theme_widget_send.theme_widget('update_quick_actions_for_app', quick_actions_data, refs)
+      theme_widget_send.theme_widget('update_steps_wizard_for_app', steps_wizard_data, refs)
     }
 
     async function get_component_actions (data) {
@@ -257,8 +255,7 @@ async function boot (opts) {
       const inner = outer.querySelector('.component-wrapper')
       let component_content
       if (name === 'theme_widget') {
-        to = subs[index].sid
-        component_content = await factory({ ...subs[index], ids: { up: id } }, theme_widget_protocol)
+        component_content = await factory({ ...subs[index], ids: { up: id } }, theme_widget_io.invite('theme_widget', { up: id }))
       } else {
         component_content = await factory({ ...subs[index], ids: { up: id } })
       }
@@ -481,6 +478,7 @@ function fallback_module () {
   names.forEach(subgen)
   subs['../src/node_modules/helpers'] = 0
   subs['../src/node_modules/DOCS'] = 0
+  subs['../src/node_modules/net_helper'] = 0
   subs['../src/node_modules/taskbar'] = {
     $: '',
     0: '',

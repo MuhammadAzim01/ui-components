@@ -28,18 +28,19 @@
 - [x] Styled elements with `CSSStyleSheet`
 - [x] Simplified fail functions
 
+### Worklog 88
+
+- [x] create a `task.md` to track the current task list and progress
+- [x] Create a shared `net` helper module for protocol wiring and refactor component communication to use it project-wide
+
 ## TODO Tasks
 ### Net Module
-
-- [ ] Create a shared `net` helper module for protocol wiring and refactor component communication to use it project-wide
 
 - [ ] Update the communication part of `guide/standard.md` and `guide/standard_protocol.md` to reflect the shared helper once it exists
 
 ### Documentation
 
 - [ ] Package `DOCS` as a proper module folder with `DOCS/index.js` and `DOCS/README.md`
-
-- [ ] create a `task.md` to track the current task list and progress
 
 - [ ] Write down the standard for how actions should be defined and registered in a README
 
