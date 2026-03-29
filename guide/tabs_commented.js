@@ -126,7 +126,7 @@ async function component (opts, protocol) {
       if (_) {
         const head = [by, to, mid++]
         const refs = {} // User event, no cause
-        _.up({ head, refs, type: 'tab_icon_clicked', data: { name, id, index } })
+        _.up && _.up.send({ head, refs, type: 'tab_icon_clicked', data: { name, id, index } })
       }
     }
     btn_el.onclick = () => {
@@ -134,7 +134,7 @@ async function component (opts, protocol) {
       if (_) {
         const head = [by, to, mid++]
         const refs = {} // User event, no cause
-        _.up({ head, refs, type: 'tab_close_clicked', data: { name, id, index } })
+        _.up && _.up.send({ head, refs, type: 'tab_close_clicked', data: { name, id, index } })
       }
     }
     entries.appendChild(el)

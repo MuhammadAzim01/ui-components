@@ -208,9 +208,9 @@ async function boot (opts) {
       }
 
       const refs = msg.head ? { cause: msg.head } : {}
-      theme_widget_send.theme_widget('update_actions_for_app', actions_data, refs)
-      theme_widget_send.theme_widget('update_quick_actions_for_app', quick_actions_data, refs)
-      theme_widget_send.theme_widget('update_steps_wizard_for_app', steps_wizard_data, refs)
+      theme_widget_send.theme_widget.send('update_actions_for_app', actions_data, refs)
+      theme_widget_send.theme_widget.send('update_quick_actions_for_app', quick_actions_data, refs)
+      theme_widget_send.theme_widget.send('update_steps_wizard_for_app', steps_wizard_data, refs)
     }
 
     async function get_component_actions (data) {
