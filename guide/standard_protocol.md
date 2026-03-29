@@ -1,28 +1,35 @@
 # Standard Protocol Guide
 
-This guide explains the standard messaging protocol used in our UI components system. The protocol allows components to communicate effectively up and down the hierarchy.
+This guide explains the current messaging system used in our UI components. Communication is handled through `net_helper` using `invite` / `accept` and channel helpers on `_`.
 
 ## Core Concepts
 
-The protocol is based on a **Double Callback** pattern where:
-1. A parent component passes a `protocol` function to its child.
-2. The child calls this `protocol` function, passing its own `onmessage` handler.
-3. The `protocol` function returns a `send` function that the child uses to send messages to the parent.
+The current protocol is based on a shared router created with `net(id)`:
+
+1. A parent creates a local net instance.
+2. The parent registers handlers on `io.on`.
+3. The parent passes `io.invite(name, { up: id })` to the child.
+4. The child creates its own net instance, registers `io.on`, and calls `io.accept(invite)`.
+5. Both sides receive channel helpers on `_` and send with `_.channel.send(type, data, refs)`.
 
 This creates a two-way communication channel:
-- **Upward (Child -> Parent)**: Child uses the returned `send` function.
-- **Downward (Parent -> Child)**: Parent uses the child's `onmessage` handler.
+- **Upward (Child -> Parent)**: Child sends through `_.up.send(...)`.
+- **Downward (Parent -> Child)**: Parent sends through `_.child.send(...)`.
 
 ## Message Structure
 
-Every message in the system follows a strict JSON structure:
+Every routed message in the system has this structure:
 
 ```js
 {
   head: [sender_id, receiver_id, message_id],
   refs: { cause: parent_message_head },
   type: "message_type",
-  data: { ... }
+  data: { ... },
+  meta: {
+    time,
+    stack
+  }
 }
 ```
 
@@ -30,12 +37,8 @@ Every message in the system follows a strict JSON structure:
 The `head` is an array of 3 elements that uniquely identifies the message: `[from, to, id]`
 
 - **`from` (sender_id)**: The instance ID of the component sending the message.
-  - *Dynamic*: Always derived from `opts.sid` (e.g., `const { id } = await get(opts.sid)`).
-- **`to` (receiver_id)**: The instance ID of the component receiving the message.
-  - *Dynamic*: For upward messages, this is passed by the parent via `opts.ids.up`.
-  - For downward messages, the parent knows the child's ID (or uses a specific name like `'child_component'`) using the subs array. We can pass it as `subs[0].sid` etc.
-- **`id` (message_id)**: A unique counter for the message, specific to the sender instance.
-  - Typically implemented as a local `let mid = 0` counter that increments with `mid++`.
+- **`to` (receiver_id)**: The connected recipient for the current channel.
+- **`id` (message_id)**: The per-channel message counter managed by `net_helper`.
 
 **Example:** `['app123', 'app456', 0]`
 
@@ -44,6 +47,7 @@ The `refs` object provides context and causality for the message.
 
 - **`cause`**: If a message is triggered by another message (e.g., a response to a request), `refs.cause` must contain the `head` of the triggering message.
 - **Root Events**: For user-initiated events (like clicks) or spontaneous events, `refs` should be an empty object `{}`.
+- `refs` is provided by the caller, but `head` and `meta` are built by `net_helper`.
 
 **Example:**
 ```javascript
@@ -58,84 +62,97 @@ refs: {}
 - **`type`**: A string indicating the action or event (e.g., `'ui_focus'`, `'submit'`, `'update'`).
 - **`data`**: The payload of the message. Can be any data type.
 
-## Dynamic `by` and `to`
+## Channel Helpers on `_`
 
-To ensure components are reusable and instance-independent, we **never** hardcode component IDs.
+After `invite` / `accept`, each registered channel becomes an object on `_`.
 
-### Setting up `by` and `to`
-Every component initializes these values at the start:
+Example:
 
-```javascript
-async function my_component(opts, protocol) {
-  // 1. Get our own instance ID ('by')
-  const { id } = await get(opts.sid)
-  const by = id
-
-  // 2. Get the parent's instance ID ('to')
-  const ids = opts.ids
-  if (!ids || !ids.up) throw new Error('ids.up required')
-  const to = ids.up
-  
-  // ...
+```js
+_.up = {
+  name,
+  to,
+  send,
+  mid
 }
 ```
-- The parent MUST provide this in opts.ids.up by passing it as parameter. For Example the parent of my_component:
-```js
-await my_component({...subs[0], ids: { up: 'parent_id' } }, protocol)
-```
 
-### Sending Messages
-When sending a message upward, always use the dynamic variables:
+Send through the helper's `.send(...)` method:
 
 ```javascript
-const head = [by, to, mid++]
-const refs = {} // or { cause: incoming_msg.head }
-send({ head, refs, type: 'something', data: ... })
+_.up && _.up.send('something', data, {})
+_.petname.send('done', data, { cause: msg.head })
 ```
+
+Do not manually build `{ head, refs, type, data }` for net-managed sends.
 
 ## Implementation Pattern
 
 Here is the standard template for any component:
 
 ```javascript
-async function my_component (opts, protocol) {
-  // 1. Setup IDs
+const net = require('net_helper')
+
+async function my_component (opts, invite) {
   const { id, sdb } = await get(opts.sid)
-  const ids = opts.ids
-  if (!ids || !ids.up) throw new Error('ids.up required')
-  const by = id
-  const to = ids.up
-  let mid = 0 // message id, will be incremented with each message
+  const { io, _ } = net(id)
 
-  // 2. Setup Protocol
-  let send = null
-  let _ = null
-  if (protocol) {
-    // Initialize protocol: give parent our onmessage, get back send
-    send = protocol(onmessage)
-    _ = { up: send }
-  }
+  io.on.up = onmessage
+  if (invite) io.accept(invite)
 
-  // 3. Sending a Message (e.g., on click)
+  // 1. Sending a Message (e.g., on click)
   button.onclick = () => {
-    if (_) {
-      const head = [by, to, mid++]
-      const refs = {} // User event, no cause
-      _.up({ head, refs, type: 'click', data: 'hello' })
-    }
+    _.up && _.up.send('click', 'hello', {})
   }
 
-  // 4. Receiving Messages
+  // 2. Receiving Messages
   function onmessage (msg) {
-    const { head, refs, type, data } = msg
-    // Handle message...
-    
-    // If replying:
-    // const reply_head = [by, to, mid++]
-    // const reply_refs = { cause: head }
-    // _.up({ head: reply_head, refs: reply_refs, ... })
+    const handler = on_message[msg.type] || fail
+    handler(msg)
   }
-  
+
+  function handle_click (msg) {
+    _.up && _.up.send('done', { ok: true }, { cause: msg.head })
+  }
+
   return el
 }
 ```
+
+## Parent / Child Wiring Pattern
+
+Parent:
+
+```js
+const { io: child_io, _: child_send } = net(id)
+child_io.on.child = child_protocol
+
+const child = await child_component(subs[0], child_io.invite('child', { up: id }))
+
+function child_protocol (msg) {
+  const handler = action_handlers[msg.type] || fail
+  handler(msg)
+}
+
+function render_child (msg) {
+  child_send.child.send('render', msg.data, msg.head ? { cause: msg.head } : {})
+}
+```
+
+Child:
+
+```javascript
+async function child_component (opts, invite) {
+  const { id } = await get(opts.sid)
+  const { io, _ } = net(id)
+
+  io.on.up = onmessage
+  if (invite) io.accept(invite)
+}
+```
+
+## Routing Notes
+
+- `net_helper` forwards automatically based on `head[1]`.
+- Do not add manual forwarding just to move a message through already-connected channels.
+- Use `.send(...)` on the correct `_` helper instead.

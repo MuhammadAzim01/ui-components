@@ -1,4 +1,4 @@
-# Component Standard (v1)
+# Component Standard (v2)
 
 This file defines the baseline conventions for all components in `src/node_modules/*` and for guide examples.
 
@@ -12,18 +12,14 @@ Every component in `src/node_modules/` or `lib/` etc uses the instance-level pat
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { get } = statedb(fallback_module)
+const net = require('net_helper')
 
 module.exports = component
 
-async function component (opts, protocol) {
+async function component (opts, invite) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
-  const ids = opts.ids
-  if (!ids || !ids.up) throw new Error(`Component ${__filename} requires ids.up to be provided`)
-
-  const by = id
-  const to = ids.up
-  let mid = 0
+  const { io, _ } = net(id)
 
   const on = {
     style: inject
@@ -33,11 +29,8 @@ async function component (opts, protocol) {
     some_type: handle_some_type
   }
 
-  let _ = null
-  if (protocol) {
-    const send = protocol(msg => onmessage(msg))
-    _ = { up: send }
-  }
+  io.on.up = onmessage
+  if (invite) io.accept(invite)
 
   await sdb.watch(onbatch)
 
@@ -50,6 +43,10 @@ async function component (opts, protocol) {
 
   function onmessage_fail (msg) {
     fail(msg.data, msg.type)
+  }
+
+  function handle_some_type (msg) {
+    _.up && _.up.send('done', { ok: true }, { cause: msg.head })
   }
 
   async function onbatch (batch) {
@@ -73,6 +70,7 @@ const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, io, id } = statedb(fallback_module)
 const { drive, admin } = sdb
+const net = require('../src/node_modules/net_helper')
 
 const my_component = require('../src/node_modules/my_component')
 
@@ -80,9 +78,24 @@ boot()
 
 async function boot () {
   const subs = await sdb.watch(onbatch)
+  const { io: child_io, _: child_send } = net(id)
+  child_io.on.my_component = component_protocol
 
-  const el = await my_component({ ...subs[0], ids: { up: id } }, component_protocol)
+  const el = await my_component({ ...subs[0], ids: { up: id } }, child_io.invite('my_component', { up: id }))
   document.body.append(el)
+
+  function component_protocol (msg) {
+    const handler = action_handlers[msg.type] || fail
+    handler(msg)
+  }
+
+  const action_handlers = {
+    refresh: handle_refresh
+  }
+
+  function handle_refresh (msg) {
+    child_send.my_component.send('render', msg.data, msg.head ? { cause: msg.head } : {})
+  }
 
   async function onbatch (batch) {
     for (const { type, paths } of batch) {
@@ -101,8 +114,8 @@ async function boot () {
 ### Convention
 - We dont use `switch (type)` for `onmessage` routing or any other type of selection. Instead `object[type](params)` is used.
 - Use action objects:
-  - `on_message` for parent -> current component
-  - `action_handlers` for child protocol routing
+  - `on_message` for current incoming channel handling
+  - `action_handlers` for wrapper / forwarding handlers
 
 ### Pattern
 ```js
@@ -118,21 +131,25 @@ function onmessage (msg) {
 ```
 
 ### Convention
-- We dont use direct checks like `if (msg.type === 'ui_focus') ...`.
-- Use `action_handlers` with explicit fallback forwarding.
+- Prefer action maps for message routing.
+- Small explicit guards are acceptable when a component only has one or two message types.
+- Wrapper channels should use explicit fallback forwarding through connected `_` helpers.
 
 ### Pattern
 ```js
-function child_protocol (send) {
-  _.send_child = send
+function io_petname () {
   const action_handlers = {
     ui_focus: forward_focus
   }
-  return on
+  return protocol
 
-  function on (msg) {
+  function protocol (msg) {
     const handler = action_handlers[msg.type] || forward_default
     handler(msg)
+  }
+
+  function forward_default (msg) {
+    _.up && _.up.send(msg.type, msg.data, msg.head ? { cause: msg.head } : {})
   }
 }
 ```
@@ -165,10 +182,15 @@ button.addEventListener('click', () => { ... })
 
 ## 5) Protocol communication standard
 
-- Always send full message object: `{ head, refs, type, data }`.
-- Build `head` dynamically using `[by, to, mid++]`.
+- For net-based components, use `const { io, _ } = net(id)`.
+- Register handlers on `io.on`.
+- Accept parent wiring with `if (invite) io.accept(invite)`.
+- Create child wiring with `io.invite(name, { up: id })`.
+- Send through `_` channel helpers like `_.up && _.up.send(type, data, refs)` or `_.child.send(type, data, refs)`.
 - Use `refs: { cause: msg.head }` for derived messages, `{}` for root/UI events.
-- See more in `protocol.md`.
+- Do not manually construct `{ head, refs, type, data }` for net-managed sends.
+- Do not manually assign channel helpers onto `_`.
+- See more in `standard_protocol.md` and `../src/node_modules/net_helper/README.md`.
 
 ## 6) Fallback structure standard
 
@@ -183,5 +205,7 @@ button.addEventListener('click', () => { ... })
 - Prefer named functions Instead of Anonymous.
 
 ## 8) Handling Object undefined
-- When accessing any object we dont use `?.` optional chaining or either `&&` or `||` fallbacks.
-- Instead us simply use plain `.` operation e.g `object.property` or `object.method()` without any check. So in this early development phase we can catch undefined access errors easily.
+
+- Avoid `?.` optional chaining in this codebase unless there is a strong reason.
+- Use direct property access for required state and required objects.
+- Use explicit guards where a connection is optional, e.g. `_.up && _.up.send(...)`.

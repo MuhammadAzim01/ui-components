@@ -156,9 +156,9 @@ Then we export our current module function.
 ```js
 module.exports = module_function
 ```
-Then we define our function which is always async and always takes one `opts` parameter.
+Then we define our function which is always async. Components usually take `opts`, and net-connected components take `opts, invite`.
 ```js
-async function module_function (opts) {
+async function module_function (opts, invite) {
   // Code
 }
 ```
@@ -220,7 +220,11 @@ The order of execution of functions by `onbatch` is not random. so we need to so
 
 After we get the `Sid`'s we can append the required submodules into our HTML elements.
 ```js
-  submodule1(subs[0]).then(el => shadow.querySelector('placeholder').replaceWith(el))
+ submodule1(subs[0]).then(el => shadow.querySelector('placeholder').replaceWith(el))
+
+ // if the child uses net_helper, wire it with invite/accept
+ // const child = await submodule1({ ...subs[0], ids: { up: id } }, io.invite('submodule1', { up: id }))
+ // shadow.querySelector('placeholder').replaceWith(child)
 
   // to add a click event listener to the buttons:
   // const [btn1, btn2, btn3] = shadow.querySelectorAll('button')
@@ -313,34 +317,36 @@ function fallback_module () {
 
 ### Overview
 
-Our module system uses a **Double Callback** pattern for inter-module communication. This creates a two-way communication channel between parent and child components:
+Our module system uses `net_helper` for inter-module communication. This creates a two-way communication channel between parent and child components:
 
-- **Upward (Child → Parent)**: Child uses the returned `send` function
-- **Downward (Parent → Child)**: Parent uses the child's `onmessage` handler
+- **Upward (Child → Parent)**: Child sends through `_.up.send(...)`
+- **Downward (Parent → Child)**: Parent sends through `_.child.send(...)`
 
 ### Basic Implementation
 
-The protocol is passed as the second parameter to a module:
+The parent creates a net channel and passes an `invite` as the second parameter to a module:
 
 ```js
+const net = require('net_helper')
 const submodule = require('example_submodule')
-
+ 
+const { io, _ } = net(id)
+io.on.submodule = submodule_protocol
+ 
 // In parent module
-element = await submodule(subs[0], parent_protocol)
+element = await submodule({ ...subs[0], ids: { up: id } }, io.invite('submodule', { up: id }))
 ```
 
-### Protocol Function Structure
+### Parent / Child Structure
 
 ```js
-function parent_protocol (send) {
-  _.send_child = send  // Store child's send function
-  return onmessage     // Return parent's message handler
-  
-  function onmessage (msg) {
-    // Handle messages from child
-    const { head, refs, type, data } = msg
-    // Process based on message type
-  }
+function submodule_protocol (msg) {
+  const handler = action_handlers[msg.type] || fail
+  handler(msg)
+}
+
+function render_submodule (msg) {
+  _.submodule.send('render', msg.data, msg.head ? { cause: msg.head } : {})
 }
 ```
 
@@ -353,58 +359,49 @@ All messages follow this standardized format:
   head: [sender_id, receiver_id, message_id],  // [by, to, mid]
   refs: { cause: parent_message_head },        // Or {} for root events
   type: "message_type",                        // e.g., 'click', 'update'
-  data: { ... }                               // Payload
+  data: { ... },                              // Payload
+  meta: { time, stack }
 }
 ```
 
 ### Dynamic IDs
 
-Components must use dynamic IDs (never hardcoded):
+Components must use dynamic IDs (never hardcoded), but `net_helper` manages channel recipients and message ids internally.
 
 ```js
-async function my_component(opts, protocol) {
+async function my_component (opts, invite) {
   const { id } = await get(opts.sid)
-  const ids = opts.ids
-  if (!ids || !ids.up) throw new Error('ids.up required')
-  
-  const by = id        // Our instance ID
-  const to = ids.up    // Parent's instance ID
-  let mid = 0         // Message counter
-  
-  // ... rest of implementation
+  const { io, _ } = net(id)
+
+  io.on.up = onmessage
+  if (invite) io.accept(invite)
 }
 ```
 
 ### Complete Example
 
 ```js
-async function component(opts, protocol) {
-  const { id, sdb } = await get(opts.sid)
-  const ids = opts.ids
-  if (!ids || !ids.up) throw new Error('ids.up required')
-  const by = id
-  const to = ids.up
-  let mid = 0
+const net = require('net_helper')
 
-  let send = null
-  let _ = null
-  if (protocol) {
-    send = protocol(onmessage)
-    _ = { up: send }
-  }
+async function component (opts, invite) {
+  const { id, sdb } = await get(opts.sid)
+  const { io, _ } = net(id)
+
+  io.on.up = onmessage
+  if (invite) io.accept(invite)
 
   // Send message upward
   button.onclick = () => {
-    if (_) {
-      const head = [by, to, mid++]
-      const refs = {}  // User event
-      _.up({ head, refs, type: 'click', data: 'hello' })
-    }
+    _.up && _.up.send('click', 'hello', {})
   }
 
   function onmessage (msg) {
-    const { head, refs, type, data } = msg
-    // Handle incoming messages
+    const handler = on_message[msg.type] || fail
+    handler(msg)
+  }
+
+  function handle_click (msg) {
+    _.up && _.up.send('done', { ok: true }, { cause: msg.head })
   }
 
   return el
@@ -417,7 +414,6 @@ This protocol system enables robust, traceable communication between modules whi
 ## sdb
 
 This is an object which we get from either instance or module level as discussed above. This object has two important properties which are `drive` and `watch`.
-
 Drive can be accessed throug to simplyfy code.
 ```js
 { drive } = sdb

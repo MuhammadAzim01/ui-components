@@ -2,27 +2,19 @@
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 // eslint-disable-next-line no-unused-vars
-const { sdb, get } = statedb(fallback_module)
+const { get } = statedb(fallback_module)
+const net = require('net_helper')
 // exporting the module
 module.exports = component
 // actual module
-async function component (opts, protocol) {
+async function component (opts, invite) {
   // getting the state database for the current instance
   const { id, sdb } = await get(opts.sid)
-  // Setup protocol for inter-module communication
-  // Note: Parent must pass opts.ids.up when calling this component
-  // Example: await tabs_component({...subs[0], ids: { up: 'parent_id' }}, protocol)
-  const ids = opts.ids
-  if (!ids || !ids.up) throw new Error('ids.up required - parent must provide its ID')
-  const by = id // Our instance ID
-  const to = ids.up // Parent's instance ID
-  let mid = 0 // Message counter
-  let send = null
-  let _ = null
-  if (protocol) {
-    send = protocol(onmessage)
-    _ = { up: send }
-  }
+  // Setup net_helper for inter-module communication
+  // Example: await tabs_component({ ...subs[0], ids: { up: id } }, io.invite('tabs', { up: id }))
+  const { io, _ } = net(id)
+  io.on.up = onmessage
+  if (invite) io.accept(invite)
   // optional getting drive from state database but it does not work currently. will be useful in the future though.
   // eslint-disable-next-line no-unused-vars
   const { drive } = sdb
@@ -122,20 +114,12 @@ async function component (opts, protocol) {
 
     label_el.draggable = false
     icon_el.onclick = () => {
-      // Send message using standardized protocol when icon is clicked
-      if (_) {
-        const head = [by, to, mid++]
-        const refs = {} // User event, no cause
-        _.up && _.up.send({ head, refs, type: 'tab_icon_clicked', data: { name, id, index } })
-      }
+      // Send message upward when icon is clicked
+      _.up && _.up.send('tab_icon_clicked', { name, id, index }, {})
     }
     btn_el.onclick = () => {
-      // Send message when close button is clicked
-      if (_) {
-        const head = [by, to, mid++]
-        const refs = {} // User event, no cause
-        _.up && _.up.send({ head, refs, type: 'tab_close_clicked', data: { name, id, index } })
-      }
+      // Send message upward when close button is clicked
+      _.up && _.up.send('tab_close_clicked', { name, id, index }, {})
     }
     entries.appendChild(el)
   }
@@ -186,7 +170,7 @@ async function component (opts, protocol) {
     }, 200)
   }
 
-  // Protocol message handler - receives messages from parent or other components
+  // Net message handler - receives messages from parent or other components
   function onmessage (msg) {
     const handler = on_message[msg.type] || onmessage_fail
     handler(msg)
@@ -215,11 +199,21 @@ async function component (opts, protocol) {
 // this is the fallback module which is used to create the state database and to provide the default data for the component.
 function fallback_module () {
   return {
-    api: fallback_instance
+    api: fallback_instance,
+    _: {
+      net_helper: {
+        $: ''
+      }
+    }
   }
   // this is the fallback instance which is used to provide the default data for the instances of a component. this also help in providing an API for csustomization by overriding the default data.
   function fallback_instance () {
     return {
+      _: {
+        net_helper: {
+          0: ''
+        }
+      },
       drive: {
         'icons/': {
           'cross.svg': {
