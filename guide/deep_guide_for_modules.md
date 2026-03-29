@@ -319,8 +319,8 @@ function fallback_module () {
 
 Our module system uses `net_helper` for inter-module communication. This creates a two-way communication channel between parent and child components:
 
-- **Upward (Child → Parent)**: Child sends through `_.up.send(...)`
-- **Downward (Parent → Child)**: Parent sends through `_.child.send(...)`
+- **Upward (Child → Parent)**: Child sends through `_.up(...)`
+- **Downward (Parent → Child)**: Parent sends through `_.child(...)`
 
 ### Basic Implementation
 
@@ -346,7 +346,7 @@ function submodule_protocol (msg) {
 }
 
 function render_submodule (msg) {
-  _.submodule.send('render', msg.data, msg.head ? { cause: msg.head } : {})
+  _.submodule('render', msg.data, msg.head ? { cause: msg.head } : {})
 }
 ```
 
@@ -392,7 +392,7 @@ async function component (opts, invite) {
 
   // Send message upward
   button.onclick = () => {
-    _.up && _.up.send('click', 'hello', {})
+    _.up && _.up('click', 'hello', {})
   }
 
   function onmessage (msg) {
@@ -401,7 +401,7 @@ async function component (opts, invite) {
   }
 
   function handle_click (msg) {
-    _.up && _.up.send('done', { ok: true }, { cause: msg.head })
+    _.up && _.up('done', { ok: true }, { cause: msg.head })
   }
 
   return el

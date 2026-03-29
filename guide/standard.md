@@ -46,7 +46,7 @@ async function component (opts, invite) {
   }
 
   function handle_some_type (msg) {
-    _.up && _.up.send('done', { ok: true }, { cause: msg.head })
+    _.up && _.up('done', { ok: true }, { cause: msg.head })
   }
 
   async function onbatch (batch) {
@@ -94,7 +94,7 @@ async function boot () {
   }
 
   function handle_refresh (msg) {
-    child_send.my_component.send('render', msg.data, msg.head ? { cause: msg.head } : {})
+    child_send.my_component('render', msg.data, msg.head ? { cause: msg.head } : {})
   }
 
   async function onbatch (batch) {
@@ -149,7 +149,7 @@ function io_petname () {
   }
 
   function forward_default (msg) {
-    _.up && _.up.send(msg.type, msg.data, msg.head ? { cause: msg.head } : {})
+    _.up && _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {})
   }
 }
 ```
@@ -186,7 +186,7 @@ button.addEventListener('click', () => { ... })
 - Register handlers on `io.on`.
 - Accept parent wiring with `if (invite) io.accept(invite)`.
 - Create child wiring with `io.invite(name, { up: id })`.
-- Send through `_` channel helpers like `_.up && _.up.send(type, data, refs)` or `_.child.send(type, data, refs)`.
+- Send through `_` channel helpers like `_.up && _.up(type, data, refs)` or `_.child(type, data, refs)`.
 - Use `refs: { cause: msg.head }` for derived messages, `{}` for root/UI events.
 - Do not manually construct `{ head, refs, type, data }` for net-managed sends.
 - Do not manually assign channel helpers onto `_`.
@@ -208,4 +208,4 @@ button.addEventListener('click', () => { ... })
 
 - Avoid `?.` optional chaining in this codebase unless there is a strong reason.
 - Use direct property access for required state and required objects.
-- Use explicit guards where a connection is optional, e.g. `_.up && _.up.send(...)`.
+- Use explicit guards where a connection is optional, e.g. `_.up && _.up(...)`.

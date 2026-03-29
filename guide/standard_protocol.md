@@ -10,11 +10,11 @@ The current protocol is based on a shared router created with `net(id)`:
 2. The parent registers handlers on `io.on`.
 3. The parent passes `io.invite(name, { up: id })` to the child.
 4. The child creates its own net instance, registers `io.on`, and calls `io.accept(invite)`.
-5. Both sides receive channel helpers on `_` and send with `_.channel.send(type, data, refs)`.
+5. Both sides receive channel helpers on `_` and send with `_.channel(type, data, refs)`.
 
 This creates a two-way communication channel:
-- **Upward (Child -> Parent)**: Child sends through `_.up.send(...)`.
-- **Downward (Parent -> Child)**: Parent sends through `_.child.send(...)`.
+- **Upward (Child -> Parent)**: Child sends through `_.up(...)`.
+- **Downward (Parent -> Child)**: Parent sends through `_.child(...)`.
 
 ## Message Structure
 
@@ -64,24 +64,21 @@ refs: {}
 
 ## Channel Helpers on `_`
 
-After `invite` / `accept`, each registered channel becomes an object on `_`.
+After `invite` / `accept`, each registered channel becomes a callable helper on `_`.
 
 Example:
 
 ```js
-_.up = {
-  name,
-  to,
-  send,
-  mid
-}
+_.up = send
+_.up.channel === 'up'
+_.up.to === 'connected_recipient_id'
 ```
 
-Send through the helper's `.send(...)` method:
+Send through the helper directly:
 
 ```javascript
-_.up && _.up.send('something', data, {})
-_.petname.send('done', data, { cause: msg.head })
+_.up && _.up('something', data, {})
+_.petname('done', data, { cause: msg.head })
 ```
 
 Do not manually build `{ head, refs, type, data }` for net-managed sends.
@@ -102,7 +99,7 @@ async function my_component (opts, invite) {
 
   // 1. Sending a Message (e.g., on click)
   button.onclick = () => {
-    _.up && _.up.send('click', 'hello', {})
+    _.up && _.up('click', 'hello', {})
   }
 
   // 2. Receiving Messages
@@ -112,7 +109,7 @@ async function my_component (opts, invite) {
   }
 
   function handle_click (msg) {
-    _.up && _.up.send('done', { ok: true }, { cause: msg.head })
+    _.up && _.up('done', { ok: true }, { cause: msg.head })
   }
 
   return el
@@ -135,7 +132,7 @@ function child_protocol (msg) {
 }
 
 function render_child (msg) {
-  child_send.child.send('render', msg.data, msg.head ? { cause: msg.head } : {})
+  child_send.child('render', msg.data, msg.head ? { cause: msg.head } : {})
 }
 ```
 
@@ -155,4 +152,4 @@ async function child_component (opts, invite) {
 
 - `net_helper` forwards automatically based on `head[1]`.
 - Do not add manual forwarding just to move a message through already-connected channels.
-- Use `.send(...)` on the correct `_` helper instead.
+- Use the correct `_` helper directly instead.

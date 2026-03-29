@@ -115,11 +115,11 @@ async function component (opts, invite) {
     label_el.draggable = false
     icon_el.onclick = () => {
       // Send message upward when icon is clicked
-      _.up && _.up.send('tab_icon_clicked', { name, id, index }, {})
+      _.up && _.up('tab_icon_clicked', { name, id, index }, {})
     }
     btn_el.onclick = () => {
       // Send message upward when close button is clicked
-      _.up && _.up.send('tab_close_clicked', { name, id, index }, {})
+      _.up && _.up('tab_close_clicked', { name, id, index }, {})
     }
     entries.appendChild(el)
   }
