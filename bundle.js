@@ -3311,15 +3311,13 @@ const quick_actions = require('quick_actions')
 
 module.exports = action_bar
 
-async function action_bar (opts, protocol) {
+async function action_bar (opts, invite) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
   const ids = opts.ids
   if (!ids || !ids.up) {
     throw new Error(`Component ${__filename} requires ids.up to be provided`)
   }
-  const by = id
-  const to = ids.up
 
   const on = {
     style: inject,
@@ -3350,14 +3348,11 @@ async function action_bar (opts, protocol) {
   const docs = DOCS(__filename)(opts.sid)
   const subs = await sdb.watch(onbatch)
 
-  let actions_data = null
   let selected_action = null
 
   io.on.up = onmessage
   io.on.quick_actions = quick_actions_protocol
-  if (protocol) io.accept(protocol)
-
-  let mid = 0
+  if (invite) io.accept(invite)
 
   history_icon.innerHTML = console_icon
   history_icon.onclick = docs.wrap(onhistory, get_doc_content)
@@ -3398,16 +3393,10 @@ async function action_bar (opts, protocol) {
   function inject ({ data }) { sheet.replaceSync(data[0]) }
   function iconject ({ data }) { console_icon = data[0] }
 
-  function send_up (msg) {
-    if (protocol) _.up(msg)
-  }
-
   async function onhistory () {
-    const head = [by, to, mid++]
-    const refs = {}
-    send_up({ head, refs, type: 'console_history_toggle', data: null })
+    _.up && _.up('console_history_toggle', null, {})
     // const head2 = [by, to, mid++]
-    // _.up({ head: head2, refs, type: 'ui_focus', data: 'command_history' })
+    // _.up && _.up({ head: head2, refs, type: 'ui_focus', data: 'command_history' })
   }
 
   // -------------------------------
@@ -3429,32 +3418,27 @@ async function action_bar (opts, protocol) {
     handler(msg)
   }
 
-  function quick_actions_filter_actions (msg) { send_up(msg) }
+  function quick_actions_filter_actions (msg) { _.up && _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
   function quick_actions_display_actions (msg) {
     const { data } = msg
-    send_up(msg)
+    _.up && _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {} )
     const display = typeof data === 'string' ? data : data.display
     const reason = typeof data === 'string' ? '' : data.reason
     const should_clean = display === 'none' && reason !== 'selected'
     if (should_clean) {
-      const head = [by, to, mid++]
-      const refs = msg.head ? { cause: msg.head } : undefined
-      send_up({ head, refs, type: 'clean_up', data: selected_action })
+      _.up && _.up('clean_up', selected_action, msg.head ? { cause: msg.head } : {} )
     }
   }
 
   function quick_actions_action_submitted (msg) {
-    const refs_to_quick = msg.head ? { cause: msg.head } : undefined
-    _.quick_actions('deactivate_input_field', { reason: 'completed' }, refs_to_quick)
-    const head = [by, to, mid++]
-    const refs = msg.head ? { cause: msg.head } : undefined
-    send_up({ head, refs, type: 'action_submitted', data: { selected_action } })
+    _.quick_actions('deactivate_input_field', { reason: 'completed' }, msg.head ? { cause: msg.head } : {} )
+    _.up && _.up('action_submitted', { selected_action }, msg.head ? { cause: msg.head } : {} )
   }
 
   function onmessage (msg) {
     const { type } = msg
     if (type === 'docs_toggle') {
-      _.quick_actions(msg)
+      _.quick_actions(type, msg.data, msg.head ? { cause: msg.head } : {} )
     } else {
       const handler = parent_handler[type] || fail
       handler(msg)
@@ -3463,58 +3447,43 @@ async function action_bar (opts, protocol) {
 
   function load_actions (msg) {
     const { data } = msg
-    actions_data = data
   }
   function parent_selected_action (msg) {
-    _.quick_actions({ ...msg })
+    _.quick_actions(msg.type, msg.data, msg.head ? { cause: msg.head } : {} )
   }
-  function show_submit_btn (msg) {
-    _.quick_actions('show_submit_btn')
-  }
-  function hide_submit_btn (msg) {
-    _.quick_actions('hide_submit_btn')
-  }
+  function show_submit_btn (msg) { _.quick_actions('show_submit_btn', null, msg.head ? { cause: msg.head } : {} ) }
+  function hide_submit_btn (msg) { _.quick_actions('hide_submit_btn', null, msg.head ? { cause: msg.head } : {} ) }
 
   function update_quick_actions_for_app (msg) {
     const { data, type } = msg
-    actions_data = data
-    const refs = msg.head ? { cause: msg.head } : {}
-    _.quick_actions(type, data, refs)
+    _.quick_actions(type, data, msg.head ? { cause: msg.head } : {} )
   }
 
   function update_quick_actions_input (msg) {
     const { data } = msg
     selected_action = data || null
-    _.quick_actions('update_input_command', data, msg.head ? { cause: msg.head } : {})
+    _.quick_actions('update_input_command', data, msg.head ? { cause: msg.head } : {} )
   }
 
-  function quick_actions_activate_steps_wizard (msg) { send_up({ type: 'activate_steps_wizard', data: msg.data, head: msg.head ? [by, to, mid++] : undefined, refs: msg.head ? { cause: msg.head } : {} }) }
+  function quick_actions_activate_steps_wizard (msg) { _.up && _.up('activate_steps_wizard', msg.data, msg.head ? { cause: msg.head } : {} ) }
 
   function parent_step_clicked (msg) {
     const { data } = msg
-    _.quick_actions('update_current_step', data)
-    const head = [by, to, mid++]
-    const refs = msg.head ? { cause: msg.head } : {}
-    send_up({ head, refs, type: 'render_form', data })
+    _.quick_actions('update_current_step', data, msg.head ? { cause: msg.head } : {} )
+    _.up && _.up('render_form', data, msg.head ? { cause: msg.head } : {} )
   }
 
   function parent__action_submitted (msg) {
-    const refs_to_quick = msg.head ? { cause: msg.head } : undefined
-    _.quick_actions('deactivate_input_field', { reason: 'completed' }, refs_to_quick)
-    const head = [by, to, mid++]
-    const refs = msg.head ? { cause: msg.head } : undefined
-    send_up({ head, refs, type: 'action_submitted', data: msg.data })
+    _.quick_actions('deactivate_input_field', { reason: 'completed' }, msg.head ? { cause: msg.head } : {} )
+    _.up && _.up('action_submitted', msg.data, msg.head ? { cause: msg.head } : {} )
   }
 
   function parent__clean_up (msg) {
-    const refs_to_quick = msg.head ? { cause: msg.head } : undefined
-    _.quick_actions('deactivate_input_field', { reason: 'cancel' }, refs_to_quick)
-    const head = [by, to, mid++]
-    const refs = msg.head ? { cause: msg.head } : undefined
-    send_up({ head, refs, type: 'clean_up', data: msg.data })
+    _.quick_actions('deactivate_input_field', { reason: 'cancel' }, msg.head ? { cause: msg.head } : {} )
+    _.up && _.up('clean_up', msg.data, msg.head ? { cause: msg.head } : {} )
   }
 
-  function ui_focus_docs (msg) { send_up(msg) }
+  function ui_focus_docs (msg) { _.up && _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
 }
 
 function fallback_module () {
@@ -3646,15 +3615,13 @@ const component_modules = {
 
 module.exports = action_executor
 
-async function action_executor (opts, protocol) {
+async function action_executor (opts, invite) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
   const ids = opts.ids
   if (!ids || !ids.up) {
     throw new Error(`Component ${__filename} requires ids.up to be provided`)
   }
-  const by = id
-  const to = ids.up
 
   const on = {
     style: inject
@@ -3681,24 +3648,17 @@ async function action_executor (opts, protocol) {
   let all_data = null
   let variables = []
   let selected_action = null
-  let mid = 0
 
   io.on.up = onmessage
   io.on.program = program_protocol
   io.on.steps_wizard = steps_wizard_protocol
 
-  const program_sid = subs[0].sid
-  const steps_wizard_sid = subs[1].sid
-  const form_input_sids = {}
-
   // dynamic form input component SIDs
   for (const [index, [component_name]] of Object.entries(component_modules).entries()) {
     const final_index = index + 2
-    const sub_entry = subs[final_index] || { sid: opts.sid }
-    form_input_sids[component_name] = sub_entry.sid
     io.on[component_name] = form_input_protocol(component_name)
   }
-  if (protocol) io.accept(protocol)
+  if (invite) io.accept(invite)
 
   const program_el = await program({ ...subs[0], ids: { up: id } }, io.invite('program', { up: id }))
   program_el.classList.add('program-bar', 'hide')
@@ -3748,10 +3708,6 @@ async function action_executor (opts, protocol) {
   function fail (data, type) { console.warn('Unknown message type:', type, data) }
   function inject (data) { sheet.replaceSync(data[0]) }
 
-  function send_up (msg) {
-    if (protocol) _.up(msg)
-  }
-
   // --- Toggle Views ---
   function toggle_view (el, show) { el.classList.toggle('hide', !show) }
   function steps_toggle_view (display) { toggle_view(steps_wizard_el, display === 'block') }
@@ -3777,9 +3733,7 @@ async function action_executor (opts, protocol) {
 
   function program_load_actions (data, type, msg) {
     variables = data
-    const head = [by, to, mid++]
-    const refs = msg.head ? { cause: msg.head } : {}
-    send_up({ head, refs, type, data })
+    _.up && _.up(type, data, msg.head ? { cause: msg.head } : {} )
   }
 
   // -------------------------------
@@ -3794,27 +3748,20 @@ async function action_executor (opts, protocol) {
     const { type } = msg
     const handler = steps_handlers[type]
     if (handler) handler(msg)
-    else send_up(msg)
+    else _.up && _.up(type, msg.data, msg.head ? { cause: msg.head } : {} )
   }
 
   function steps_wizard_step_clicked (msg) {
     const { data } = msg
-    const head = [by, to, mid++]
-    const refs = msg.head ? { cause: msg.head } : {}
-    send_up({ head, refs, type: 'step_clicked', data })
+    const refs = msg.head ? { cause: msg.head } : {} 
+    _.up && _.up('step_clicked', data, refs)
 
     if (should_execute_step(data)) {
-      const execute_head = [by, to, mid++]
-      send_up({
-        head: execute_head,
-        refs,
-        type: 'execute_step',
-        data: {
-          action: selected_action,
-          step: data,
-          commands: data.commands
-        }
-      })
+      _.up && _.up('execute_step', {
+        action: selected_action,
+        step: data,
+        commands: data.commands
+      }, refs)
     }
 
     function should_execute_step (step_data) {
@@ -3850,16 +3797,12 @@ async function action_executor (opts, protocol) {
       data: data.value
     })
 
-    const refs = msg.head ? { cause: msg.head } : {}
-    const head_to_program = [by, program_sid, mid++]
-    _.program?.({ head: head_to_program, refs, type: 'update_data', data: all_data })
-
-    const head_to_steps = [by, steps_wizard_sid, mid++]
-    _.steps_wizard?.({ head: head_to_steps, type: 'init_data', data: selected_action.steps })
+    const refs = msg.head ? { cause: msg.head } : {} 
+    _.program('update_data', all_data, refs)
+    _.steps_wizard('init_data', selected_action.steps, refs)
 
     if (selected_action.steps[selected_action.steps.length - 1]?.is_completed) {
-      const head = [by, to, mid++]
-      send_up({ head, refs, type: 'show_submit_btn' })
+      _.up && _.up('show_submit_btn', null, refs)
     }
   }
 
@@ -3874,15 +3817,10 @@ async function action_executor (opts, protocol) {
       status: 'error',
       data: data.value !== undefined ? data.value : undefined
     })
-    const refs = msg.head ? { cause: msg.head } : {}
-    const head_to_program = [by, program_sid, mid++]
-    _.program?.({ head: head_to_program, refs, type: 'update_data', data: all_data })
-
-    const head_to_steps = [by, steps_wizard_sid, mid++]
-    _.steps_wizard?.({ head: head_to_steps, type: 'init_data', data: selected_action.steps })
-
-    const head = [by, to, mid++]
-    send_up({ head, refs, type: 'hide_submit_btn' })
+    const refs = msg.head ? { cause: msg.head } : {} 
+    _.program('update_data', all_data, refs)
+    _.steps_wizard('init_data', selected_action.steps, refs)
+    _.up && _.up('hide_submit_btn', null, refs)
   }
 
   function form__action_complete (data, type, msg) {
@@ -3891,9 +3829,7 @@ async function action_executor (opts, protocol) {
     const all_mandatory_complete = selected_action.steps.every(is_step_complete_or_optional)
 
     if (all_mandatory_complete) {
-      const refs = msg.head ? { cause: msg.head } : {}
-      const head = [by, to, mid++]
-      send_up({ head, refs, type: 'action_auto_completed', data: { selected_action, trigger: 'form' } })
+      _.up && _.up('action_auto_completed', { selected_action, trigger: 'form' }, msg.head ? { cause: msg.head } : {} )
     }
 
     function is_step_complete_or_optional (step) {
@@ -3908,9 +3844,9 @@ async function action_executor (opts, protocol) {
   function onmessage (msg) {
     const { type } = msg
     if (type === 'docs_toggle') {
-      _.steps_wizard(msg)
+      _.steps_wizard(type, msg.data, msg.head ? { cause: msg.head } : {} )
       for (const name in component_modules) {
-        _[name](msg)
+        _[name](type, msg.data, msg.head ? { cause: msg.head } : {} )
       }
     } else {
       parent_handler[type](msg)
@@ -3924,10 +3860,7 @@ async function action_executor (opts, protocol) {
 
   function load_actions (msg) {
     variables = msg.data
-    const { data, type } = msg
-    const head = [by, program_sid, mid++]
-    const refs = msg.head ? { cause: msg.head } : {}
-    _.program({ head, refs, type, data })
+    _.program(msg.type, msg.data, msg.head ? { cause: msg.head } : {} )
   }
 
   function action_submitted (msg) {
@@ -3935,9 +3868,7 @@ async function action_executor (opts, protocol) {
     data.result = JSON.stringify(selected_action.steps.map(step => step.data), null, 2)
 
     reset_selected_action_steps()
-    const head = [by, program_sid, mid++]
-    const refs = msg.head ? { cause: msg.head } : {}
-    _.program({ head, refs, type: 'display_result', data })
+    _.program('display_result', data, msg.head ? { cause: msg.head } : {} )
   }
 
   function reset_selected_action_steps () {
@@ -3954,20 +3885,16 @@ async function action_executor (opts, protocol) {
     render_form_component(data.component)
     const send = _[data.component]
     if (send) {
-      const head = [by, form_input_sids[data.component], mid++]
-      const refs = msg.head ? { cause: msg.head } : {}
-      send({ head, refs, type: 'step_data', data })
+      send('step_data', data, msg.head ? { cause: msg.head } : {} )
     }
   }
 
   function parent_selected_action (msg) { selected_action = msg.data }
 
   function update_data (msg) {
-    variables = data
+    variables = msg.data
     const { data: msg_data, type } = msg
-    const head = [by, program_sid, mid++]
-    const refs = msg.head ? { cause: msg.head } : {}
-    _.program({ head, refs, type, data: msg_data })
+    _.program(type, msg_data, msg.head ? { cause: msg.head } : {} )
   }
 
   function activate_steps_wizard (msg) {
@@ -3976,23 +3903,15 @@ async function action_executor (opts, protocol) {
     selected_action = steps_data
     if (!steps_data) return
     steps_toggle_view('block')
-    const head_to_steps = [by, steps_wizard_sid, mid++]
     const data = steps_data.steps
-    _.steps_wizard({
-      head: head_to_steps,
-      refs: {},
-      type: 'init_data',
-      data
-    })
+    _.steps_wizard('init_data', data, msg.head ? { cause: msg.head } : {} )
 
     function matches_selected_action (action) { return action.name === msg.data }
   }
 
   function form_data (msg) {
     // forward init_data to steps_wizard with current action steps
-    const { data } = msg
-    const head_to_steps = [by, steps_wizard_sid, mid++]
-    _.steps_wizard({ head: head_to_steps, type: 'init_data', data })
+    _.steps_wizard('init_data', msg.data, msg.head ? { cause: msg.head } : {} )
   }
 
   function clean_up (msg) {
@@ -4105,15 +4024,9 @@ const net = require('net_helper')
 
 module.exports = actions
 
-async function actions (opts, protocol) {
+async function actions (opts, invite) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
-  const ids = opts.ids
-  if (!ids || !ids.up) {
-    throw new Error(`Component ${__filename} requires ids.up to be provided`)
-  }
-  const by = id
-  const to = ids.up
 
   const on = {
     style: inject,
@@ -4134,7 +4047,6 @@ async function actions (opts, protocol) {
   const actions_menu = shadow.querySelector('.actions-menu')
 
   let init = false
-  let mid = 0
   let actions = []
   let icons = {}
   let hardcons = {}
@@ -4149,7 +4061,7 @@ async function actions (opts, protocol) {
 
   await sdb.watch(onbatch)
   io.on.up = onmessage
-  if (protocol) io.accept(protocol)
+  if (invite) io.accept(invite)
 
   return el
 
@@ -4178,21 +4090,9 @@ async function actions (opts, protocol) {
     }
   }
 
-  function send_up (msg) {
-    if (protocol) _.up(msg)
-  }
-
   function send_selected_action (msg) {
     const action_data = msg.data.data || msg.data
-
-    const head = [by, to, mid++]
-    const refs = msg.head ? { cause: msg.head } : {}
-    send_up({
-      head,
-      refs,
-      type: 'selected_action',
-      data: action_data
-    })
+    _.up && _.up('selected_action', action_data, msg.head ? { cause: msg.head } : {} )
   }
 
   async function onbatch (batch) {
@@ -4433,15 +4333,9 @@ const net = require('net_helper')
 
 module.exports = console_history
 
-async function console_history (opts, protocol) {
+async function console_history (opts, invite) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
-  const ids = opts.ids
-  if (!ids || !ids.up) {
-    throw new Error(`Component ${__filename} requires ids.up to be provided`)
-  }
-  const by = id
-  const to = ids.up
 
   const on = {
     style: inject,
@@ -4462,7 +4356,6 @@ async function console_history (opts, protocol) {
   const commands_placeholder = shadow.querySelector('console-commands')
 
   let init = false
-  let mid = 0
   let commands = []
   let dricons = []
   const docs = DOCS(__filename)(opts.sid)
@@ -4479,15 +4372,11 @@ async function console_history (opts, protocol) {
 
   await sdb.watch(onbatch)
   io.on.up = onmessage
-  if (protocol) io.accept(protocol)
+  if (invite) io.accept(invite)
   return el
 
   function onmessage (msg) {
     // Temp placeholder
-  }
-
-  function send_up (msg) {
-    if (protocol) _.up(msg)
   }
 
   function create_command_item (command_data) {
@@ -4524,15 +4413,12 @@ async function console_history (opts, protocol) {
     command_el.onclick = docs.wrap(on_command_click, get_doc_content)
 
     async function on_command_click () {
-      const head = [by, to, mid++]
-      const refs = {}
       const data = {
         type: 'command_history',
         sid: opts.sid
       }
-      send_up({ head, refs, type: 'ui_focus', data: data })
-      const head2 = [by, to, mid++]
-      send_up({ head: head2, refs, type: 'command_clicked', data: command_data })
+      _.up && _.up('ui_focus', data, {})
+      _.up && _.up('command_clicked', command_data, {})
     }
 
     async function get_doc_content () {
@@ -4863,24 +4749,17 @@ const net = require('net_helper')
 
 module.exports = docs_window
 
-async function docs_window (opts, protocol) {
+async function docs_window (opts, invite) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
-  const ids = opts.ids
-  if (!ids || !ids.up) {
-    throw new Error(`Component ${__filename} requires ids.up to be provided`)
-  }
-  const by = id
-  const to = ids.up
 
   const on = {
     style: inject
   }
 
-  let mid = 0
   const { io, _ } = net(id)
   io.on.up = onmessage
-  if (protocol) io.accept(protocol)
+  if (invite) io.accept(invite)
 
   const el = document.createElement('div')
   const shadow = el.attachShadow({ mode: 'closed' })
@@ -4904,9 +4783,7 @@ async function docs_window (opts, protocol) {
   return el
 
   function onclose () {
-    const head = [by, to, mid++]
-    const refs = {}
-    if (_.up) _.up({ head, refs, type: 'close_docs', data: null })
+    _.up && _.up('close_docs', null, {})
   }
 
   function onmessage (msg) {
@@ -5017,15 +4894,9 @@ const DOCS = require('DOCS')
 const net = require('net_helper')
 
 module.exports = form_input
-async function form_input (opts, protocol) {
+async function form_input (opts, invite) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
-  const ids = opts.ids
-  if (!ids || !ids.up) {
-    throw new Error(`Component ${__filename} requires ids.up to be provided`)
-  }
-  const by = id
-  const to = ids.up
 
   const on = {
     style: inject,
@@ -5034,11 +4905,10 @@ async function form_input (opts, protocol) {
 
   let current_step = null
   let input_accessible = true
-  let mid = 0
 
   const { io, _ } = net(id)
   io.on.up = onmessage
-  if (protocol) io.accept(protocol)
+  if (invite) io.accept(invite)
 
   const el = document.createElement('div')
   const shadow = el.attachShadow({ mode: 'closed' })
@@ -5057,40 +4927,22 @@ async function form_input (opts, protocol) {
 
   input_field_el.oninput = on_input_field_input
 
-  function send_up (msg) {
-    if (protocol) _.up(msg)
-  }
-
   async function on_input_field_input () {
     if (!input_accessible) return
     await drive.put('data/form_input.json', {
       input_field: input_field_el.value
     })
     if (input_field_el.value.length >= 10) {
-      const head = [by, to, mid++]
-      const refs = {}
-      send_up({
-        head,
-        refs,
-        type: 'action_submitted',
-        data: {
-          value: input_field_el.value,
-          index: current_step.index !== undefined ? current_step.index : 0
-        }
-      })
+      _.up && _.up('action_submitted', {
+        value: input_field_el.value,
+        index: current_step.index !== undefined ? current_step.index : 0
+      }, {})
       console.log('mark_as_complete')
     } else {
-      const head = [by, to, mid++]
-      const refs = {}
-      send_up({
-        head,
-        refs,
-        type: 'action_incomplete',
-        data: {
-          value: input_field_el.value,
-          index: current_step.index !== undefined ? current_step.index : 0
-        }
-      })
+      _.up && _.up('action_incomplete', {
+        value: input_field_el.value,
+        index: current_step.index !== undefined ? current_step.index : 0
+      }, {})
     }
   }
 
@@ -5244,15 +5096,9 @@ const DOCS = require('DOCS')
 const net = require('net_helper')
 
 module.exports = form_tile_split_choice
-async function form_tile_split_choice (opts, protocol) {
+async function form_tile_split_choice (opts, invite) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
-  const ids = opts.ids
-  if (!ids || !ids.up) {
-    throw new Error(`Component ${__filename} requires ids.up to be provided`)
-  }
-  const by = id
-  const to = ids.up
 
   const on = {
     style: inject,
@@ -5260,7 +5106,6 @@ async function form_tile_split_choice (opts, protocol) {
   }
 
   let current_step = null
-  let mid = 0
   const { io, _ } = net(id)
 
 
@@ -5304,7 +5149,7 @@ async function form_tile_split_choice (opts, protocol) {
   }
 
   io.on.up = onmessage
-  if (protocol) io.accept(protocol)
+  if (invite) io.accept(invite)
 
   return el
 
@@ -5351,22 +5196,15 @@ async function form_tile_split_choice (opts, protocol) {
     // nothing for now
   }
 
-  function send_up (msg) {
-    if (protocol) _.up(msg)
-  }
-
   async function on_choice_click (ev) {
     const choice = ev.currentTarget.getAttribute('data-choice')
     await drive.put('data/form_tile_split_choice.json', { choice })
     highlight_choice(choice)
-    const head = [by, to, mid++]
-    const refs = {}
-    send_up({ head, refs, type: 'action_submitted', data: { value: choice, index: current_step?.index ?? 0 } })
+    _.up && _.up('action_submitted', { value: choice, index: current_step?.index ?? 0 }, {})
 
     // If this is a single-step action, auto-complete the action
     if (current_step && current_step.total_steps === 1) {
-      const complete_head = [by, to, mid++]
-      send_up({ head: complete_head, refs: {}, type: 'action_complete', data: { value: choice } })
+      _.up && _.up('action_complete', { value: choice }, {})
     }
   }
 
@@ -5430,7 +5268,7 @@ const graphdb = require('./graphdb')
 
 module.exports = graph_explorer_wrapper
 
-async function graph_explorer_wrapper (opts, protocol) {
+async function graph_explorer_wrapper (opts, invite) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
   const ids = opts.ids
@@ -5451,7 +5289,7 @@ async function graph_explorer_wrapper (opts, protocol) {
   let mid = 0
   const { io, _ } = net(id)
   io.on.up = onmessage
-  if (protocol) io.accept(protocol)
+  if (invite) io.accept(invite)
 
   const on = {
     theme: inject,
@@ -5596,10 +5434,6 @@ async function graph_explorer_wrapper (opts, protocol) {
   // PROTOCOL
   // ---------------------------------------------------------
 
-  function send_up (msg) {
-    if (protocol) _.up(msg)
-  }
-
   function graph_explorer_protocol (send) {
     send_to_graph_explorer = send
     graph_explorer_id = send.to
@@ -5612,7 +5446,7 @@ async function graph_explorer_wrapper (opts, protocol) {
       if (type.startsWith('db_')) {
         handle_db_request(msg, send)
       } else {
-        send_up(msg)
+        _.up && _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {})
       }
     }
   }
@@ -5832,15 +5666,9 @@ const DOCS = require('DOCS')
 const net = require('net_helper')
 
 module.exports = input_test
-async function input_test (opts, protocol) {
+async function input_test (opts, invite) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
-  const ids = opts.ids
-  if (!ids || !ids.up) {
-    throw new Error(`Component ${__filename} requires ids.up to be provided`)
-  }
-  const by = id
-  const to = ids.up
 
   const on = {
     style: inject,
@@ -5849,10 +5677,9 @@ async function input_test (opts, protocol) {
 
   let current_step = null
   let input_accessible = true
-  let mid = 0
   const { io, _ } = net(id)
   io.on.up = onmessage
-  if (protocol) io.accept(protocol)
+  if (invite) io.accept(invite)
 
   const el = document.createElement('div')
   const shadow = el.attachShadow({ mode: 'closed' })
@@ -5870,10 +5697,6 @@ async function input_test (opts, protocol) {
 
   input_field_el.oninput = on_input_field_input
 
-  function send_up (msg) {
-    if (protocol) _.up(msg)
-  }
-
   async function on_input_field_input () {
     if (!input_accessible) return
 
@@ -5882,30 +5705,16 @@ async function input_test (opts, protocol) {
     })
 
     if (input_field_el.value.length >= 10) {
-      const head = [by, to, mid++]
-      const refs = {}
-      send_up({
-        head,
-        refs,
-        type: 'action_submitted',
-        data: {
-          value: input_field_el.value,
-          index: current_step.index !== undefined ? current_step.index : 0
-        }
-      })
+      _.up && _.up('action_submitted', {
+        value: input_field_el.value,
+        index: current_step.index !== undefined ? current_step.index : 0
+      }, {})
       console.log('mark_as_complete')
     } else {
-      const head = [by, to, mid++]
-      const refs = {}
-      send_up({
-        head,
-        refs,
-        type: 'action_incomplete',
-        data: {
-          value: input_field_el.value,
-          index: current_step.index !== undefined ? current_step.index : 0
-        }
-      })
+      _.up && _.up('action_incomplete', {
+        value: input_field_el.value,
+        index: current_step.index !== undefined ? current_step.index : 0
+      }, {})
     }
   }
 
@@ -6342,122 +6151,63 @@ function fallback_module () {
 
 }).call(this)}).call(this,"/src/node_modules/menu/menu.js")
 },{"STATE":1}],16:[function(require,module,exports){
+(function (__filename){(function (){
 module.exports = net
 
 function net (id) {
-  const label = `[${id}]`
-  const on = {}
-  const _ = {}
-  const sub = {}
-  const hub = {}
-
-  return { io: { invite, accept, on }, _ }
-
-  function forward (to, msg) {
-    if (typeof to === 'string' && to === id) {
-      const ups = [...new Set(Object.keys(hub).map(get_hub_tx))]
-      for (const tx of ups) tx(msg)
-        return
+  const [ label, io, _, sub, hub ] = [`[${id}@${__filename}]`, { invite, accept, on: {} }, {}, {}, {}]
+  return { io, _ }
+  function forward (to, M) {
+    if (to.startsWith(id)) {
+      const ups = [...new Set(Object.keys(hub).map(id => hub[id].tx))]
+      for (const tx of ups) tx(M)
+      return
     }
-    for (const sub_id of Object.keys(sub)) {
-      if (typeof to === 'string' && to === sub_id) {
-        sub[sub_id].tx(msg)
-        return
-      }
-    }
+    for (const id of Object.keys(sub)) if (to.startsWith(id)) return sub[id].tx(M)
     throw new Error(`${label} unknown recipient "${to}"`)
-
-    function get_hub_tx (hub_id) { return hub[hub_id].tx }
   }
-  
   function invite (name, ids) {
-    if (!on[name]) throw new Error(`${label} no protocol handler for "${name}"`)
-    return Object.assign(connect, { ids })
-
-    function connect (tx) {
+    if (!io.on[name]) throw new Error(`${label} no protocol handler for "${name}"`)
+    return Object.assign(invite, { ids })
+    function invite (tx) {
       const rx = router(sub)
       add(name, tx, tx.id, rx, sub)
       return rx
     }
   }
-
   function accept (invite) {
     const rx = router(hub)
     const tx = invite(Object.assign(rx, { id }))
-    const ids = invite.ids || {}
-    for (const [name, to] of Object.entries(ids)) {
+    for (const [name, to] of Object.entries(invite.ids)) {
       if (hub[to]) throw new Error(`${label} already connected to "${to}"`)
-      if (!on[name]) throw new Error(`${label} no "${name}" protocol for "${to}"`)
+      if (!io.on[name]) throw new Error(`${label} no "${name}" protocol for "${to}"`)
       add(name, tx, to, rx, hub)
     }
   }
-
-  function router (connections) {
-    return function rx (msg) {
-      if (!msg || !Array.isArray(msg.head)) throw new Error(`${label} invalid message`)
-      const [by, to] = msg.head
-      if (to !== id) return forward(to, msg)
-      if (!connections[by]) throw new Error(`${label} unknown sender "${by}"`)
-      const { name } = connections[by].state
-      if (!on[name]) throw new Error(`${label} no "${name}" protocol for "${to}"`)
-      on[name](msg)
+  function router ($) {
+    return function rx (M) {
+      const { head: [by, to] } = M
+      console.log(`[M]\n${by} \n to: \n ${to}`, M)
+      if (to !== id) return forward(to, M)
+      if (!$[by]) throw new Error(`${label} unknown sender "${by}"`)
+      const { name } = $[by].state
+      if (!io.on[name]) throw new Error(`${label} no "${name}" protocol for "${to}"`)
+      io.on[name](M)
     }
   }
-
-  function add (name, tx, to, rx, connections) {
+  function add (name, tx, to, rx, $) {
     const state = { name, to, mid: 0 }
-    const send = create_send(tx, state)
-    Object.defineProperties(send, {
-      channel: {
-        enumerable: true,
-        get: get_channel
-      },
-      to: {
-        enumerable: true,
-        get: get_to
-      },
-      mid: {
-        enumerable: true,
-        get: get_mid
-      },
-      state: {
-        enumerable: false,
-        value: state
-      }
-    })
-    _[name] = send
-    connections[to] = { rx, tx, state }
-
-    function get_channel () { return state.name }
-    function get_to () { return state.to }
-    function get_mid () { return state.mid }
-  }
-
-  function create_send (tx, state) {
-    return function send (type, data = [], refs = {}, meta) {
-      const msg = normalize_message(type, data, refs, meta, state)
-      tx(msg)
+    _[name] = Object.assign(send, { channel: name, to })
+    $[to] = { rx, tx, state }
+    function send (type, data = [], refs = {}) {
+      const head = [id, to, state.mid++]
+      const meta = { time: Date.now(), stack: (new Error().stack) }
+      tx({ head, refs, type, data, meta })
     }
-  }
-
-  function normalize_message (type, data, refs, meta, state) {
-    if (type && typeof type === 'object') {
-      const msg = { ...type }
-      const previous_head = msg.head
-      msg.head = [id, state.to, state.mid++]
-      if (previous_head) {
-        const next_refs = msg.refs ? { ...msg.refs } : {}
-        if (!next_refs.cause) next_refs.cause = previous_head
-        msg.refs = next_refs
-      }
-      return msg
-    }
-    const msg = { head: [id, state.to, state.mid++], refs, type, data }
-    if (meta !== undefined) msg.meta = meta
-    return msg
   }
 }
 
+}).call(this)}).call(this,"/src/node_modules/net_helper/net_helper.js")
 },{}],17:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
@@ -6475,7 +6225,7 @@ program.form_tile_split_choice = form_tile_split_choice
 
 module.exports = program
 
-async function program (opts, protocol) {
+async function program (opts, invite) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
   const ids = opts.ids
@@ -6493,7 +6243,7 @@ async function program (opts, protocol) {
 
   const { io } = net(id)
   io.on.up = onmessage
-  if (protocol) io.accept(protocol)
+  if (invite) io.accept(invite)
 
   const el = document.createElement('div')
   const shadow = el.attachShadow({ mode: 'closed' })
@@ -6596,16 +6346,13 @@ const docs_window = require('docs_window')
 
 module.exports = program_container
 
-async function program_container (opts, protocol) {
+async function program_container (opts, invite) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
   const ids = opts.ids
   if (!ids || !ids.up) {
     throw new Error(`Component ${__filename} requires ids.up to be provided`)
   }
-  const by = id
-  const to = ids.up
-  let mid = 0
 
   const on = {
     style: inject
@@ -6639,13 +6386,16 @@ async function program_container (opts, protocol) {
   let graph_explorer_el = null
 
   const subs = await sdb.watch(onbatch)
-  io.on.up = onmessage
-  io.on.console_history = console_history_protocol
-  io.on.actions = actions_protocol
-  io.on.tabbed_editor = tabbed_editor_protocol
-  io.on.graph_explorer = graph_explorer_protocol
-  io.on.docs_window = docs_window_protocol
-  if (protocol) io.accept(protocol)
+
+  io.on = {
+    up: onmessage,
+    console_history: console_history_protocol,
+    actions: actions_protocol,
+    tabbed_editor: tabbed_editor_protocol,
+    graph_explorer: graph_explorer_protocol,
+    docs_window: docs_window_protocol
+  }
+  if (invite) io.accept(invite)
   
   actions_el = await actions({ ...subs[1], ids: { up: id } }, io.invite('actions', { up: id }))
   actions_el.classList.add('actions')
@@ -6671,24 +6421,17 @@ async function program_container (opts, protocol) {
   let actions_view = false
   let graph_explorer_view = false
 
-  if (protocol) {
+  if (invite) {
     console_history_el.classList.add('hide')
     actions_el.classList.add('hide')
     tabbed_editor_el.classList.add('show')
     graph_explorer_el.classList.add('hide')
 
     // Send message to root to set doc display handler
-    send_up({
-      head: [by, to, mid++],
-      refs: {},
-      type: 'set_doc_display_handler',
-      data: {
-        callback: on_doc_display
-      }
-    })
+    _.up && _.up('set_doc_display_handler', { callback: on_doc_display }, {})
   }
 
-  if (!protocol) {
+  if (!invite) {
     actions_view = !actions_el.classList.contains('hide')
     console_view = !console_history_el.classList.contains('hide')
     graph_explorer_view = !graph_explorer_el.classList.contains('hide')
@@ -6796,10 +6539,6 @@ async function program_container (opts, protocol) {
   function fail ({ data, type }) { console.warn('invalid message', { cause: { data, type } }) }
   function inject ({ data }) { sheet.replaceSync(data[0]) }
 
-  function send_up (msg) {
-    if (protocol) _.up(msg)
-  }
-
   function on_doc_display (display_data) {
     const { content, sid } = display_data
     docs_window_el.classList.remove('hide')
@@ -6810,7 +6549,7 @@ async function program_container (opts, protocol) {
   // PROTOCOLS
   // ---------
 
-  function console_history_protocol (msg) { send_up(msg) }
+  function console_history_protocol (msg) { _.up && _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
 
   function actions_protocol (msg) {
     const action_handlers = {
@@ -6822,26 +6561,19 @@ async function program_container (opts, protocol) {
     const handler = action_handlers[msg.type] || actions_forward_up
     handler(msg)
 
-    function actions_forward_up (msg) { send_up(msg) }
+    function actions_forward_up (msg) { _.up && _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
   }
 
   function actions_selected_action (msg) {
     const { data } = msg
-    const head = [by, to, mid++]
-    const refs = msg.head ? { cause: msg.head } : {}
-    send_up({
-      head,
-      refs,
-      type: 'update_quick_actions_input',
-      data
-    })
+    _.up && _.up('update_quick_actions_input', data, msg.head ? { cause: msg.head } : {} )
   }
 
-  function actions_ui_focus_docs (msg) { send_up(msg) }
+  function actions_ui_focus_docs (msg) { _.up && _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
 
-  function tabbed_editor_protocol (msg) { send_up(msg) }
+  function tabbed_editor_protocol (msg) { _.up && _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
 
-  function graph_explorer_protocol (msg) { send_up(msg) }
+  function graph_explorer_protocol (msg) { _.up && _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
 
   function docs_window_protocol (msg) {
     const action_handlers = {
@@ -6849,7 +6581,7 @@ async function program_container (opts, protocol) {
     }
     const handler = action_handlers[msg.type] || docs_window_noop
     handler(msg)
-    send_up(msg)
+    _.up && _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {} )
 
     function docs_window_close_docs () { docs_window_el.classList.add('hide') }
     function docs_window_noop () {}
@@ -6876,28 +6608,28 @@ async function program_container (opts, protocol) {
     function onmessage_console_history_toggle () { console_history_toggle_view() }
     function onmessage_graph_explorer_toggle () { graph_explorer_toggle_view() }
     function onmessage_display_actions (msg) { actions_toggle_view(msg.data) }
-    function onmessage_filter_actions (msg) { _.actions(msg) }
-    function onmessage_tab_close_clicked (msg) { _.tabbed_editor({ ...msg, type: 'close_tab' }) }
-    function onmessage_entry_toggled (msg) { _.graph_explorer(msg) }
+    function onmessage_filter_actions (msg) { _.actions(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
+    function onmessage_tab_close_clicked (msg) { _.tabbed_editor('close_tab', msg.data, msg.head ? { cause: msg.head } : {} ) }
+    function onmessage_entry_toggled (msg) { _.graph_explorer(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
     function onmessage_execute_step (msg) {
       if (!msg.data || !Array.isArray(msg.data.commands) || msg.data.commands.length === 0) return
       set_panel_visibility(graph_explorer_el, true)
       graph_explorer_view = true
       update_program_layout()
-      _.graph_explorer(msg)
+      _.graph_explorer(msg.type, msg.data, msg.head ? { cause: msg.head } : {} )
     }
-    function onmessage_send_actions (msg) { _.actions(msg) }
+    function onmessage_send_actions (msg) { _.actions(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
     function onmessage_tab_name_clicked (msg) {
       tabbed_editor_toggle_view(true)
-      _.tabbed_editor({ ...msg, type: 'toggle_tab' })
+      _.tabbed_editor('toggle_tab', msg.data, msg.head ? { cause: msg.head } : {} )
     }
     function onmessage_switch_tab (msg) {
       tabbed_editor_toggle_view(true)
-      _.tabbed_editor(msg)
+      _.tabbed_editor(msg.type, msg.data, msg.head ? { cause: msg.head } : {} )
     }
     function onmessage_display_doc (msg) {
       docs_window_el.classList.remove('hide')
-      _.docs_window(msg)
+      _.docs_window(msg.type, msg.data, msg.head ? { cause: msg.head } : {} )
     }
   }
 }
@@ -7104,15 +6836,13 @@ const net = require('net_helper')
 
 module.exports = quick_actions
 
-async function quick_actions (opts, protocol) {
+async function quick_actions (opts, invite) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
   const ids = opts.ids
   if (!ids || !ids.up) {
     throw new Error(`Component ${__filename} requires ids.up to be provided`)
   }
-  const by = id
-  const to = ids.up
 
   const on = {
     style: inject,
@@ -7170,7 +6900,6 @@ async function quick_actions (opts, protocol) {
   shadow.adoptedStyleSheets = [sheet]
 
   let init = false
-  let mid = 0
   let enable_quick_action_tooltips = false
   let enable_input_field_tooltips = false
   let icons = {}
@@ -7182,7 +6911,7 @@ async function quick_actions (opts, protocol) {
   const { io, _ } = net(id)
 
   io.on.up = onmessage
-  if (protocol) io.accept(protocol)
+  if (invite) io.accept(invite)
   text_bar.onclick = docs.wrap(activate_input_field, get_doc_content)
   close_btn.onclick = docs.wrap(deactivate_input_field, get_doc_content)
   confirm_btn.onclick = docs.wrap(onconfirm, get_doc_content)
@@ -7198,27 +6927,17 @@ async function quick_actions (opts, protocol) {
     return doc_file.raw || 'No documentation available'
   }
 
-  function send_up (msg) {
-    if (protocol) _.up(msg)
-  }
-
   function onsubmit () {
-    const head = [by, to, mid++]
-    const refs = {}
-    send_up({ head, refs, type: 'action_submitted' })
+    _.up && _.up('action_submitted', null, {})
   }
 
   function onconfirm () {
-    const head = [by, to, mid++]
-    const refs = {}
-    send_up({ head, refs, type: 'activate_steps_wizard', data: stored_selected_action })
+    _.up && _.up('activate_steps_wizard', stored_selected_action, {})
   }
   function oninput (e) {
     const value = e.target.value
     if (enable_input_field_tooltips) update_input_tooltip(value)
-    const head = [by, to, mid++]
-    const refs = {}
-    send_up({ head, refs, type: 'filter_actions', data: value })
+    _.up && _.up('filter_actions', value, {})
   }
 
   function update_input_display (selected_action = null) {
@@ -7257,9 +6976,7 @@ async function quick_actions (opts, protocol) {
 
     if (enable_input_field_tooltips) update_input_tooltip('')
 
-    const head = [by, to, mid++]
-    const refs = {}
-    send_up({ head, refs, type: 'display_actions', data: { display: 'block', reason: 'browse' } })
+    _.up && _.up('display_actions', { display: 'block', reason: 'browse' }, {})
   }
 
   function onmessage (msg) {
@@ -7289,9 +7006,7 @@ async function quick_actions (opts, protocol) {
     update_input_display()
     hide_input_tooltip()
 
-    const head = [by, to, mid++]
-    const refs = {}
-    send_up({ head, refs, type: 'display_actions', data: { display: 'none', reason } })
+    _.up && _.up('display_actions', { display: 'none', reason }, {})
   }
 
   function show_submit_btn () {
@@ -7373,9 +7088,7 @@ async function quick_actions (opts, protocol) {
     function on_action_btn_mouseenter () { show_tooltip(btn, action.name) }
 
     function onclick () {
-      const head = [by, to, mid++]
-      const refs = {}
-      send_up({ head, refs, type: 'update_quick_actions_input', data: action.name })
+      _.up && _.up('update_quick_actions_input', action.name, {})
     }
   }
 
@@ -7465,12 +7178,8 @@ async function quick_actions (opts, protocol) {
       update_input_display(pass_data)
     }
 
-    const head = [by, to, mid++]
-    const refs = {}
-    send_up({ head, refs, type: 'display_actions', data: { display: 'none', reason: 'selected' } })
-
-    const activate_head = [by, to, mid++]
-    send_up({ head: activate_head, refs: {}, type: 'activate_steps_wizard', data: stored_selected_action })
+    _.up && _.up('display_actions', { display: 'none', reason: 'selected' }, {})
+    _.up && _.up('activate_steps_wizard', stored_selected_action, {})
 
     function matches_selected_command (action) { return action.name === command || action.action === command }
   }
@@ -8247,15 +7956,9 @@ const net = require('net_helper')
 
 module.exports = steps_wizard
 
-async function steps_wizard (opts, protocol) {
+async function steps_wizard (opts, invite) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
-  const ids = opts.ids
-  if (!ids || !ids.up) {
-    throw new Error(`Component ${__filename} requires ids.up to be provided`)
-  }
-  const by = id
-  const to = ids.up
 
   const on = {
     style: inject
@@ -8263,12 +7966,11 @@ async function steps_wizard (opts, protocol) {
 
   let variables = []
   let currentActiveStep = 0
-  let mid = 0
   const docs = DOCS(__filename)(opts.sid)
   const { io, _ } = net(id)
 
   io.on.up = onmessage
-  if (protocol) io.accept(protocol)
+  if (invite) io.accept(invite)
 
   const el = document.createElement('div')
   const shadow = el.attachShadow({ mode: 'closed' })
@@ -8315,10 +8017,6 @@ async function steps_wizard (opts, protocol) {
     }
   }
 
-  function send_up (msg) {
-    if (protocol) _.up(msg)
-  }
-
   function render_steps (steps, auto_focus_first) {
     if (!steps) { return }
 
@@ -8360,13 +8058,11 @@ async function steps_wizard (opts, protocol) {
       btn.onclick = docs.wrap(on_step_click, get_doc_content)
 
       async function on_step_click () {
-        const head = [by, to, mid++]
-        const refs = {}
         console.log('Clicked:', step)
         currentActiveStep = index
         center_step(btn)
         render_steps(steps, false)
-        send_up({ head, refs, type: 'step_clicked', data: { ...step, index, total_steps: steps.length, is_accessible: accessible } })
+        _.up && _.up('step_clicked', { ...step, index, total_steps: steps.length, is_accessible: accessible }, {})
       }
 
       async function get_doc_content () {
@@ -8379,9 +8075,7 @@ async function steps_wizard (opts, protocol) {
       if (auto_focus_first && index === 0) {
         btn.classList.add('active')
         center_step(btn)
-        const head = [by, to, mid++]
-        const refs = {}
-        send_up({ head, refs, type: 'step_clicked', data: { ...step, index: 0, total_steps: steps.length, is_accessible: accessible } })
+        _.up && _.up('step_clicked', { ...step, index: 0, total_steps: steps.length, is_accessible: accessible }, {})
       }
     }
   }
@@ -8474,15 +8168,9 @@ const net = require('net_helper')
 
 module.exports = tabbed_editor
 
-async function tabbed_editor (opts, protocol) {
+async function tabbed_editor (opts, invite) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
-  const ids = opts.ids
-  if (!ids || !ids.up) {
-    throw new Error(`Component ${__filename} requires ids.up to be provided`)
-  }
-  const by = id
-  const to = ids.up
 
   const on = {
     style: inject,
@@ -8505,7 +8193,6 @@ async function tabbed_editor (opts, protocol) {
   const editor_content = shadow.querySelector('.editor-content')
 
   let init = false
-  let mid = 0
   let files = {}
   let active_tab = null
   let current_editor = null
@@ -8517,7 +8204,7 @@ async function tabbed_editor (opts, protocol) {
 
   const { io, _ } = net(id)
   io.on.up = onmessage
-  if (protocol) io.accept(protocol)
+  if (invite) io.accept(invite)
   await sdb.watch(onbatch)
 
   return el
@@ -8532,10 +8219,6 @@ async function tabbed_editor (opts, protocol) {
   function handle_toggle_tab (msg) { toggle_tab(msg.data, msg) }
   function onmessage_fail () { /* docs_toggle @TODO */ }
 
-  function send_up (msg) {
-    if (protocol) _.up(msg)
-  }
-
   function switch_to_tab (tab_data, msg) {
     if (active_tab === tab_data.id) {
       return
@@ -8545,14 +8228,7 @@ async function tabbed_editor (opts, protocol) {
     create_editor(tab_data)
 
     if (_) {
-      const head = [by, to, mid++]
-      const refs = msg?.head ? { cause: msg.head } : undefined
-      send_up({
-        head,
-        refs,
-        type: 'tab_switched',
-        data: tab_data
-      })
+      _.up && _.up('tab_switched', tab_data, msg?.head ? { cause: msg.head } : {})
     }
   }
 
@@ -8572,14 +8248,7 @@ async function tabbed_editor (opts, protocol) {
     }
 
     if (_) {
-      const head = [by, to, mid++]
-      const refs = msg.head ? { cause: msg.head } : undefined
-      send_up({
-        head,
-        refs,
-        type: 'tab_closed',
-        data: tab_data
-      })
+      _.up && _.up('tab_closed', tab_data, msg.head ? { cause: msg.head } : {} )
     }
   }
 
@@ -8638,15 +8307,10 @@ async function tabbed_editor (opts, protocol) {
     files[tab_data.id] = code_area.value
 
     if (_) {
-      const head = [by, to, mid++]
-      send_up({
-        head,
-        type: 'file_changed',
-        data: {
-          id: tab_data.id,
-          content: code_area.value
-        }
-      })
+      _.up && _.up('file_changed', {
+        id: tab_data.id,
+        content: code_area.value
+      }, {})
     }
   }
 
@@ -8912,15 +8576,9 @@ const net = require('net_helper')
 
 module.exports = component
 
-async function component (opts, protocol) {
+async function component (opts, invite) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
-  const ids = opts.ids
-  if (!ids || !ids.up) {
-    throw new Error(`Component ${__filename} requires ids.up to be provided`)
-  }
-  const by = id
-  const to = ids.up
 
   const on = {
     variables: onvariables,
@@ -8937,7 +8595,6 @@ async function component (opts, protocol) {
   shadow.adoptedStyleSheets = [sheet]
 
   let init = false
-  let mid = 0
   let variables = []
   let dricons = []
   const docs = DOCS(__filename)(opts.sid)
@@ -8952,7 +8609,7 @@ async function component (opts, protocol) {
 
   await sdb.watch(onbatch)
   io.on.up = onmessage
-  if (protocol) io.accept(protocol)
+  if (invite) io.accept(invite)
   if (entries) {
     let is_down = false
     let start_x
@@ -9018,10 +8675,6 @@ async function component (opts, protocol) {
     // const { type } = msg
   }
 
-  function send_up (msg) {
-    if (protocol) _.up(msg)
-  }
-
   async function create_btn ({ name, id }, index) {
     const el = document.createElement('div')
     el.innerHTML = `
@@ -9041,15 +8694,12 @@ async function component (opts, protocol) {
 
     async function on_tab_name_click () {
       if (_) {
-        const head = [by, to, mid++]
-        const refs = {}
         const data = {
           type: 'tab',
           sid: opts.sid
         }
-        send_up({ head, refs, type: 'ui_focus', data })
-        const head2 = [by, to, mid++]
-        send_up({ head: head2, refs, type: 'tab_name_clicked', data: { id, name } })
+        _.up && _.up('ui_focus', data, {})
+        _.up && _.up('tab_name_clicked', { id, name }, {})
       }
     }
 
@@ -9064,15 +8714,12 @@ async function component (opts, protocol) {
     async function on_tab_close_click (e) {
       e.stopPropagation()
       if (_) {
-        const head = [by, to, mid++]
-        const refs = {}
         const data = {
           type: 'tab',
           sid: opts.sid
         }
-        send_up({ head, refs, type: 'ui_focus', data })
-        const head2 = [by, to, mid++]
-        send_up({ head: head2, refs, type: 'tab_close_clicked', data: { id, name } })
+        _.up && _.up('ui_focus', data, {})
+        _.up && _.up('tab_close_clicked', { id, name }, {})
       }
     }
 
@@ -9236,15 +8883,13 @@ const task_manager = require('task_manager')
 
 module.exports = tabsbar
 
-async function tabsbar (opts, protocol) {
+async function tabsbar (opts, invite) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
   const ids = opts.ids
   if (!ids || !ids.up) {
     throw new Error(`Component ${__filename} requires ids.up to be provided`)
   }
-  const by = id
-  const to = ids.up
 
   const on = {
     style: inject,
@@ -9252,7 +8897,6 @@ async function tabsbar (opts, protocol) {
   }
 
   let dricons = {}
-  let mid = 0
   let docs_toggle_active = false
   const on_message = {
     docs_toggle: handle_docs_toggle
@@ -9271,15 +8915,13 @@ async function tabsbar (opts, protocol) {
   io.on.up = onmessage
   io.on.tabs = tabs_protocol
   io.on.task_manager = task_manager_protocol
-  if (protocol) {
-    io.accept(protocol)
-    const head = [by, to, mid++]
-    const refs = {}
+  if (invite) {
+    io.accept(invite)
     const data = {
       type: 'wizard_hat',
       sid: opts.sid
     }
-    send_up({ head, refs, type: 'ui_focus', data })
+    _.up && _.up('ui_focus', data, {})
   }
 
   shadow.innerHTML = `
@@ -9296,12 +8938,15 @@ async function tabsbar (opts, protocol) {
 
   const subs = await sdb.watch(onbatch)
 
-  if (dricons[0]) {
+  function onload (svg) {
     const parser = new DOMParser()
-    const doc = parser.parseFromString(dricons[0], 'image/svg+xml')
+    const doc = parser.parseFromString(svg, 'image/svg+xml')
     const svgElem = doc.documentElement
     hat_btn.replaceChildren(svgElem)
     hat_btn.onclick = docs.wrap(hat_click, get_doc_content)
+  }
+  if (dricons[0]) {
+    onload(dricons[0])
   }
   if (dricons[2]) {
     const parser = new DOMParser()
@@ -9312,15 +8957,12 @@ async function tabsbar (opts, protocol) {
 
     function on_bar_btn_click () {
       docs_toggle_active = !docs_toggle_active
-      const head = [by, to, mid++]
-      const head_mgr = [by, to, mid++]
-      const refs = {}
       // Send message to root module to set docs mode
-      send_up({ head, refs, type: 'set_docs_mode', data: { active: docs_toggle_active } })
+      _.up && _.up('set_docs_mode', { active: docs_toggle_active }, {})
       // Also send docs_toggle notification for UI updates
-      send_up({ head: [by, to, mid++], refs, type: 'docs_toggle', data: { active: docs_toggle_active } })
+      _.up && _.up('docs_toggle', { active: docs_toggle_active }, {})
       bar_btn.classList.toggle('active', docs_toggle_active)
-      _.task_manager({ head: head_mgr, refs, type: 'docs_toggle', data: { active: docs_toggle_active } })
+      _.task_manager('docs_toggle', { active: docs_toggle_active }, {})
     }
   }
   const tabs = await tabs_component({ ...subs[0], ids: { up: id } }, io.invite('tabs', { up: id }))
@@ -9339,32 +8981,26 @@ async function tabsbar (opts, protocol) {
   }
 
   async function hat_click () {
-    const head = [by, to, mid++]
-    const refs = {}
     const data = {
       type: 'wizard_hat',
       sid: opts.sid
     }
-    send_up({ head, refs, type: 'ui_focus', data })
+    _.up && _.up('ui_focus', data, {})
   }
   function onmessage (msg) {
     const handler = on_message[msg.type] || onmessage_fail
     handler(msg)
   }
 
-  function send_up (msg) {
-    if (protocol) _.up(msg)
-  }
-
-  function handle_docs_toggle (msg) { _.tabs(msg) }
+  function handle_docs_toggle (msg) { _.tabs(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
 
   function onmessage_fail () {
     // Handle other message types
   }
 
-  function tabs_protocol (msg) { send_up(msg) }
+  function tabs_protocol (msg) { _.up && _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
 
-  function task_manager_protocol (msg) { send_up(msg) }
+  function task_manager_protocol (msg) { _.up && _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
 
   async function onbatch (batch) {
     for (const { type, paths } of batch) {
@@ -9656,17 +9292,10 @@ const net = require('net_helper')
 
 module.exports = task_manager
 
-async function task_manager (opts, protocol) {
+async function task_manager (opts, invite) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
-  const ids = opts.ids
-  if (!ids || !ids.up) {
-    throw new Error(`Component ${__filename} requires ids.up to be provided`)
-  }
-  const by = id
-  const to = ids.up
 
-  let mid = 0
   const docs = DOCS(__filename)(opts.sid)
 
   // Register actions with DOCS system
@@ -9694,24 +9323,18 @@ async function task_manager (opts, protocol) {
   const btn = shadow.querySelector('.task-count-btn')
 
   io.on.up = onmessage
-  if (protocol) io.accept(protocol)
+  if (invite) io.accept(invite)
 
   // DOCS.wrap() is used for automatic docs mode hook
   btn.onclick = docs.wrap(on_task_manager_click, get_doc_content)
 
-  function send_up (msg) {
-    if (protocol) _.up(msg)
-  }
-
   async function on_task_manager_click () {
     if (_) {
-      const head = [by, to, mid++]
-      const refs = {}
       const data = {
         type: 'task_manager',
         sid: opts.sid
       }
-      send_up({ head, refs, type: 'ui_focus', data })
+      _.up && _.up('ui_focus', data, {})
     }
   }
 
@@ -9857,7 +9480,7 @@ const tabsbar = require('tabsbar')
 
 module.exports = taskbar
 
-async function taskbar (opts, protocol) {
+async function taskbar (opts, invite) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
   const ids = opts.ids
@@ -9902,7 +9525,7 @@ async function taskbar (opts, protocol) {
   io.on.action_bar = action_bar_protocol
   io.on.action_executor = action_executor_protocol
   io.on.tabsbar = tabsbar_protocol
-  if (protocol) io.accept(protocol)
+  if (invite) io.accept(invite)
 
   const action_bar_el = await action_bar({ ...subs[0], ids: { up: id } }, io.invite('action_bar', { up: id }))
   action_bar_el.classList.add('replaced-action-bar')
@@ -9939,8 +9562,6 @@ async function taskbar (opts, protocol) {
 
   function action_bar_protocol (msg) {
     const action_handlers = {
-      render_form: action_bar_forward_action_executor,
-      clean_up: action_bar_forward_action_executor,
       action_submitted: action_bar_forward_action_executor,
       selected_action: action_bar_forward_action_executor,
       activate_steps_wizard: action_bar_forward_action_executor,
@@ -9952,10 +9573,8 @@ async function taskbar (opts, protocol) {
     const handler = action_handlers[msg.type] || action_bar_forward_up
     handler(msg)
 
-    function action_bar_forward_action_executor (msg) { _.action_executor(msg) }
-    function action_bar_forward_up (msg) {
-      if (_.up) _.up(msg)
-    }
+    function action_bar_forward_action_executor (msg) { _.action_executor(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
+    function action_bar_forward_up (msg) { _.up && _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
   }
 
   function action_executor_protocol (msg) {
@@ -9968,14 +9587,12 @@ async function taskbar (opts, protocol) {
     }
     const handler = action_handlers[msg.type] || action_executor__noop
     handler(msg)
-    if (_.up) _.up(msg)
+    _.up && _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {} )
 
-    function action_executor__forward_action_bar (msg) { _.action_bar(msg) }
+    function action_executor__forward_action_bar (msg) { _.action_bar(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
     function action_executor__noop () {}
 
-    function action_executor__auto_completed (msg) {
-      _.action_bar({ ...msg, type: 'action_submitted' })
-    }
+    function action_executor__auto_completed (msg) { _.action_bar('action_submitted', msg.data, msg.head ? { cause: msg.head } : {} ) }
   }
 
   function tabsbar_protocol (msg) {
@@ -9984,11 +9601,11 @@ async function taskbar (opts, protocol) {
     }
     const handler = action_handlers[msg.type] || tabsbar__noop
     handler(msg)
-    if (_.up) _.up(msg)
+    _.up && _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {} )
 
     function tabsbar_docs_toggle (msg) {
-      _.action_bar(msg)
-      _.action_executor(msg)
+      _.action_bar(msg.type, msg.data, msg.head ? { cause: msg.head } : {} )
+      _.action_executor(msg.type, msg.data, msg.head ? { cause: msg.head } : {} )
     }
 
     function tabsbar__noop () {}
@@ -9999,17 +9616,16 @@ async function taskbar (opts, protocol) {
     handler(msg)
   }
 
-  function handle_update_steps_wizard_for_app (msg) { _.action_executor(msg) }
-  function handle_docs_toggle (msg) { _.action_bar(msg) }
+  function handle_update_steps_wizard_for_app (msg) { _.action_executor(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
+  function handle_docs_toggle (msg) { _.action_bar(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
   function handle_load_actions (msg) { forward_to_action_bar(msg.type, msg.data, msg) }
-  function handle_step_clicked (msg) { _.action_bar(msg) }
+  function handle_step_clicked (msg) { _.action_bar(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
   function handle_update_quick_actions_for_app (msg) { forward_to_action_bar(msg.type, msg.data, msg) }
   function handle_update_quick_actions_input (msg) { forward_to_action_bar(msg.type, msg.data, msg) }
-  function handle_submit_btn_toggle (msg) { _.action_bar(msg) }
-  function onmessage_forward_action_bar (msg) { _.action_bar(msg) }
+  function handle_submit_btn_toggle (msg) { _.action_bar(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
+  function onmessage_forward_action_bar (msg) { _.action_bar(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
   function forward_to_action_bar (type, data, msg) {
-    const refs = msg.head ? { cause: msg.head } : {}
-    _.action_bar(type, data, refs)
+    _.action_bar(type, data, msg.head ? { cause: msg.head } : {} )
   }
 }
 
@@ -10139,10 +9755,9 @@ const taskbar = require('taskbar')
 
 module.exports = theme_widget
 
-async function theme_widget (opts, protocol) {
+async function theme_widget (opts, invite) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
-  const to = opts.ids.up
 
   const on = {
     style: inject,
@@ -10151,7 +9766,6 @@ async function theme_widget (opts, protocol) {
 
   // Inline focus tracking (merged from focus_tracker)
   let last_focused = null
-  let mid = 0
   const { io, _ } = net(id)
 
   const el = document.createElement('div')
@@ -10174,7 +9788,7 @@ async function theme_widget (opts, protocol) {
   io.on.up = onmessage_from_root
   io.on.program_container = program_container_protocol
   io.on.taskbar = taskbar_protocol
-  if (protocol) io.accept(protocol)
+  if (invite) io.accept(invite)
 
   taskbar_el = await taskbar({ ...subs[1], ids: { up: id } }, io.invite('taskbar', { up: id }))
   taskbar_el.classList.add('taskbar')
@@ -10199,10 +9813,6 @@ async function theme_widget (opts, protocol) {
 
   function inject ({ data }) { sheet.replaceSync(data[0]) }
 
-  function send_up (msg) {
-    if (protocol) _.up(msg)
-  }
-
   // Inline focus tracker: reads persisted focused value to keep last_focused in sync
   function handle_focused ({ data }) {
     const focused = typeof data[0] === 'string' ? JSON.parse(data[0]) : data[0]
@@ -10221,20 +9831,18 @@ async function theme_widget (opts, protocol) {
     handler(msg)
 
     function root_update_actions_for_app (msg) {
-      if (_.program_container) _.program_container(msg)
+      if (_.program_container) _.program_container(msg.type, msg.data, msg.head ? { cause: msg.head } : {} )
       else setTimeout(root_retry_send_program_container, 500, msg)
     }
 
-    function root_retry_send_program_container (msg) { _.program_container(msg) }
-    function root_forward_taskbar (msg) { _.taskbar(msg) }
+    function root_retry_send_program_container (msg) { _.program_container(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
+    function root_forward_taskbar (msg) { _.taskbar(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
   }
 
   // Inline focus tracker: handles ui_focus messages from children
   function handle_ui_focus (msg) {
     if (last_focused !== msg.data.type) {
-      const head = [id, to, mid++]
-      const refs = {}
-      send_up({ head, refs, type: 'focused_app_changed', data: msg.data })
+      _.up && _.up('focused_app_changed', msg.data, {})
     }
     drive.put('focused/current.json', { value: msg.data.type })
   }
@@ -10251,8 +9859,8 @@ async function theme_widget (opts, protocol) {
     handler(msg)
 
     function program_container_forward_ui_focus (msg) { handle_ui_focus(msg) }
-    function program_container_forward_up (msg) { send_up(msg) }
-    function program_container_forward_taskbar (msg) { _.taskbar(msg) }
+    function program_container_forward_up (msg) { _.up && _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
+    function program_container_forward_taskbar (msg) { _.taskbar(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
   }
 
   function taskbar_protocol (msg) {
@@ -10265,10 +9873,10 @@ async function theme_widget (opts, protocol) {
     handler(msg)
 
     function taskbar_forward_ui_focus (msg) { handle_ui_focus(msg) }
-    function taskbar_forward_up (msg) { send_up(msg) }
-    function taskbar_forward_program_container (msg) { _.program_container(msg) }
+    function taskbar_forward_up (msg) { _.up && _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
+    function taskbar_forward_program_container (msg) { _.program_container(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
     function taskbar_docs_toggle (msg) {
-      _.program_container(msg)
+      _.program_container(msg.type, msg.data, msg.head ? { cause: msg.head } : {} )
     }
   }
 }
