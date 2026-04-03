@@ -71,9 +71,7 @@ async function graph_explorer (opts, protocol) {
   el.className = 'graph-explorer-wrapper'
   const shadow = el.attachShadow({ mode: 'closed' })
   shadow.innerHTML = `
-    <div>
-      <div class="graph-container"></div>
-    </div>
+    <div class="graph-container"></div>
     <div class="searchbar"></div>
     <div class="menubar"></div>
   `
@@ -3718,6 +3716,12 @@ async function action_executor (opts, invite) {
     }
   }
 
+  function hide_all_forms () {
+    for (const name in form_input_elements) {
+      toggle_view(form_input_elements[name], false)
+    }
+  }
+
   // -------------------------------
   // Protocol: program
   // -------------------------------
@@ -3789,13 +3793,14 @@ async function action_executor (opts, invite) {
   }
 
   function form_action_submitted (data, type, msg) {
-    console.log('exec.on_form_submitted', data, variables, selected_action)
+    console.error('action_executor: form_action_submitted', data, 'selected_action:', selected_action)
     const step = selected_action.steps[data?.index]
     Object.assign(step, {
       is_completed: true,
       status: 'completed',
       data: data.value
     })
+    console.error('action_executor: step updated', step)
 
     const refs = msg.head ? { cause: msg.head } : {} 
     _.program('update_data', all_data, refs)
@@ -3807,7 +3812,7 @@ async function action_executor (opts, invite) {
   }
 
   function form_action_incomplete (data, type, msg) {
-    console.log('exec.on_form_incomplete', data, variables, selected_action)
+    console.error('action_executor: form_action_incomplete', data)
     const step = selected_action.steps[data?.index]
 
     if (!step.is_completed) return
@@ -3824,11 +3829,18 @@ async function action_executor (opts, invite) {
   }
 
   function form__action_complete (data, type, msg) {
-    if (!selected_action || !selected_action.steps) return
+    console.error('action_executor: form__action_complete', data, 'selected_action:', selected_action)
+    if (!selected_action || !selected_action.steps) {
+      console.error('action_executor: no selected_action or steps')
+      return
+    }
 
     const all_mandatory_complete = selected_action.steps.every(is_step_complete_or_optional)
+    console.error('action_executor: all_mandatory_complete:', all_mandatory_complete)
 
     if (all_mandatory_complete) {
+      console.error('action_executor: hiding forms and sending action_auto_completed')
+      hide_all_forms()
       _.up && _.up('action_auto_completed', { selected_action, trigger: 'form' }, msg.head ? { cause: msg.head } : {} )
     }
 
@@ -5189,6 +5201,7 @@ async function form_tile_split_choice (opts, invite) {
   }
 
   function step_data (data) {
+    console.error('form_tile_split_choice: step_data received', data)
     current_step = data
   }
 
@@ -5198,12 +5211,16 @@ async function form_tile_split_choice (opts, invite) {
 
   async function on_choice_click (ev) {
     const choice = ev.currentTarget.getAttribute('data-choice')
+    console.error('form_tile_split_choice: choice clicked', choice, 'current_step:', current_step)
     await drive.put('data/form_tile_split_choice.json', { choice })
     highlight_choice(choice)
+    console.error('form_tile_split_choice: sending action_submitted', { value: choice, index: current_step?.index ?? 0 })
     _.up && _.up('action_submitted', { value: choice, index: current_step?.index ?? 0 }, {})
 
     // If this is a single-step action, auto-complete the action
+    console.error('form_tile_split_choice: total_steps:', current_step?.total_steps)
     if (current_step && current_step.total_steps === 1) {
+      console.error('form_tile_split_choice: sending action_complete')
       _.up && _.up('action_complete', { value: choice }, {})
     }
   }
@@ -6608,7 +6625,7 @@ async function program_container (opts, invite) {
     function onmessage_console_history_toggle () { console_history_toggle_view() }
     function onmessage_graph_explorer_toggle () { graph_explorer_toggle_view() }
     function onmessage_display_actions (msg) { actions_toggle_view(msg.data) }
-    function onmessage_filter_actions (msg) { _.actions(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
+    function onmessage_filter_actions (msg) { if (_.actions) _.actions(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
     function onmessage_tab_close_clicked (msg) { _.tabbed_editor('close_tab', msg.data, msg.head ? { cause: msg.head } : {} ) }
     function onmessage_entry_toggled (msg) { _.graph_explorer(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
     function onmessage_execute_step (msg) {
@@ -6618,7 +6635,7 @@ async function program_container (opts, invite) {
       update_program_layout()
       _.graph_explorer(msg.type, msg.data, msg.head ? { cause: msg.head } : {} )
     }
-    function onmessage_send_actions (msg) { _.actions(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
+    function onmessage_send_actions (msg) { if (_.actions) _.actions(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
     function onmessage_tab_name_clicked (msg) {
       tabbed_editor_toggle_view(true)
       _.tabbed_editor('toggle_tab', msg.data, msg.head ? { cause: msg.head } : {} )
@@ -9565,6 +9582,7 @@ async function taskbar (opts, invite) {
       action_submitted: action_bar_forward_action_executor,
       selected_action: action_bar_forward_action_executor,
       activate_steps_wizard: action_bar_forward_action_executor,
+      render_form: action_bar_forward_action_executor,
       console_history_toggle: action_bar_forward_up,
       ui_focus: action_bar_forward_up,
       display_actions: action_bar_forward_up,
@@ -9578,6 +9596,7 @@ async function taskbar (opts, invite) {
   }
 
   function action_executor_protocol (msg) {
+    console.error('taskbar: action_executor_protocol', msg.type, msg.data)
     const action_handlers = {
       load_actions: action_executor__forward_action_bar,
       step_clicked: action_executor__forward_action_bar,
@@ -9587,6 +9606,7 @@ async function taskbar (opts, invite) {
     }
     const handler = action_handlers[msg.type] || action_executor__noop
     handler(msg)
+    console.error('taskbar: forwarding to up', msg.type)
     _.up && _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {} )
 
     function action_executor__forward_action_bar (msg) { _.action_bar(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
@@ -9853,7 +9873,9 @@ async function theme_widget (opts, invite) {
   function program_container_protocol (msg) {
     const action_handlers = {
       ui_focus: program_container_forward_ui_focus,
-      set_doc_display_handler: program_container_forward_up
+      set_doc_display_handler: program_container_forward_up,
+      action_auto_completed: program_container_forward_up,
+      action_complete: program_container_forward_up
     }
     const handler = action_handlers[msg.type] || program_container_forward_taskbar
     handler(msg)
@@ -9864,16 +9886,22 @@ async function theme_widget (opts, invite) {
   }
 
   function taskbar_protocol (msg) {
+    console.error('theme_widget: taskbar_protocol', msg.type, msg.data)
     const action_handlers = {
       ui_focus: taskbar_forward_ui_focus,
       docs_toggle: taskbar_docs_toggle,
-      set_docs_mode: taskbar_forward_up
+      set_docs_mode: taskbar_forward_up,
+      action_auto_completed: taskbar_forward_up,
+      action_complete: taskbar_forward_up
     }
     const handler = action_handlers[msg.type] || taskbar_forward_program_container
     handler(msg)
 
     function taskbar_forward_ui_focus (msg) { handle_ui_focus(msg) }
-    function taskbar_forward_up (msg) { _.up && _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
+    function taskbar_forward_up (msg) { 
+      console.error('theme_widget: forwarding to up', msg.type, '_.up exists:', !!_.up)
+      _.up && _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) 
+    }
     function taskbar_forward_program_container (msg) { _.program_container(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
     function taskbar_docs_toggle (msg) {
       _.program_container(msg.type, msg.data, msg.head ? { cause: msg.head } : {} )
@@ -10011,6 +10039,322 @@ function fallback_module () {
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
+const { get } = statedb(fallback_module)
+const net = require('net_helper')
+
+const theme_widget = require('theme_widget')
+
+module.exports = tile_manager
+
+async function tile_manager (opts, invite) {
+  const { id, sdb } = await get(opts.sid)
+  const { drive } = sdb
+
+  const on = {
+    style: inject
+  }
+
+  // Layout state - starts with single tile
+  // direction: 'horizontal' (left/right) or 'vertical' (top/bottom)
+  let layout = {
+    direction: null,  // null = single tile, 'horizontal' or 'vertical' after split
+    tiles: []         // array of { id, element, sid }
+  }
+
+  // Cache for action data to send to new tiles
+  let cached_actions = {
+    update_actions_for_app: null,
+    update_quick_actions_for_app: null,
+    update_steps_wizard_for_app: null
+  }
+
+  let tile_counter = 0
+  const { io, _ } = net(id)
+
+  const el = document.createElement('div')
+  const shadow = el.attachShadow({ mode: 'closed' })
+  shadow.innerHTML = `
+  <div class="tile-manager">
+    <div class="tile-slot" data-tile-id="0"></div>
+  </div>
+  `
+  const sheet = new CSSStyleSheet()
+  shadow.adoptedStyleSheets = [sheet]
+  const container = shadow.querySelector('.tile-manager')
+
+  const subs = await sdb.watch(onbatch)
+
+  io.on.up = onmessage_from_root
+  if (invite) io.accept(invite)
+
+  // Create the first theme_widget
+  await create_tile(0)
+
+  return el
+
+  // ---------------------------
+  // TILE MANAGEMENT
+  // ---------------------------
+
+  async function create_tile (slot_index) {
+    const tile_id = tile_counter++
+    const tile_slot = container.querySelector(`[data-tile-id="${slot_index}"]`)
+    
+    if (!tile_slot) {
+      console.error('tile_manager: slot not found for index', slot_index)
+      return
+    }
+
+    // Get sub for this tile - use existing subs or create fallback
+    const sub_entry = subs[tile_id] || { sid: opts.sid }
+    
+    // Add tile to layout BEFORE creating widget (so messages work during init)
+    const tile_info = {
+      id: tile_id,
+      element: null,
+      slot: tile_slot,
+      sid: sub_entry.sid
+    }
+    layout.tiles.push(tile_info)
+    console.error('tile_manager: tile_info added for tile', tile_id)
+    
+    // Register handler BEFORE calling invite
+    io.on[`tile_${tile_id}`] = create_tile_protocol(tile_id)
+    console.error('tile_manager: handler registered for tile_' + tile_id)
+    const tile_invite = io.invite(`tile_${tile_id}`, { up: id })
+    console.error('tile_manager: invite created for tile_' + tile_id, '_[tile_' + tile_id + '] exists:', !!_[`tile_${tile_id}`])
+
+    const tile_el = await theme_widget(
+      { ...sub_entry, ids: { up: id } },
+      tile_invite
+    )
+    
+    // Update the element reference
+    tile_info.element = tile_el
+    tile_slot.appendChild(tile_el)
+
+    console.error('tile_manager: created tile', tile_id)
+    return tile_id
+  }
+
+  function create_tile_protocol (tile_id) {
+    return function tile_protocol (msg) {
+      const { type, data } = msg
+      console.error(`tile_manager: message from tile_${tile_id}`, type, data)
+
+      // Handle tile split action
+      if (type === 'action_auto_completed' || type === 'action_complete') {
+        console.error('tile_manager: action completed, checking for split', data)
+        const action = data?.selected_action
+        console.error('tile_manager: action name:', action?.name)
+        if (action?.name === 'Split Tile') {
+          // The result field contains the direction as JSON: '["right"]'
+          // This is more reliable than step.data which may be reset
+          let direction = null
+          
+          if (data.result) {
+            try {
+              const results = JSON.parse(data.result)
+              direction = results[0]  // First step's data is the direction
+              console.error('tile_manager: direction from result:', direction)
+            } catch (e) {
+              console.error('tile_manager: failed to parse result', e)
+            }
+          }
+          
+          // Fallback: check step data
+          if (!direction) {
+            const split_step = action.steps.find(s => s.component === 'form_tile_split_choice')
+            console.error('tile_manager: split_step found:', split_step)
+            if (split_step && split_step.data) {
+              direction = split_step.data
+            }
+          }
+          
+          if (direction) {
+            console.error('tile_manager: split requested', direction, 'from tile', tile_id)
+            handle_split(tile_id, direction)
+          } else {
+            console.error('tile_manager: no direction found, cannot split')
+          }
+        }
+      }
+
+      // Forward messages up to root (keep original data format)
+      if (_.up) {
+        _.up(type, data, msg.head ? { cause: msg.head } : {})
+      }
+    }
+  }
+
+  async function handle_split (source_tile_id, direction) {
+    // direction: 'up', 'down', 'left', 'right'
+    console.error('tile_manager: handle_split called', source_tile_id, direction)
+    
+    if (layout.tiles.length >= 2) {
+      console.error('tile_manager: already split, nested splitting not yet supported')
+      return
+    }
+
+    // Determine flex direction based on split direction
+    const is_horizontal = direction === 'left' || direction === 'right'
+    layout.direction = is_horizontal ? 'horizontal' : 'vertical'
+    console.error('tile_manager: layout direction set to', layout.direction)
+
+    // Update container class
+    container.classList.remove('horizontal', 'vertical')
+    container.classList.add(layout.direction)
+
+    // Create second tile slot
+    const new_slot = document.createElement('div')
+    new_slot.className = 'tile-slot'
+    new_slot.setAttribute('data-tile-id', '1')
+
+    // Insert new slot based on direction
+    if (direction === 'left' || direction === 'up') {
+      // New tile goes before existing
+      container.insertBefore(new_slot, container.firstChild)
+    } else {
+      // New tile goes after existing (right, down)
+      container.appendChild(new_slot)
+    }
+    console.error('tile_manager: new slot created')
+
+    // Create the new theme_widget in the new slot
+    await create_tile(1)
+
+    // Send cached actions to the new tile
+    send_cached_actions_to_tile(1)
+
+    console.error('tile_manager: split complete', layout.direction, layout.tiles.length, 'tiles')
+  }
+
+  function send_cached_actions_to_tile (tile_id) {
+    const send = _[`tile_${tile_id}`]
+    if (!send) {
+      console.error('tile_manager: cannot send cached actions, tile_' + tile_id + ' not found')
+      return
+    }
+    
+    console.error('tile_manager: sending cached actions to tile_' + tile_id)
+    
+    for (const [type, data] of Object.entries(cached_actions)) {
+      if (data !== null) {
+        console.error('tile_manager: sending cached', type, 'to tile_' + tile_id)
+        send(type, data, {})
+      }
+    }
+  }
+
+  // ---------------------------
+  // MESSAGE HANDLERS
+  // ---------------------------
+
+  function onmessage_from_root (msg) {
+    const { type, data } = msg
+    console.error('tile_manager: message from root', type, 'tiles:', layout.tiles.length)
+
+    // Cache action data for new tiles
+    if (type === 'update_actions_for_app' || type === 'update_quick_actions_for_app' || type === 'update_steps_wizard_for_app') {
+      cached_actions[type] = data
+      console.error('tile_manager: cached', type)
+    }
+
+    // Forward to all tiles
+    for (const tile of layout.tiles) {
+      const send = _[`tile_${tile.id}`]
+      console.error('tile_manager: forwarding to tile_' + tile.id, 'send exists:', !!send)
+      if (send) {
+        send(type, data, msg.head ? { cause: msg.head } : {})
+      }
+    }
+  }
+
+  // ---------------------------
+  // BATCH HANDLER
+  // ---------------------------
+
+  async function onbatch (batch) {
+    for (const { type, paths } of batch) {
+      const data = await Promise.all(paths.map(load_path_raw))
+      const func = on[type] || fail
+      func({ data, type })
+    }
+
+    function load_path_raw (path) { return drive.get(path).then(read_drive_file_raw) }
+    function read_drive_file_raw (file) { return file.raw }
+  }
+
+  function inject ({ data }) { sheet.replaceSync(data[0]) }
+
+  function fail ({ data, type }) { console.warn('tile_manager: invalid message', { cause: { data, type } }) }
+}
+
+function fallback_module () {
+  return {
+    api: fallback_instance,
+    _: {
+      theme_widget: {
+        $: ''
+      },
+      net_helper: {
+        $: ''
+      }
+    }
+  }
+
+  function fallback_instance () {
+    return {
+      _: {
+        theme_widget: {
+          0: '',
+          1: '',  // Support for second tile
+          mapping: {
+            style: 'style',
+            icons: 'icons',
+            commands: 'commands',
+            scroll: 'scroll',
+            actions: 'actions',
+            hardcons: 'hardcons',
+            files: 'files',
+            highlight: 'highlight',
+            active_tab: 'active_tab',
+            entries: 'entries',
+            runtime: 'runtime',
+            mode: 'mode',
+            flags: 'flags',
+            keybinds: 'keybinds',
+            undo: 'undo',
+            focused: 'focused',
+            temp_actions: 'temp_actions',
+            temp_quick_actions: 'temp_quick_actions',
+            prefs: 'prefs',
+            variables: 'variables',
+            data: 'data',
+            docs: 'docs',
+            docs_style: 'docs_style'
+          }
+        },
+        net_helper: {
+          0: ''
+        }
+      },
+      drive: {
+        'style/': {
+          'tile_manager.css': {
+            $ref: 'style/tile_manager.css'
+          }
+        }
+      }
+    }
+  }
+}
+
+}).call(this)}).call(this,"/src/node_modules/tile_manager/tile_manager.js")
+},{"STATE":1,"net_helper":16,"theme_widget":27}],29:[function(require,module,exports){
+(function (__filename){(function (){
+const STATE = require('STATE')
+const statedb = STATE(__filename)
 const admin_api = statedb.admin()
 const admin_on = {}
 admin_api.on(handle_admin_message)
@@ -10028,6 +10372,7 @@ let mid = 0
   PAGE
 ******************************************************************************/
 const navbar = require('../src/node_modules/menu')
+const tile_manager = require('../src/node_modules/tile_manager')
 const theme_widget = require('../src/node_modules/theme_widget')
 const taskbar = require('../src/node_modules/taskbar')
 const tabsbar = require('../src/node_modules/tabsbar')
@@ -10046,6 +10391,7 @@ const steps_wizard = require('../src/node_modules/steps_wizard')
 const { resource } = require('../src/node_modules/helpers')
 
 const imports = {
+  tile_manager,
   theme_widget,
   taskbar,
   tabsbar,
@@ -10265,7 +10611,7 @@ async function boot (opts) {
     `
       const inner = outer.querySelector('.component-wrapper')
       let component_content
-      if (name === 'theme_widget') {
+      if (name === 'theme_widget' || name === 'tile_manager') {
         component_content = await factory({ ...subs[index], ids: { up: id } }, theme_widget_io.invite('theme_widget', { up: id }))
       } else {
         component_content = await factory({ ...subs[index], ids: { up: id } })
@@ -10470,6 +10816,7 @@ async function boot (opts) {
 function fallback_module () {
   const menuname = '../src/node_modules/menu'
   const names = [
+    '../src/node_modules/tile_manager',
     '../src/node_modules/theme_widget',
     '../src/node_modules/taskbar',
     '../src/node_modules/tabsbar',
@@ -10648,6 +10995,35 @@ function fallback_module () {
     $: '',
     mapping: {
       style: 'style',
+      docs: 'docs'
+    }
+  }
+  subs['../src/node_modules/tile_manager'] = {
+    $: '',
+    0: '',
+    mapping: {
+      style: 'style',
+      commands: 'commands',
+      icons: 'icons',
+      scroll: 'scroll',
+      actions: 'actions',
+      hardcons: 'hardcons',
+      files: 'files',
+      highlight: 'highlight',
+      active_tab: 'active_tab',
+      entries: 'entries',
+      runtime: 'runtime',
+      mode: 'mode',
+      flags: 'flags',
+      keybinds: 'keybinds',
+      undo: 'undo',
+      focused: 'focused',
+      temp_actions: 'temp_actions',
+      temp_quick_actions: 'temp_quick_actions',
+      prefs: 'prefs',
+      variables: 'variables',
+      data: 'data',
+      docs_style: 'docs_style',
       docs: 'docs'
     }
   }
@@ -10863,4 +11239,4 @@ function handle_admin_message (msg) {
 }
 
 }).call(this)}).call(this,"/web/page.js")
-},{"../src/node_modules/DOCS":3,"../src/node_modules/action_bar":4,"../src/node_modules/action_executor":5,"../src/node_modules/actions":6,"../src/node_modules/console_history":7,"../src/node_modules/graph_explorer_wrapper":11,"../src/node_modules/helpers":13,"../src/node_modules/menu":15,"../src/node_modules/net_helper":16,"../src/node_modules/program_container":18,"../src/node_modules/quick_actions":19,"../src/node_modules/quick_editor":20,"../src/node_modules/steps_wizard":21,"../src/node_modules/tabbed_editor":22,"../src/node_modules/tabs":23,"../src/node_modules/tabsbar":24,"../src/node_modules/task_manager":25,"../src/node_modules/taskbar":26,"../src/node_modules/theme_widget":27,"STATE":1}]},{},[28]);
+},{"../src/node_modules/DOCS":3,"../src/node_modules/action_bar":4,"../src/node_modules/action_executor":5,"../src/node_modules/actions":6,"../src/node_modules/console_history":7,"../src/node_modules/graph_explorer_wrapper":11,"../src/node_modules/helpers":13,"../src/node_modules/menu":15,"../src/node_modules/net_helper":16,"../src/node_modules/program_container":18,"../src/node_modules/quick_actions":19,"../src/node_modules/quick_editor":20,"../src/node_modules/steps_wizard":21,"../src/node_modules/tabbed_editor":22,"../src/node_modules/tabs":23,"../src/node_modules/tabsbar":24,"../src/node_modules/task_manager":25,"../src/node_modules/taskbar":26,"../src/node_modules/theme_widget":27,"../src/node_modules/tile_manager":28,"STATE":1}]},{},[29]);
