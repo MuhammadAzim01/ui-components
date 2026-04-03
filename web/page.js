@@ -17,6 +17,7 @@ let mid = 0
   PAGE
 ******************************************************************************/
 const navbar = require('../src/node_modules/menu')
+const tile_manager = require('../src/node_modules/tile_manager')
 const theme_widget = require('../src/node_modules/theme_widget')
 const taskbar = require('../src/node_modules/taskbar')
 const tabsbar = require('../src/node_modules/tabsbar')
@@ -35,6 +36,7 @@ const steps_wizard = require('../src/node_modules/steps_wizard')
 const { resource } = require('../src/node_modules/helpers')
 
 const imports = {
+  tile_manager,
   theme_widget,
   taskbar,
   tabsbar,
@@ -254,7 +256,7 @@ async function boot (opts) {
     `
       const inner = outer.querySelector('.component-wrapper')
       let component_content
-      if (name === 'theme_widget') {
+      if (name === 'theme_widget' || name === 'tile_manager') {
         component_content = await factory({ ...subs[index], ids: { up: id } }, theme_widget_io.invite('theme_widget', { up: id }))
       } else {
         component_content = await factory({ ...subs[index], ids: { up: id } })
@@ -459,6 +461,7 @@ async function boot (opts) {
 function fallback_module () {
   const menuname = '../src/node_modules/menu'
   const names = [
+    '../src/node_modules/tile_manager',
     '../src/node_modules/theme_widget',
     '../src/node_modules/taskbar',
     '../src/node_modules/tabsbar',
@@ -637,6 +640,35 @@ function fallback_module () {
     $: '',
     mapping: {
       style: 'style',
+      docs: 'docs'
+    }
+  }
+  subs['../src/node_modules/tile_manager'] = {
+    $: '',
+    0: '',
+    mapping: {
+      style: 'style',
+      commands: 'commands',
+      icons: 'icons',
+      scroll: 'scroll',
+      actions: 'actions',
+      hardcons: 'hardcons',
+      files: 'files',
+      highlight: 'highlight',
+      active_tab: 'active_tab',
+      entries: 'entries',
+      runtime: 'runtime',
+      mode: 'mode',
+      flags: 'flags',
+      keybinds: 'keybinds',
+      undo: 'undo',
+      focused: 'focused',
+      temp_actions: 'temp_actions',
+      temp_quick_actions: 'temp_quick_actions',
+      prefs: 'prefs',
+      variables: 'variables',
+      data: 'data',
+      docs_style: 'docs_style',
       docs: 'docs'
     }
   }
