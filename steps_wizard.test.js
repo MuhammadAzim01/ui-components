@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { readFileSync } from 'fs'
 import { join } from 'path'
+import { createRequire } from 'module'
+
+const require = createRequire(import.meta.url)
+const net = require('./src/node_modules/net_helper/net_helper.js')
 
 describe('steps_wizard - Protocol Communication', () => {
   let mockProtocol
@@ -27,7 +31,7 @@ describe('steps_wizard - Protocol Communication', () => {
 
   it('should send step_clicked message type in component code', () => {
     // Verify the component source contains the correct message type
-    const hasCorrectMessageType = componentSource.includes("type: 'step_clicked'")
+    const hasCorrectMessageType = componentSource.includes("_.up && _.up('step_clicked'")
     
     expect(hasCorrectMessageType).toBe(true)
     
@@ -39,13 +43,11 @@ describe('steps_wizard - Protocol Communication', () => {
   })
 
   it('should send correct protocol message structure with step_clicked type', () => {
-    // Setup component IDs (simulating what the component does)
-    const by = 'wizard_instance_123'
-    const to = 'parent_id_456'
-    let mid = 0
-
-    // Initialize protocol
-    const send = mockProtocol(vi.fn())
+    const parent = net('parent_id_456')
+    const child = net('wizard_instance_123')
+    parent.io.on.steps_wizard = msg => receivedMessages.push(msg)
+    child.io.on.up = vi.fn()
+    child.io.accept(parent.io.invite('steps_wizard', { up: 'parent_id_456' }))
 
     // Simulate the exact behavior from on_step_click function
     const step = {
@@ -59,21 +61,15 @@ describe('steps_wizard - Protocol Communication', () => {
     const steps = [step]
     const accessible = true
 
-    // This mimics the actual code in steps_wizard.js line 123:
-    // _.up({ head, refs, type: 'step_clicked', data: { ...step, index, total_steps: steps.length, is_accessible: accessible } })
-    const head = [by, to, mid++]
-    const refs = {}
-    send({ 
-      head, 
-      refs, 
-      type: 'step_clicked',  // This MUST match what's in the component
-      data: { ...step, index, total_steps: steps.length, is_accessible: accessible } 
-    })
+    // This mimics the actual code in steps_wizard.js line 115:
+    // _.up && _.up('step_clicked', { ...step, index, total_steps: steps.length, is_accessible: accessible }, {})
+    const head = child._.up('step_clicked', { ...step, index, total_steps: steps.length, is_accessible: accessible }, {})
 
     // Verify message structure
     expect(receivedMessages).toHaveLength(1)
     expect(receivedMessages[0].type).toBe('step_clicked')
     expect(receivedMessages[0].head).toEqual(['wizard_instance_123', 'parent_id_456', 0])
+    expect(head).toEqual(['wizard_instance_123', 'parent_id_456', 0])
     expect(receivedMessages[0].data.index).toBe(0)
   })
 

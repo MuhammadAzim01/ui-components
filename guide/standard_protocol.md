@@ -10,7 +10,7 @@ The current protocol is based on a shared router created with `net(id)`:
 2. The parent registers handlers on `io.on`.
 3. The parent passes `io.invite(name, { up: id })` to the child.
 4. The child creates its own net instance, registers `io.on`, and calls `io.accept(invite)`.
-5. Both sides receive channel helpers on `_` and send with `_.channel(type, data, refs)`.
+5. Both sides receive channel helpers on `_` and send with a named helper such as `_.up(type, data, refs)`.
 
 This creates a two-way communication channel:
 - **Upward (Child -> Parent)**: Child sends through `_.up(...)`.
@@ -70,16 +70,16 @@ Example:
 
 ```js
 _.up = send
-_.up.channel === 'up'
-_.up.to === 'connected_recipient_id'
 ```
 
 Send through the helper directly:
 
 ```javascript
-_.up && _.up('something', data, {})
+const head = _.up && _.up('something', data, {})
 _.petname('done', data, { cause: msg.head })
 ```
+
+Send helpers return the generated `head`. Store that return value if you need to match a later response to the message you sent.
 
 Do not manually build `{ head, refs, type, data }` for net-managed sends.
 
@@ -99,7 +99,7 @@ async function my_component (opts, invite) {
 
   // 1. Sending a Message (e.g., on click)
   button.onclick = () => {
-    _.up && _.up('click', 'hello', {})
+    const head = _.up && _.up('click', 'hello', {})
   }
 
   // 2. Receiving Messages
