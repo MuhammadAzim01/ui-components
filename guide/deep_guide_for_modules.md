@@ -331,7 +331,9 @@ const net = require('net_helper')
 const submodule = require('example_submodule')
  
 const { io, _ } = net(id)
-io.on.submodule = submodule_protocol
+io.on = {
+  submodule: submodule_protocol
+}
  
 // In parent module
 element = await submodule({ ...subs[0] }, io.invite('submodule', { up: id }))
@@ -373,7 +375,9 @@ async function my_component (opts, invite) {
   const { id } = await get(opts.sid)
   const { io, _ } = net(id)
 
-  io.on.up = onmessage
+  io.on = {
+    up: onmessage
+  }
   if (invite) io.accept(invite)
 }
 ```
@@ -387,12 +391,14 @@ async function component (opts, invite) {
   const { id, sdb } = await get(opts.sid)
   const { io, _ } = net(id)
 
-  io.on.up = onmessage
+  io.on = {
+    up: onmessage
+  }
   if (invite) io.accept(invite)
 
   // Send message upward
   button.onclick = () => {
-    _.up && _.up('click', 'hello', {})
+    _.up('click', 'hello', {})
   }
 
   function onmessage (msg) {
@@ -401,7 +407,7 @@ async function component (opts, invite) {
   }
 
   function handle_click (msg) {
-    _.up && _.up('done', { ok: true }, { cause: msg.head })
+    _.up('done', { ok: true }, { cause: msg.head })
   }
 
   return el

@@ -13,7 +13,9 @@ async function component (opts, invite) {
   // Setup net_helper for inter-module communication
   // Example: await tabs_component({ ...subs[0] }, io.invite('tabs', { up: id }))
   const { io, _ } = net(id)
-  io.on.up = onmessage
+  io.on = {
+    up: onmessage
+  }
   if (invite) io.accept(invite)
   // optional getting drive from state database but it does not work currently. will be useful in the future though.
   // eslint-disable-next-line no-unused-vars
@@ -115,11 +117,11 @@ async function component (opts, invite) {
     label_el.draggable = false
     icon_el.onclick = () => {
       // Send message upward when icon is clicked
-      _.up && _.up('tab_icon_clicked', { name, id, index }, {})
+      _.up('tab_icon_clicked', { name, id, index }, {})
     }
     btn_el.onclick = () => {
       // Send message upward when close button is clicked
-      _.up && _.up('tab_close_clicked', { name, id, index }, {})
+      _.up('tab_close_clicked', { name, id, index }, {})
     }
     entries.appendChild(el)
   }

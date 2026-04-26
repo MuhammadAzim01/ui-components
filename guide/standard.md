@@ -29,7 +29,9 @@ async function component (opts, invite) {
     some_type: handle_some_type
   }
 
-  io.on.up = onmessage
+  io.on = {
+    up: onmessage
+  }
   if (invite) io.accept(invite)
 
   await sdb.watch(onbatch)
@@ -46,7 +48,7 @@ async function component (opts, invite) {
   }
 
   function handle_some_type (msg) {
-    _.up && _.up('done', { ok: true }, { cause: msg.head })
+    _.up('done', { ok: true }, { cause: msg.head })
   }
 
   async function onbatch (batch) {
@@ -79,7 +81,9 @@ boot()
 async function boot () {
   const subs = await sdb.watch(onbatch)
   const { io: child_io, _: child_send } = net(id)
-  child_io.on.my_component = component_protocol
+  child_io.on = {
+    my_component: component_protocol
+  }
 
   const el = await my_component({ ...subs[0] }, child_io.invite('my_component', { up: id }))
   document.body.append(el)
@@ -149,7 +153,7 @@ function io_petname () {
   }
 
   function forward_default (msg) {
-    _.up && _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {})
+    _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {})
   }
 }
 ```
@@ -186,7 +190,7 @@ button.addEventListener('click', () => { ... })
 - Register handlers on `io.on`.
 - Accept parent wiring with `if (invite) io.accept(invite)`.
 - Create child wiring with `io.invite(name, { up: id })`.
-- Send through `_` channel helpers like `_.up && _.up(type, data, refs)` or `_.child(type, data, refs)`.
+- Send through `_` channel helpers like `_.up(type, data, refs)` or `_.child(type, data, refs)`.
 - Use `refs: { cause: msg.head }` for derived messages, `{}` for root/UI events.
 - Do not manually construct `{ head, refs, type, data }` for net-managed sends.
 - Do not manually assign channel helpers onto `_`.
@@ -208,4 +212,4 @@ button.addEventListener('click', () => { ... })
 
 - Avoid `?.` optional chaining in this codebase unless there is a strong reason.
 - Use direct property access for required state and required objects.
-- Use explicit guards where a connection is optional, e.g. `_.up && _.up(...)`.
+- Use explicit guards only when a connection is genuinely optional at runtime.

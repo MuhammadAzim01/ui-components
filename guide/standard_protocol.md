@@ -68,14 +68,10 @@ After `invite` / `accept`, each registered channel becomes a callable helper on 
 
 Example:
 
-```js
-_.up = send
-```
-
 Send through the helper directly:
 
 ```javascript
-const head = _.up && _.up('something', data, {})
+const head = _.up('something', data, {})
 _.petname('done', data, { cause: msg.head })
 ```
 
@@ -94,12 +90,14 @@ async function my_component (opts, invite) {
   const { id, sdb } = await get(opts.sid)
   const { io, _ } = net(id)
 
-  io.on.up = onmessage
+  io.on = {
+    up: onmessage
+  }
   if (invite) io.accept(invite)
 
   // 1. Sending a Message (e.g., on click)
   button.onclick = () => {
-    const head = _.up && _.up('click', 'hello', {})
+    const head = _.up('click', 'hello', {})
   }
 
   // 2. Receiving Messages
@@ -109,7 +107,7 @@ async function my_component (opts, invite) {
   }
 
   function handle_click (msg) {
-    _.up && _.up('done', { ok: true }, { cause: msg.head })
+    _.up('done', { ok: true }, { cause: msg.head })
   }
 
   return el
@@ -122,7 +120,9 @@ Parent:
 
 ```js
 const { io: child_io, _: child_send } = net(id)
-child_io.on.child = child_protocol
+child_io.on = {
+  child: child_protocol
+}
 
 const child = await child_component(subs[0], child_io.invite('child', { up: id }))
 
@@ -143,7 +143,9 @@ async function child_component (opts, invite) {
   const { id } = await get(opts.sid)
   const { io, _ } = net(id)
 
-  io.on.up = onmessage
+  io.on = {
+    up: onmessage
+  }
   if (invite) io.accept(invite)
 }
 ```

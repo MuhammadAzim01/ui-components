@@ -31,7 +31,7 @@ describe('steps_wizard - Protocol Communication', () => {
 
   it('should send step_clicked message type in component code', () => {
     // Verify the component source contains the correct message type
-    const hasCorrectMessageType = componentSource.includes("_.up && _.up('step_clicked'")
+    const hasCorrectMessageType = componentSource.includes("_.up('step_clicked'")
 
     expect(hasCorrectMessageType).toBe(true)
 
@@ -62,7 +62,7 @@ describe('steps_wizard - Protocol Communication', () => {
     const accessible = true
 
     // This mimics the actual code in steps_wizard.js line 115:
-    // _.up && _.up('step_clicked', { ...step, index, total_steps: steps.length, is_accessible: accessible }, {})
+    // _.up('step_clicked', { ...step, index, total_steps: steps.length, is_accessible: accessible }, {})
     const head = child._.up('step_clicked', { ...step, index, total_steps: steps.length, is_accessible: accessible }, {})
 
     // Verify message structure
