@@ -13,13 +13,13 @@ describe('steps_wizard - Protocol Communication', () => {
 
   beforeEach(() => {
     receivedMessages = []
-    
+
     // Read the actual component source code
     componentSource = readFileSync(
       join(process.cwd(), 'src/node_modules/steps_wizard/steps_wizard.js'),
       'utf-8'
     )
-    
+
     // Mock protocol: captures onmessage handler and returns send function
     mockProtocol = vi.fn().mockImplementation((onmessage) => {
       mockProtocol.onmessage = onmessage
@@ -32,9 +32,9 @@ describe('steps_wizard - Protocol Communication', () => {
   it('should send step_clicked message type in component code', () => {
     // Verify the component source contains the correct message type
     const hasCorrectMessageType = componentSource.includes("_.up && _.up('step_clicked'")
-    
+
     expect(hasCorrectMessageType).toBe(true)
-    
+
     if (!hasCorrectMessageType) {
       // Show what type it found instead
       const typeMatch = componentSource.match(/type:\s*['"]([^'"]+)['"]/g)
@@ -102,20 +102,20 @@ describe('steps_wizard - Protocol Communication', () => {
     // Verify the actual can_access function exists in the component
     const hasCan_accessFunction = componentSource.includes('function can_access')
     expect(hasCan_accessFunction).toBe(true)
-    
+
     // Extract the ACTUAL can_access function from steps_wizard.js
     // Using Function constructor to create the function from source
     const functionMatch = componentSource.match(/function can_access\s*\(([^)]*)\)\s*{\s*([\s\S]*?)\n\s*return true\s*\n\s*}/m)
-    
-    expect(functionMatch).toBeTruthy()  // Function must be found
-    
+
+    expect(functionMatch).toBeTruthy() // Function must be found
+
     if (functionMatch) {
-      const params = functionMatch[1].trim()  
+      const params = functionMatch[1].trim()
       const body = functionMatch[2].trim()
-      
+
       // Create the actual function from the source code
       const can_access = new Function(params, `${body}\nreturn true`)
-      
+
       // Now verify it has the CORRECT logic by checking what it actually does
       const steps = [
         { name: 'Step 1', type: 'mandatory', is_completed: true },
@@ -126,13 +126,13 @@ describe('steps_wizard - Protocol Communication', () => {
       // Test the EXPECTED behavior (what the function SHOULD do)
       // Step 1 is complete, Step 2 is optional, so Step 3 should be accessible
       const step3Result = can_access(2, steps)
-      
+
       // If this fails, it means the component logic is wrong
-      expect(step3Result).toBe(true)  // Can skip optional step
-      
+      expect(step3Result).toBe(true) // Can skip optional step
+
       // First step always accessible
       expect(can_access(0, steps)).toBe(true)
-      
+
       // Cannot skip incomplete mandatory step
       const stepsWithIncomplete = [
         { name: 'Step 1', type: 'mandatory', is_completed: false },
