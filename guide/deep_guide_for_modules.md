@@ -223,7 +223,7 @@ After we get the `Sid`'s we can append the required submodules into our HTML ele
  submodule1(subs[0]).then(el => shadow.querySelector('placeholder').replaceWith(el))
 
  // if the child uses net_helper, wire it with invite/accept
- // const child = await submodule1({ ...subs[0], ids: { up: id } }, io.invite('submodule1', { up: id }))
+ // const child = await submodule1({ ...subs[0] }, io.invite('submodule1', { up: id }))
  // shadow.querySelector('placeholder').replaceWith(child)
 
   // to add a click event listener to the buttons:
@@ -334,7 +334,7 @@ const { io, _ } = net(id)
 io.on.submodule = submodule_protocol
  
 // In parent module
-element = await submodule({ ...subs[0], ids: { up: id } }, io.invite('submodule', { up: id }))
+element = await submodule({ ...subs[0] }, io.invite('submodule', { up: id }))
 ```
 
 ### Parent / Child Structure

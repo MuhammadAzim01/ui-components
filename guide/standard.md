@@ -81,7 +81,7 @@ async function boot () {
   const { io: child_io, _: child_send } = net(id)
   child_io.on.my_component = component_protocol
 
-  const el = await my_component({ ...subs[0], ids: { up: id } }, child_io.invite('my_component', { up: id }))
+  const el = await my_component({ ...subs[0] }, child_io.invite('my_component', { up: id }))
   document.body.append(el)
 
   function component_protocol (msg) {

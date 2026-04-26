@@ -11,7 +11,7 @@ async function component (opts, invite) {
   // getting the state database for the current instance
   const { id, sdb } = await get(opts.sid)
   // Setup net_helper for inter-module communication
-  // Example: await tabs_component({ ...subs[0], ids: { up: id } }, io.invite('tabs', { up: id }))
+  // Example: await tabs_component({ ...subs[0] }, io.invite('tabs', { up: id }))
   const { io, _ } = net(id)
   io.on.up = onmessage
   if (invite) io.accept(invite)
