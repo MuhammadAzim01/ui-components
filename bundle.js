@@ -71,7 +71,9 @@ async function graph_explorer (opts, protocol) {
   el.className = 'graph-explorer-wrapper'
   const shadow = el.attachShadow({ mode: 'closed' })
   shadow.innerHTML = `
-    <div class="graph-container"></div>
+    <div>
+      <div class="graph-container"></div>
+    </div>
     <div class="searchbar"></div>
     <div class="menubar"></div>
   `
@@ -3137,6 +3139,9 @@ function fallback_module () {
 
 }).call(this)}).call(this,"/node_modules/graph-explorer/lib/graph_explorer.js")
 },{"STATE":1}],3:[function(require,module,exports){
+module.exports = require('ui_gallery')
+
+},{"ui_gallery":29}],4:[function(require,module,exports){
 (function (global){(function (){
 // --- Main Export ---
 // Usage: const docs = DOCS(__filename)(opts.sid)
@@ -3297,7 +3302,7 @@ function create_context (filename, sid) {
 }
 
 }).call(this)}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],4:[function(require,module,exports){
+},{}],5:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -3312,10 +3317,6 @@ module.exports = action_bar
 async function action_bar (opts, invite) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
-  const ids = opts.ids
-  if (!ids || !ids.up) {
-    throw new Error(`Component ${__filename} requires ids.up to be provided`)
-  }
 
   const on = {
     style: inject,
@@ -3348,13 +3349,15 @@ async function action_bar (opts, invite) {
 
   let selected_action = null
 
-  io.on.up = onmessage
-  io.on.quick_actions = quick_actions_protocol
+  io.on = {
+    up: onmessage,
+    quick_actions: quick_actions_protocol
+  }
   if (invite) io.accept(invite)
 
   history_icon.innerHTML = console_icon
   history_icon.onclick = docs.wrap(onhistory, get_doc_content)
-  const element = await quick_actions({ ...subs[0], ids: { up: id } }, io.invite('quick_actions', { up: id }))
+  const element = await quick_actions({ ...subs[0] }, io.invite('quick_actions', { up: id }))
   quick_placeholder.replaceWith(element)
 
   const parent_handler = {
@@ -3387,14 +3390,14 @@ async function action_bar (opts, invite) {
     function read_drive_file_raw (file) { return file.raw }
   }
 
-  function fail ({ data, type} ) { console.warn('Unknown message type:', type, data) }
+  function fail ({ data, type }) { console.warn('Unknown message type:', type, data) }
   function inject ({ data }) { sheet.replaceSync(data[0]) }
   function iconject ({ data }) { console_icon = data[0] }
 
   async function onhistory () {
-    _.up && _.up('console_history_toggle', null, {})
+    _.up('console_history_toggle', null, {})
     // const head2 = [by, to, mid++]
-    // _.up && _.up({ head: head2, refs, type: 'ui_focus', data: 'command_history' })
+    // _.up({ head: head2, refs, type: 'ui_focus', data: 'command_history' })
   }
 
   // -------------------------------
@@ -3416,27 +3419,27 @@ async function action_bar (opts, invite) {
     handler(msg)
   }
 
-  function quick_actions_filter_actions (msg) { _.up && _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
+  function quick_actions_filter_actions (msg) { _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
   function quick_actions_display_actions (msg) {
     const { data } = msg
-    _.up && _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {} )
+    _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {})
     const display = typeof data === 'string' ? data : data.display
     const reason = typeof data === 'string' ? '' : data.reason
     const should_clean = display === 'none' && reason !== 'selected'
     if (should_clean) {
-      _.up && _.up('clean_up', selected_action, msg.head ? { cause: msg.head } : {} )
+      _.up('clean_up', selected_action, msg.head ? { cause: msg.head } : {})
     }
   }
 
   function quick_actions_action_submitted (msg) {
-    _.quick_actions('deactivate_input_field', { reason: 'completed' }, msg.head ? { cause: msg.head } : {} )
-    _.up && _.up('action_submitted', { selected_action }, msg.head ? { cause: msg.head } : {} )
+    _.quick_actions('deactivate_input_field', { reason: 'completed' }, msg.head ? { cause: msg.head } : {})
+    _.up('action_submitted', { selected_action }, msg.head ? { cause: msg.head } : {})
   }
 
   function onmessage (msg) {
     const { type } = msg
     if (type === 'docs_toggle') {
-      _.quick_actions(type, msg.data, msg.head ? { cause: msg.head } : {} )
+      _.quick_actions(type, msg.data, msg.head ? { cause: msg.head } : {})
     } else {
       const handler = parent_handler[type] || fail
       handler(msg)
@@ -3444,44 +3447,44 @@ async function action_bar (opts, invite) {
   }
 
   function load_actions (msg) {
-    const { data } = msg
+    // const { data } = msg
   }
   function parent_selected_action (msg) {
-    _.quick_actions(msg.type, msg.data, msg.head ? { cause: msg.head } : {} )
+    _.quick_actions(msg.type, msg.data, msg.head ? { cause: msg.head } : {})
   }
-  function show_submit_btn (msg) { _.quick_actions('show_submit_btn', null, msg.head ? { cause: msg.head } : {} ) }
-  function hide_submit_btn (msg) { _.quick_actions('hide_submit_btn', null, msg.head ? { cause: msg.head } : {} ) }
+  function show_submit_btn (msg) { _.quick_actions('show_submit_btn', null, msg.head ? { cause: msg.head } : {}) }
+  function hide_submit_btn (msg) { _.quick_actions('hide_submit_btn', null, msg.head ? { cause: msg.head } : {}) }
 
   function update_quick_actions_for_app (msg) {
     const { data, type } = msg
-    _.quick_actions(type, data, msg.head ? { cause: msg.head } : {} )
+    _.quick_actions(type, data, msg.head ? { cause: msg.head } : {})
   }
 
   function update_quick_actions_input (msg) {
     const { data } = msg
     selected_action = data || null
-    _.quick_actions('update_input_command', data, msg.head ? { cause: msg.head } : {} )
+    _.quick_actions('update_input_command', data, msg.head ? { cause: msg.head } : {})
   }
 
-  function quick_actions_activate_steps_wizard (msg) { _.up && _.up('activate_steps_wizard', msg.data, msg.head ? { cause: msg.head } : {} ) }
+  function quick_actions_activate_steps_wizard (msg) { _.up('activate_steps_wizard', msg.data, msg.head ? { cause: msg.head } : {}) }
 
   function parent_step_clicked (msg) {
     const { data } = msg
-    _.quick_actions('update_current_step', data, msg.head ? { cause: msg.head } : {} )
-    _.up && _.up('render_form', data, msg.head ? { cause: msg.head } : {} )
+    _.quick_actions('update_current_step', data, msg.head ? { cause: msg.head } : {})
+    _.up('render_form', data, msg.head ? { cause: msg.head } : {})
   }
 
   function parent__action_submitted (msg) {
-    _.quick_actions('deactivate_input_field', { reason: 'completed' }, msg.head ? { cause: msg.head } : {} )
-    _.up && _.up('action_submitted', msg.data, msg.head ? { cause: msg.head } : {} )
+    _.quick_actions('deactivate_input_field', { reason: 'completed' }, msg.head ? { cause: msg.head } : {})
+    _.up('action_submitted', msg.data, msg.head ? { cause: msg.head } : {})
   }
 
   function parent__clean_up (msg) {
-    _.quick_actions('deactivate_input_field', { reason: 'cancel' }, msg.head ? { cause: msg.head } : {} )
-    _.up && _.up('clean_up', msg.data, msg.head ? { cause: msg.head } : {} )
+    _.quick_actions('deactivate_input_field', { reason: 'cancel' }, msg.head ? { cause: msg.head } : {})
+    _.up('clean_up', msg.data, msg.head ? { cause: msg.head } : {})
   }
 
-  function ui_focus_docs (msg) { _.up && _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
+  function ui_focus_docs (msg) { _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
 }
 
 function fallback_module () {
@@ -3592,7 +3595,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/action_bar/action_bar.js")
-},{"DOCS":3,"STATE":1,"net_helper":16,"quick_actions":19}],5:[function(require,module,exports){
+},{"DOCS":4,"STATE":1,"net_helper":17,"quick_actions":20}],6:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -3616,10 +3619,6 @@ module.exports = action_executor
 async function action_executor (opts, invite) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
-  const ids = opts.ids
-  if (!ids || !ids.up) {
-    throw new Error(`Component ${__filename} requires ids.up to be provided`)
-  }
 
   const on = {
     style: inject
@@ -3644,25 +3643,26 @@ async function action_executor (opts, invite) {
   const subs = await sdb.watch(onbatch)
 
   let all_data = null
-  let variables = []
   let selected_action = null
 
-  io.on.up = onmessage
-  io.on.program = program_protocol
-  io.on.steps_wizard = steps_wizard_protocol
+  io.on = {
+    up: onmessage,
+    program: program_protocol,
+    steps_wizard: steps_wizard_protocol
+  }
 
   // dynamic form input component SIDs
-  for (const [index, [component_name]] of Object.entries(component_modules).entries()) {
-    const final_index = index + 2
+  for (const [component_name] of Object.entries(component_modules)) {
+    // const final_index = index + 2
     io.on[component_name] = form_input_protocol(component_name)
   }
   if (invite) io.accept(invite)
 
-  const program_el = await program({ ...subs[0], ids: { up: id } }, io.invite('program', { up: id }))
+  const program_el = await program({ ...subs[0] }, io.invite('program', { up: id }))
   program_el.classList.add('program-bar', 'hide')
   program_placeholder.replaceWith(program_el)
 
-  const steps_wizard_el = await steps_wizard({ ...subs[1], ids: { up: id } }, io.invite('steps_wizard', { up: id }))
+  const steps_wizard_el = await steps_wizard({ ...subs[1] }, io.invite('steps_wizard', { up: id }))
   steps_wizard_el.classList.add('steps-wizard-bar', 'hide')
   steps_wizard_placeholder.replaceWith(steps_wizard_el)
 
@@ -3671,7 +3671,7 @@ async function action_executor (opts, invite) {
   for (const [index, [component_name, component_fn]] of Object.entries(component_modules).entries()) {
     const final_index = index + 2
     const sub_entry = subs[final_index] || { sid: opts.sid }
-    const element = await component_fn({ ...sub_entry, ids: { up: id } }, io.invite(component_name, { up: id }))
+    const element = await component_fn({ ...sub_entry }, io.invite(component_name, { up: id }))
     element.classList.add('form-inputs', 'hide')
     form_input_elements[component_name] = element
     form_input_placeholder.parentNode.insertBefore(element, form_input_placeholder)
@@ -3736,8 +3736,7 @@ async function action_executor (opts, invite) {
   }
 
   function program_load_actions (data, type, msg) {
-    variables = data
-    _.up && _.up(type, data, msg.head ? { cause: msg.head } : {} )
+    _.up(type, data, msg.head ? { cause: msg.head } : {})
   }
 
   // -------------------------------
@@ -3752,16 +3751,16 @@ async function action_executor (opts, invite) {
     const { type } = msg
     const handler = steps_handlers[type]
     if (handler) handler(msg)
-    else _.up && _.up(type, msg.data, msg.head ? { cause: msg.head } : {} )
+    else _.up(type, msg.data, msg.head ? { cause: msg.head } : {})
   }
 
   function steps_wizard_step_clicked (msg) {
     const { data } = msg
-    const refs = msg.head ? { cause: msg.head } : {} 
-    _.up && _.up('step_clicked', data, refs)
+    const refs = msg.head ? { cause: msg.head } : {}
+    _.up('step_clicked', data, refs)
 
     if (should_execute_step(data)) {
-      _.up && _.up('execute_step', {
+      _.up('execute_step', {
         action: selected_action,
         step: data,
         commands: data.commands
@@ -3802,12 +3801,12 @@ async function action_executor (opts, invite) {
     })
     console.error('action_executor: step updated', step)
 
-    const refs = msg.head ? { cause: msg.head } : {} 
+    const refs = msg.head ? { cause: msg.head } : {}
     _.program('update_data', all_data, refs)
     _.steps_wizard('init_data', selected_action.steps, refs)
 
     if (selected_action.steps[selected_action.steps.length - 1]?.is_completed) {
-      _.up && _.up('show_submit_btn', null, refs)
+      _.up('show_submit_btn', null, refs)
     }
   }
 
@@ -3822,10 +3821,10 @@ async function action_executor (opts, invite) {
       status: 'error',
       data: data.value !== undefined ? data.value : undefined
     })
-    const refs = msg.head ? { cause: msg.head } : {} 
+    const refs = msg.head ? { cause: msg.head } : {}
     _.program('update_data', all_data, refs)
     _.steps_wizard('init_data', selected_action.steps, refs)
-    _.up && _.up('hide_submit_btn', null, refs)
+    _.up('hide_submit_btn', null, refs)
   }
 
   function form__action_complete (data, type, msg) {
@@ -3839,9 +3838,8 @@ async function action_executor (opts, invite) {
     console.error('action_executor: all_mandatory_complete:', all_mandatory_complete)
 
     if (all_mandatory_complete) {
-      console.error('action_executor: hiding forms and sending action_auto_completed')
       hide_all_forms()
-      _.up && _.up('action_auto_completed', { selected_action, trigger: 'form' }, msg.head ? { cause: msg.head } : {} )
+      _.up('action_auto_completed', { selected_action, trigger: 'form' }, msg.head ? { cause: msg.head } : {})
     }
 
     function is_step_complete_or_optional (step) {
@@ -3856,9 +3854,9 @@ async function action_executor (opts, invite) {
   function onmessage (msg) {
     const { type } = msg
     if (type === 'docs_toggle') {
-      _.steps_wizard(type, msg.data, msg.head ? { cause: msg.head } : {} )
+      _.steps_wizard(type, msg.data, msg.head ? { cause: msg.head } : {})
       for (const name in component_modules) {
-        _[name](type, msg.data, msg.head ? { cause: msg.head } : {} )
+        _[name](type, msg.data, msg.head ? { cause: msg.head } : {})
       }
     } else {
       parent_handler[type](msg)
@@ -3871,8 +3869,7 @@ async function action_executor (opts, invite) {
   }
 
   function load_actions (msg) {
-    variables = msg.data
-    _.program(msg.type, msg.data, msg.head ? { cause: msg.head } : {} )
+    _.program(msg.type, msg.data, msg.head ? { cause: msg.head } : {})
   }
 
   function action_submitted (msg) {
@@ -3880,7 +3877,7 @@ async function action_executor (opts, invite) {
     data.result = JSON.stringify(selected_action.steps.map(step => step.data), null, 2)
 
     reset_selected_action_steps()
-    _.program('display_result', data, msg.head ? { cause: msg.head } : {} )
+    _.program('display_result', data, msg.head ? { cause: msg.head } : {})
   }
 
   function reset_selected_action_steps () {
@@ -3897,16 +3894,15 @@ async function action_executor (opts, invite) {
     render_form_component(data.component)
     const send = _[data.component]
     if (send) {
-      send('step_data', data, msg.head ? { cause: msg.head } : {} )
+      send('step_data', data, msg.head ? { cause: msg.head } : {})
     }
   }
 
   function parent_selected_action (msg) { selected_action = msg.data }
 
   function update_data (msg) {
-    variables = msg.data
     const { data: msg_data, type } = msg
-    _.program(type, msg_data, msg.head ? { cause: msg.head } : {} )
+    _.program(type, msg_data, msg.head ? { cause: msg.head } : {})
   }
 
   function activate_steps_wizard (msg) {
@@ -3916,14 +3912,14 @@ async function action_executor (opts, invite) {
     if (!steps_data) return
     steps_toggle_view('block')
     const data = steps_data.steps
-    _.steps_wizard('init_data', data, msg.head ? { cause: msg.head } : {} )
+    _.steps_wizard('init_data', data, msg.head ? { cause: msg.head } : {})
 
     function matches_selected_action (action) { return action.name === msg.data }
   }
 
   function form_data (msg) {
     // forward init_data to steps_wizard with current action steps
-    _.steps_wizard('init_data', msg.data, msg.head ? { cause: msg.head } : {} )
+    _.steps_wizard('init_data', msg.data, msg.head ? { cause: msg.head } : {})
   }
 
   function clean_up (msg) {
@@ -4026,7 +4022,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/action_executor/action_executor.js")
-},{"STATE":1,"net_helper":16,"program":17,"steps_wizard":21}],6:[function(require,module,exports){
+},{"STATE":1,"net_helper":17,"program":18,"steps_wizard":22}],7:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4072,7 +4068,9 @@ async function actions (opts, invite) {
   const { io, _ } = net(id)
 
   await sdb.watch(onbatch)
-  io.on.up = onmessage
+  io.on = {
+    up: onmessage
+  }
   if (invite) io.accept(invite)
 
   return el
@@ -4104,7 +4102,7 @@ async function actions (opts, invite) {
 
   function send_selected_action (msg) {
     const action_data = msg.data.data || msg.data
-    _.up && _.up('selected_action', action_data, msg.head ? { cause: msg.head } : {} )
+    _.up('selected_action', action_data, msg.head ? { cause: msg.head } : {})
   }
 
   async function onbatch (batch) {
@@ -4335,7 +4333,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/actions/actions.js")
-},{"DOCS":3,"STATE":1,"net_helper":16}],7:[function(require,module,exports){
+},{"DOCS":4,"STATE":1,"net_helper":17}],8:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4383,7 +4381,9 @@ async function console_history (opts, invite) {
   }
 
   await sdb.watch(onbatch)
-  io.on.up = onmessage
+  io.on = {
+    up: onmessage
+  }
   if (invite) io.accept(invite)
   return el
 
@@ -4429,8 +4429,8 @@ async function console_history (opts, invite) {
         type: 'command_history',
         sid: opts.sid
       }
-      _.up && _.up('ui_focus', data, {})
-      _.up && _.up('command_clicked', command_data, {})
+      _.up('ui_focus', data, {})
+      _.up('command_clicked', command_data, {})
     }
 
     async function get_doc_content () {
@@ -4752,7 +4752,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/console_history/console_history.js")
-},{"DOCS":3,"STATE":1,"net_helper":16}],8:[function(require,module,exports){
+},{"DOCS":4,"STATE":1,"net_helper":17}],9:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4770,7 +4770,9 @@ async function docs_window (opts, invite) {
   }
 
   const { io, _ } = net(id)
-  io.on.up = onmessage
+  io.on = {
+    up: onmessage
+  }
   if (invite) io.accept(invite)
 
   const el = document.createElement('div')
@@ -4795,7 +4797,7 @@ async function docs_window (opts, invite) {
   return el
 
   function onclose () {
-    _.up && _.up('close_docs', null, {})
+    _.up('close_docs', null, {})
   }
 
   function onmessage (msg) {
@@ -4897,7 +4899,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/docs_window/docs_window.js")
-},{"STATE":1,"net_helper":16}],9:[function(require,module,exports){
+},{"STATE":1,"net_helper":17}],10:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4919,7 +4921,9 @@ async function form_input (opts, invite) {
   let input_accessible = true
 
   const { io, _ } = net(id)
-  io.on.up = onmessage
+  io.on = {
+    up: onmessage
+  }
   if (invite) io.accept(invite)
 
   const el = document.createElement('div')
@@ -4945,13 +4949,13 @@ async function form_input (opts, invite) {
       input_field: input_field_el.value
     })
     if (input_field_el.value.length >= 10) {
-      _.up && _.up('action_submitted', {
+      _.up('action_submitted', {
         value: input_field_el.value,
         index: current_step.index !== undefined ? current_step.index : 0
       }, {})
       console.log('mark_as_complete')
     } else {
-      _.up && _.up('action_incomplete', {
+      _.up('action_incomplete', {
         value: input_field_el.value,
         index: current_step.index !== undefined ? current_step.index : 0
       }, {})
@@ -5099,7 +5103,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/form_input/form_input.js")
-},{"DOCS":3,"STATE":1,"net_helper":16}],10:[function(require,module,exports){
+},{"DOCS":4,"STATE":1,"net_helper":17}],11:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5119,7 +5123,6 @@ async function form_tile_split_choice (opts, invite) {
 
   let current_step = null
   const { io, _ } = net(id)
-
 
   const el = document.createElement('div')
   const shadow = el.attachShadow({ mode: 'closed' })
@@ -5154,13 +5157,15 @@ async function form_tile_split_choice (opts, invite) {
   buttons.forEach(btn => btn.addEventListener('click', on_choice_click))
 
   await sdb.watch(onbatch)
-  
+
   const parent_handler = {
     step_data,
     reset_data
   }
 
-  io.on.up = onmessage
+  io.on = {
+    up: onmessage
+  }
   if (invite) io.accept(invite)
 
   return el
@@ -5201,7 +5206,6 @@ async function form_tile_split_choice (opts, invite) {
   }
 
   function step_data (data) {
-    console.error('form_tile_split_choice: step_data received', data)
     current_step = data
   }
 
@@ -5211,17 +5215,13 @@ async function form_tile_split_choice (opts, invite) {
 
   async function on_choice_click (ev) {
     const choice = ev.currentTarget.getAttribute('data-choice')
-    console.error('form_tile_split_choice: choice clicked', choice, 'current_step:', current_step)
     await drive.put('data/form_tile_split_choice.json', { choice })
     highlight_choice(choice)
-    console.error('form_tile_split_choice: sending action_submitted', { value: choice, index: current_step?.index ?? 0 })
-    _.up && _.up('action_submitted', { value: choice, index: current_step?.index ?? 0 }, {})
+    _.up('action_submitted', { value: choice, index: current_step?.index ?? 0 }, {})
 
     // If this is a single-step action, auto-complete the action
-    console.error('form_tile_split_choice: total_steps:', current_step?.total_steps)
     if (current_step && current_step.total_steps === 1) {
-      console.error('form_tile_split_choice: sending action_complete')
-      _.up && _.up('action_complete', { value: choice }, {})
+      _.up('action_complete', { value: choice }, {})
     }
   }
 
@@ -5274,7 +5274,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/form_tile_split_choice/form_tile_split_choice.js")
-},{"DOCS":3,"STATE":1,"net_helper":16}],11:[function(require,module,exports){
+},{"DOCS":4,"STATE":1,"net_helper":17}],12:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5288,25 +5288,21 @@ module.exports = graph_explorer_wrapper
 async function graph_explorer_wrapper (opts, invite) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
-  const ids = opts.ids
-  if (!ids || !ids.up) {
-    throw new Error(`Component ${__filename} requires ids.up to be provided`)
-  }
-  const by = id
-  const to = ids.up
 
   let db = null
   let latest_entries = null
   const pending_to_graph_explorer = []
   let send_to_graph_explorer = null
-  let graph_explorer_id = null
   let graph_explorer_db_ready = false
 
   // Protocol
-  let mid = 0
   const { io, _ } = net(id)
-  io.on.up = onmessage
+  io.on = {
+    up: onmessage
+  }
   if (invite) io.accept(invite)
+
+  let child_mid = 0
 
   const on = {
     theme: inject,
@@ -5364,19 +5360,14 @@ async function graph_explorer_wrapper (opts, invite) {
       pending_to_graph_explorer.push({ type, data, refs })
       return
     }
-    dispatch_to_graph_explorer_message(type, data, refs)
+    send_child_message(type, data, refs)
   }
 
   function flush_to_graph_explorer_queue () {
     while (can_send_to_graph_explorer() && pending_to_graph_explorer.length) {
       const next_msg = pending_to_graph_explorer.shift()
-      dispatch_to_graph_explorer_message(next_msg.type, next_msg.data, next_msg.refs)
+      send_child_message(next_msg.type, next_msg.data, next_msg.refs)
     }
-  }
-
-  function dispatch_to_graph_explorer_message (type, data, refs) {
-    const head = [by, graph_explorer_id, mid++]
-    send_to_graph_explorer({ head, refs: refs || {}, type, data })
   }
 
   function can_send_to_graph_explorer () {
@@ -5407,7 +5398,7 @@ async function graph_explorer_wrapper (opts, invite) {
     function load_path_raw (path) { return drive.get(path).then(read_drive_file_raw) }
     function read_drive_file_raw (file) { return file.raw }
   }
-  
+
   function fail ({ data, type }) { console.warn('invalid message', { cause: { data, type } }) }
   function inject ({ data }) { sheet.replaceSync(data.join('\n')) }
 
@@ -5441,8 +5432,7 @@ async function graph_explorer_wrapper (opts, invite) {
 
   function notify_db_initialized (entries) {
     if (!send_to_graph_explorer) return
-    const head = [by, graph_explorer_id, mid++]
-    send_to_graph_explorer({ head, type: 'db_initialized', data: { entries } })
+    send_child_message('db_initialized', { entries })
     graph_explorer_db_ready = true
     flush_to_graph_explorer_queue()
   }
@@ -5453,7 +5443,6 @@ async function graph_explorer_wrapper (opts, invite) {
 
   function graph_explorer_protocol (send) {
     send_to_graph_explorer = send
-    graph_explorer_id = send.to
     Promise.resolve().then(sync_initial_state_to_child)
     return on_graph_explorer_message
 
@@ -5461,11 +5450,18 @@ async function graph_explorer_wrapper (opts, invite) {
       const { type } = msg
 
       if (type.startsWith('db_')) {
-        handle_db_request(msg, send)
+        handle_db_request(msg)
       } else {
-        _.up && _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {})
+        _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {})
       }
     }
+  }
+
+  function send_child_message (type, data = {}, refs = {}) {
+    const head = [id, 'graph-explorer', child_mid++]
+    const meta = { time: Date.now(), stack: (new Error().stack) }
+    send_to_graph_explorer({ head, refs, type, data, meta })
+    return head
   }
 
   function sync_initial_state_to_child () {
@@ -5474,13 +5470,11 @@ async function graph_explorer_wrapper (opts, invite) {
     }
   }
 
-  function handle_db_request (request_msg, send) {
+  function handle_db_request (request_msg) {
     const { head: request_head, type: operation, data: params } = request_msg
-    let result
-
     if (!db) {
       console.error('[graph_explorer_wrapper] Database not initialized yet')
-      send_response(request_head, null, send)
+      send_response(request_head, null)
       return
     }
     const db_handler = {
@@ -5492,23 +5486,17 @@ async function graph_explorer_wrapper (opts, invite) {
       db_raw: () => db.raw()
     }
     const method = db_handler[operation] || db_fail
-    result = method(params.path)
-    send_response(request_head, result, send)
+    const result = method(params.path)
+    send_response(request_head, result)
 
     function db_fail () {
       console.warn('[graph_explorer_wrapper] Unknown db operation:', operation)
-      send_response(request_head, null, send)
+      send_response(request_head, null)
     }
   }
 
-  function send_response (request_head, result, send) {
-    const response_head = [by, graph_explorer_id, mid++]
-    send({
-      head: response_head,
-      refs: { cause: request_head },
-      type: 'db_response',
-      data: { result }
-    })
+  function send_response (request_head, result) {
+    send_child_message('db_response', { result }, { cause: request_head })
   }
 }
 
@@ -5619,7 +5607,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/graph_explorer_wrapper/graph_explorer_wrapper.js")
-},{"./graphdb":12,"STATE":1,"graph-explorer":2,"net_helper":16}],12:[function(require,module,exports){
+},{"./graphdb":13,"STATE":1,"graph-explorer":2,"net_helper":17}],13:[function(require,module,exports){
 module.exports = graphdb
 
 function graphdb (entries) {
@@ -5648,7 +5636,7 @@ function graphdb (entries) {
   function raw () { return entries }
 }
 
-},{}],13:[function(require,module,exports){
+},{}],14:[function(require,module,exports){
 module.exports = { resource }
 
 function resource (timeout = 1000) {
@@ -5674,7 +5662,7 @@ function resource (timeout = 1000) {
   }
 }
 
-},{}],14:[function(require,module,exports){
+},{}],15:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5695,7 +5683,9 @@ async function input_test (opts, invite) {
   let current_step = null
   let input_accessible = true
   const { io, _ } = net(id)
-  io.on.up = onmessage
+  io.on = {
+    up: onmessage
+  }
   if (invite) io.accept(invite)
 
   const el = document.createElement('div')
@@ -5722,13 +5712,13 @@ async function input_test (opts, invite) {
     })
 
     if (input_field_el.value.length >= 10) {
-      _.up && _.up('action_submitted', {
+      _.up('action_submitted', {
         value: input_field_el.value,
         index: current_step.index !== undefined ? current_step.index : 0
       }, {})
       console.log('mark_as_complete')
     } else {
-      _.up && _.up('action_incomplete', {
+      _.up('action_incomplete', {
         value: input_field_el.value,
         index: current_step.index !== undefined ? current_step.index : 0
       }, {})
@@ -5885,7 +5875,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/input_test/input_test.js")
-},{"DOCS":3,"STATE":1,"net_helper":16}],15:[function(require,module,exports){
+},{"DOCS":4,"STATE":1,"net_helper":17}],16:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -6167,12 +6157,12 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/menu/menu.js")
-},{"STATE":1}],16:[function(require,module,exports){
+},{"STATE":1}],17:[function(require,module,exports){
 (function (__filename){(function (){
 module.exports = net
 
 function net (id) {
-  const [ label, io, _, sub, hub ] = [`[${id}@${__filename}]`, { invite, accept, on: {} }, {}, {}, {}]
+  const [label, io, _, sub, hub] = [`[${id}@${__filename}]`, { invite, accept, on: {} }, {}, {}, {}]
   return { io, _ }
   function forward (to, M) {
     if (to.startsWith(id)) {
@@ -6214,18 +6204,19 @@ function net (id) {
   }
   function add (name, tx, to, rx, $) {
     const state = { name, to, mid: 0 }
-    _[name] = Object.assign(send, { channel: name, to })
+    _[name] = send
     $[to] = { rx, tx, state }
     function send (type, data = [], refs = {}) {
       const head = [id, to, state.mid++]
       const meta = { time: Date.now(), stack: (new Error().stack) }
       tx({ head, refs, type, data, meta })
+      return head
     }
   }
 }
 
 }).call(this)}).call(this,"/src/node_modules/net_helper/net_helper.js")
-},{}],17:[function(require,module,exports){
+},{}],18:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -6245,21 +6236,16 @@ module.exports = program
 async function program (opts, invite) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
-  const ids = opts.ids
-  if (!ids || !ids.up) {
-    throw new Error(`Component ${__filename} requires ids.up to be provided`)
-  }
-  // const by = id
-  // const to = ids.up
-  // const mid = 0
-  // console.log('program-ids', by, to)
+
   const on = {
     style: inject,
     variables: onvariables
   }
 
   const { io } = net(id)
-  io.on.up = onmessage
+  io.on = {
+    up: onmessage
+  }
   if (invite) io.accept(invite)
 
   const el = document.createElement('div')
@@ -6296,7 +6282,7 @@ async function program (opts, invite) {
     // Dont get why we have this module.
   }
 
-  function onmessage ({ type, data }) { 
+  function onmessage ({ type, data }) {
     const handler = parent_handler[type](data, type) || fail
     handler(data, type)
   }
@@ -6346,7 +6332,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/program/program.js")
-},{"STATE":1,"form_input":9,"form_tile_split_choice":10,"input_test":14,"net_helper":16}],18:[function(require,module,exports){
+},{"STATE":1,"form_input":10,"form_tile_split_choice":11,"input_test":15,"net_helper":17}],19:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -6366,10 +6352,6 @@ module.exports = program_container
 async function program_container (opts, invite) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
-  const ids = opts.ids
-  if (!ids || !ids.up) {
-    throw new Error(`Component ${__filename} requires ids.up to be provided`)
-  }
 
   const on = {
     style: inject
@@ -6388,7 +6370,7 @@ async function program_container (opts, invite) {
   </div>`
   const sheet = new CSSStyleSheet()
   shadow.adoptedStyleSheets = [sheet]
-  
+
   const program_main = shadow.querySelector('.program-container')
   const graph_explorer_placeholder = shadow.querySelector('graph-explorer-placeholder')
   const actions_placeholder = shadow.querySelector('actions-placeholder')
@@ -6413,25 +6395,25 @@ async function program_container (opts, invite) {
     docs_window: docs_window_protocol
   }
   if (invite) io.accept(invite)
-  
-  actions_el = await actions({ ...subs[1], ids: { up: id } }, io.invite('actions', { up: id }))
+
+  actions_el = await actions({ ...subs[1] }, io.invite('actions', { up: id }))
   actions_el.classList.add('actions')
   actions_placeholder.replaceWith(actions_el)
 
-  tabbed_editor_el = await tabbed_editor({ ...subs[2], ids: { up: id } }, io.invite('tabbed_editor', { up: id }))
+  tabbed_editor_el = await tabbed_editor({ ...subs[2] }, io.invite('tabbed_editor', { up: id }))
   tabbed_editor_el.classList.add('tabbed-editor')
   tabbed_editor_placeholder.replaceWith(tabbed_editor_el)
 
-  docs_window_el = await docs_window({ ...subs[4], ids: { up: id } }, io.invite('docs_window', { up: id }))
+  docs_window_el = await docs_window({ ...subs[4] }, io.invite('docs_window', { up: id }))
   docs_window_el.classList.add('docs-window')
   docs_window_el.classList.add('hide')
   docs_window_placeholder.replaceWith(docs_window_el)
 
-  graph_explorer_el = await graph_explorer_wrapper({ ...subs[3], ids: { up: id } }, io.invite('graph_explorer', { up: id }))
+  graph_explorer_el = await graph_explorer_wrapper({ ...subs[3] }, io.invite('graph_explorer', { up: id }))
   graph_explorer_el.classList.add('graph-explorer')
   graph_explorer_placeholder.replaceWith(graph_explorer_el)
 
-  console_history_el = await console_history({ ...subs[0], ids: { up: id } }, io.invite('console_history', { up: id }))
+  console_history_el = await console_history({ ...subs[0] }, io.invite('console_history', { up: id }))
   console_history_el.classList.add('console-history')
   console_placeholder.replaceWith(console_history_el)
   let console_view = false
@@ -6445,7 +6427,7 @@ async function program_container (opts, invite) {
     graph_explorer_el.classList.add('hide')
 
     // Send message to root to set doc display handler
-    _.up && _.up('set_doc_display_handler', { callback: on_doc_display }, {})
+    _.up('set_doc_display_handler', { callback: on_doc_display }, {})
   }
 
   if (!invite) {
@@ -6566,7 +6548,7 @@ async function program_container (opts, invite) {
   // PROTOCOLS
   // ---------
 
-  function console_history_protocol (msg) { _.up && _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
+  function console_history_protocol (msg) { _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
 
   function actions_protocol (msg) {
     const action_handlers = {
@@ -6578,19 +6560,19 @@ async function program_container (opts, invite) {
     const handler = action_handlers[msg.type] || actions_forward_up
     handler(msg)
 
-    function actions_forward_up (msg) { _.up && _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
+    function actions_forward_up (msg) { _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
   }
 
   function actions_selected_action (msg) {
     const { data } = msg
-    _.up && _.up('update_quick_actions_input', data, msg.head ? { cause: msg.head } : {} )
+    _.up('update_quick_actions_input', data, msg.head ? { cause: msg.head } : {})
   }
 
-  function actions_ui_focus_docs (msg) { _.up && _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
+  function actions_ui_focus_docs (msg) { _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
 
-  function tabbed_editor_protocol (msg) { _.up && _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
+  function tabbed_editor_protocol (msg) { _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
 
-  function graph_explorer_protocol (msg) { _.up && _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
+  function graph_explorer_protocol (msg) { _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
 
   function docs_window_protocol (msg) {
     const action_handlers = {
@@ -6598,7 +6580,7 @@ async function program_container (opts, invite) {
     }
     const handler = action_handlers[msg.type] || docs_window_noop
     handler(msg)
-    _.up && _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {} )
+    _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {})
 
     function docs_window_close_docs () { docs_window_el.classList.add('hide') }
     function docs_window_noop () {}
@@ -6625,28 +6607,28 @@ async function program_container (opts, invite) {
     function onmessage_console_history_toggle () { console_history_toggle_view() }
     function onmessage_graph_explorer_toggle () { graph_explorer_toggle_view() }
     function onmessage_display_actions (msg) { actions_toggle_view(msg.data) }
-    function onmessage_filter_actions (msg) { if (_.actions) _.actions(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
-    function onmessage_tab_close_clicked (msg) { _.tabbed_editor('close_tab', msg.data, msg.head ? { cause: msg.head } : {} ) }
-    function onmessage_entry_toggled (msg) { _.graph_explorer(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
+    function onmessage_filter_actions (msg) { _.actions(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
+    function onmessage_tab_close_clicked (msg) { _.tabbed_editor('close_tab', msg.data, msg.head ? { cause: msg.head } : {}) }
+    function onmessage_entry_toggled (msg) { _.graph_explorer(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
     function onmessage_execute_step (msg) {
       if (!msg.data || !Array.isArray(msg.data.commands) || msg.data.commands.length === 0) return
       set_panel_visibility(graph_explorer_el, true)
       graph_explorer_view = true
       update_program_layout()
-      _.graph_explorer(msg.type, msg.data, msg.head ? { cause: msg.head } : {} )
+      _.graph_explorer(msg.type, msg.data, msg.head ? { cause: msg.head } : {})
     }
-    function onmessage_send_actions (msg) { if (_.actions) _.actions(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
+    function onmessage_send_actions (msg) { _.actions(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
     function onmessage_tab_name_clicked (msg) {
       tabbed_editor_toggle_view(true)
-      _.tabbed_editor('toggle_tab', msg.data, msg.head ? { cause: msg.head } : {} )
+      _.tabbed_editor('toggle_tab', msg.data, msg.head ? { cause: msg.head } : {})
     }
     function onmessage_switch_tab (msg) {
       tabbed_editor_toggle_view(true)
-      _.tabbed_editor(msg.type, msg.data, msg.head ? { cause: msg.head } : {} )
+      _.tabbed_editor(msg.type, msg.data, msg.head ? { cause: msg.head } : {})
     }
     function onmessage_display_doc (msg) {
       docs_window_el.classList.remove('hide')
-      _.docs_window(msg.type, msg.data, msg.head ? { cause: msg.head } : {} )
+      _.docs_window(msg.type, msg.data, msg.head ? { cause: msg.head } : {})
     }
   }
 }
@@ -6843,7 +6825,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/program_container/program_container.js")
-},{"DOCS":3,"STATE":1,"actions":6,"console_history":7,"docs_window":8,"graph_explorer_wrapper":11,"net_helper":16,"tabbed_editor":22}],19:[function(require,module,exports){
+},{"DOCS":4,"STATE":1,"actions":7,"console_history":8,"docs_window":9,"graph_explorer_wrapper":12,"net_helper":17,"tabbed_editor":23}],20:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -6856,10 +6838,6 @@ module.exports = quick_actions
 async function quick_actions (opts, invite) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
-  const ids = opts.ids
-  if (!ids || !ids.up) {
-    throw new Error(`Component ${__filename} requires ids.up to be provided`)
-  }
 
   const on = {
     style: inject,
@@ -6927,7 +6905,9 @@ async function quick_actions (opts, invite) {
   const docs = DOCS(__filename)(opts.sid)
   const { io, _ } = net(id)
 
-  io.on.up = onmessage
+  io.on = {
+    up: onmessage
+  }
   if (invite) io.accept(invite)
   text_bar.onclick = docs.wrap(activate_input_field, get_doc_content)
   close_btn.onclick = docs.wrap(deactivate_input_field, get_doc_content)
@@ -6945,16 +6925,16 @@ async function quick_actions (opts, invite) {
   }
 
   function onsubmit () {
-    _.up && _.up('action_submitted', null, {})
+    _.up('action_submitted', null, {})
   }
 
   function onconfirm () {
-    _.up && _.up('activate_steps_wizard', stored_selected_action, {})
+    _.up('activate_steps_wizard', stored_selected_action, {})
   }
   function oninput (e) {
     const value = e.target.value
     if (enable_input_field_tooltips) update_input_tooltip(value)
-    _.up && _.up('filter_actions', value, {})
+    _.up('filter_actions', value, {})
   }
 
   function update_input_display (selected_action = null) {
@@ -6993,7 +6973,7 @@ async function quick_actions (opts, invite) {
 
     if (enable_input_field_tooltips) update_input_tooltip('')
 
-    _.up && _.up('display_actions', { display: 'block', reason: 'browse' }, {})
+    _.up('display_actions', { display: 'block', reason: 'browse' }, {})
   }
 
   function onmessage (msg) {
@@ -7023,7 +7003,7 @@ async function quick_actions (opts, invite) {
     update_input_display()
     hide_input_tooltip()
 
-    _.up && _.up('display_actions', { display: 'none', reason }, {})
+    _.up('display_actions', { display: 'none', reason }, {})
   }
 
   function show_submit_btn () {
@@ -7105,7 +7085,7 @@ async function quick_actions (opts, invite) {
     function on_action_btn_mouseenter () { show_tooltip(btn, action.name) }
 
     function onclick () {
-      _.up && _.up('update_quick_actions_input', action.name, {})
+      _.up('update_quick_actions_input', action.name, {})
     }
   }
 
@@ -7195,8 +7175,8 @@ async function quick_actions (opts, invite) {
       update_input_display(pass_data)
     }
 
-    _.up && _.up('display_actions', { display: 'none', reason: 'selected' }, {})
-    _.up && _.up('activate_steps_wizard', stored_selected_action, {})
+    _.up('display_actions', { display: 'none', reason: 'selected' }, {})
+    _.up('activate_steps_wizard', stored_selected_action, {})
 
     function matches_selected_command (action) { return action.name === command || action.action === command }
   }
@@ -7520,7 +7500,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/quick_actions/quick_actions.js")
-},{"DOCS":3,"STATE":1,"net_helper":16}],20:[function(require,module,exports){
+},{"DOCS":4,"STATE":1,"net_helper":17}],21:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -7554,11 +7534,12 @@ async function quick_editor (opts) {
       <div class="btn-box">
         <button class="button">Apply</button>
         ${is_called
-          ? '' : `
+    ? ''
+    : `
           <button class="button import">Import</button>
           <button class="button export">Export</button>
           <input type="file" accept='.json' hidden />`
-        }
+}
       </div>
     </div>
   </div>`
@@ -7963,7 +7944,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/quick_editor/quick_editor.js")
-},{"STATE":1,"helpers":13}],21:[function(require,module,exports){
+},{"STATE":1,"helpers":14}],22:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -7986,7 +7967,9 @@ async function steps_wizard (opts, invite) {
   const docs = DOCS(__filename)(opts.sid)
   const { io, _ } = net(id)
 
-  io.on.up = onmessage
+  io.on = {
+    up: onmessage
+  }
   if (invite) io.accept(invite)
 
   const el = document.createElement('div')
@@ -8079,7 +8062,7 @@ async function steps_wizard (opts, invite) {
         currentActiveStep = index
         center_step(btn)
         render_steps(steps, false)
-        _.up && _.up('step_clicked', { ...step, index, total_steps: steps.length, is_accessible: accessible }, {})
+        _.up('step_clicked', { ...step, index, total_steps: steps.length, is_accessible: accessible }, {})
       }
 
       async function get_doc_content () {
@@ -8092,7 +8075,7 @@ async function steps_wizard (opts, invite) {
       if (auto_focus_first && index === 0) {
         btn.classList.add('active')
         center_step(btn)
-        _.up && _.up('step_clicked', { ...step, index: 0, total_steps: steps.length, is_accessible: accessible }, {})
+        _.up('step_clicked', { ...step, index: 0, total_steps: steps.length, is_accessible: accessible }, {})
       }
     }
   }
@@ -8175,7 +8158,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/steps_wizard/steps_wizard.js")
-},{"DOCS":3,"STATE":1,"net_helper":16}],22:[function(require,module,exports){
+},{"DOCS":4,"STATE":1,"net_helper":17}],23:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -8220,7 +8203,9 @@ async function tabbed_editor (opts, invite) {
   }
 
   const { io, _ } = net(id)
-  io.on.up = onmessage
+  io.on = {
+    up: onmessage
+  }
   if (invite) io.accept(invite)
   await sdb.watch(onbatch)
 
@@ -8243,10 +8228,7 @@ async function tabbed_editor (opts, invite) {
 
     active_tab = tab_data.id
     create_editor(tab_data)
-
-    if (_) {
-      _.up && _.up('tab_switched', tab_data, msg?.head ? { cause: msg.head } : {})
-    }
+    _.up('tab_switched', tab_data, msg?.head ? { cause: msg.head } : {})
   }
 
   function toggle_tab (tab_data, msg) {
@@ -8264,9 +8246,7 @@ async function tabbed_editor (opts, invite) {
       active_tab = null
     }
 
-    if (_) {
-      _.up && _.up('tab_closed', tab_data, msg.head ? { cause: msg.head } : {} )
-    }
+    _.up('tab_closed', tab_data, msg.head ? { cause: msg.head } : {})
   }
 
   function create_editor (tab_data) {
@@ -8322,13 +8302,10 @@ async function tabbed_editor (opts, invite) {
 
     const { code_area, tab_data } = current_editor
     files[tab_data.id] = code_area.value
-
-    if (_) {
-      _.up && _.up('file_changed', {
-        id: tab_data.id,
-        content: code_area.value
-      }, {})
-    }
+    _.up('file_changed', {
+      id: tab_data.id,
+      content: code_area.value
+    }, {})
   }
 
   async function onbatch (batch) {
@@ -8583,7 +8560,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabbed_editor/tabbed_editor.js")
-},{"DOCS":3,"STATE":1,"net_helper":16}],23:[function(require,module,exports){
+},{"DOCS":4,"STATE":1,"net_helper":17}],24:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -8625,7 +8602,9 @@ async function component (opts, invite) {
   }
 
   await sdb.watch(onbatch)
-  io.on.up = onmessage
+  io.on = {
+    up: onmessage
+  }
   if (invite) io.accept(invite)
   if (entries) {
     let is_down = false
@@ -8689,7 +8668,100 @@ async function component (opts, invite) {
   return div
 
   function onmessage (msg) {
-    // const { type } = msg
+    const { type, data } = msg
+    console.error('tabs: onmessage', type, data)
+
+    if (type === 'add_link_tab') {
+      console.error('tabs: adding link tab', data)
+      add_link_tab(data)
+    } else if (type === 'remove_link_tab') {
+      console.error('tabs: removing link tab', data)
+      remove_link_tab(data)
+    } else if (type === 'add_default_tab') {
+      console.error('tabs: adding default tab', data)
+      add_default_tab(data)
+    }
+  }
+
+  function add_default_tab ({ name, program, tile_id }) {
+    const tab_id = `tab_${Date.now()}`
+
+    const el = document.createElement('div')
+    el.innerHTML = `
+    <span class="icon">${dricons[1] || '📄'}</span>
+    <span class='name'>${tab_id}</span>
+    <span class="name">${name || 'New Tab'}</span>
+    <button class="btn">${dricons[0] || '×'}</button>`
+
+    el.className = 'tabsbtn default-tab active'
+    el.setAttribute('data-tab-id', tab_id)
+    el.setAttribute('data-program', program || 'text_editor')
+
+    const name_el = el.querySelector('.name')
+    const close_btn = el.querySelector('.btn')
+
+    name_el.onclick = () => {
+      console.error('tabs: default tab clicked', tab_id)
+      entries.querySelectorAll('.tabsbtn').forEach(t => t.classList.remove('active'))
+      el.classList.add('active')
+      _.up('tab_name_clicked', { id: tab_id, name, program }, {})
+    }
+
+    close_btn.onclick = (e) => {
+      e.stopPropagation()
+      console.error('tabs: default tab close clicked', tab_id)
+      el.remove()
+      _.up('tab_close_clicked', { id: tab_id, name }, {})
+    }
+
+    entries.appendChild(el)
+    console.error('tabs: default tab added', tab_id)
+  }
+
+  function add_link_tab ({ tile_id, name, direction }) {
+    const link_tab_id = `split_tile_${tile_id}`
+    const existing = entries.querySelector(`[data-link-tab-id="${link_tab_id}"]`)
+    if (existing) {
+      console.error('tabs: link tab already exists', link_tab_id)
+      return
+    }
+
+    const el = document.createElement('div')
+    el.innerHTML = `
+    <span class="icon">⊞</span>
+    <span class='name'>${link_tab_id}</span>
+    <span class="name">${name || 'Split ' + direction}</span>
+    <button class="btn">${dricons[0] || '×'}</button>`
+
+    el.className = 'tabsbtn link-tab'
+    el.setAttribute('data-link-tab-id', link_tab_id)
+    el.setAttribute('data-tile-id', tile_id)
+
+    const name_el = el.querySelector('.name')
+    const close_btn = el.querySelector('.btn')
+
+    name_el.onclick = () => {
+      console.error('tabs: link tab clicked', link_tab_id)
+      _.up('link_tab_clicked', { tile_id, link_tab_id }, {})
+    }
+
+    close_btn.onclick = (e) => {
+      e.stopPropagation()
+      console.error('tabs: link tab close clicked', link_tab_id)
+      _.up('link_tab_close_clicked', { tile_id, link_tab_id }, {})
+    }
+
+    entries.appendChild(el)
+    console.error('tabs: link tab added', link_tab_id)
+  }
+
+  function remove_link_tab ({ tile_id }) {
+    const link_tab_id = `split_tile_${tile_id}`
+    const el = entries.querySelector(`[data-link-tab-id="${link_tab_id}"]`)
+    if (el) {
+      el.remove()
+      console.error('tabs: link tab removed', link_tab_id)
+    }
   }
 
   async function create_btn ({ name, id }, index) {
@@ -8715,8 +8787,8 @@ async function component (opts, invite) {
           type: 'tab',
           sid: opts.sid
         }
-        _.up && _.up('ui_focus', data, {})
-        _.up && _.up('tab_name_clicked', { id, name }, {})
+        _.up('ui_focus', data, {})
+        _.up('tab_name_clicked', { id, name }, {})
       }
     }
 
@@ -8735,8 +8807,8 @@ async function component (opts, invite) {
           type: 'tab',
           sid: opts.sid
         }
-        _.up && _.up('ui_focus', data, {})
-        _.up && _.up('tab_close_clicked', { id, name }, {})
+        _.up('ui_focus', data, {})
+        _.up('tab_close_clicked', { id, name }, {})
       }
     }
 
@@ -8887,7 +8959,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabs/tabs.js")
-},{"DOCS":3,"STATE":1,"net_helper":16}],24:[function(require,module,exports){
+},{"DOCS":4,"STATE":1,"net_helper":17}],25:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const state_db = STATE(__filename)
@@ -8903,10 +8975,6 @@ module.exports = tabsbar
 async function tabsbar (opts, invite) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
-  const ids = opts.ids
-  if (!ids || !ids.up) {
-    throw new Error(`Component ${__filename} requires ids.up to be provided`)
-  }
 
   const on = {
     style: inject,
@@ -8916,7 +8984,9 @@ async function tabsbar (opts, invite) {
   let dricons = {}
   let docs_toggle_active = false
   const on_message = {
-    docs_toggle: handle_docs_toggle
+    docs_toggle: handle_docs_toggle,
+    add_link_tab: handle_forward_tabs,
+    remove_link_tab: handle_forward_tabs
   }
   const { io, _ } = net(id)
   const el = document.createElement('div')
@@ -8929,16 +8999,18 @@ async function tabsbar (opts, invite) {
     docs.register_actions(actions_data)
   }
 
-  io.on.up = onmessage
-  io.on.tabs = tabs_protocol
-  io.on.task_manager = task_manager_protocol
+  io.on = {
+    up: onmessage,
+    tabs: tabs_protocol,
+    task_manager: task_manager_protocol
+  }
   if (invite) {
     io.accept(invite)
     const data = {
       type: 'wizard_hat',
       sid: opts.sid
     }
-    _.up && _.up('ui_focus', data, {})
+    _.up('ui_focus', data, {})
   }
 
   shadow.innerHTML = `
@@ -8975,18 +9047,18 @@ async function tabsbar (opts, invite) {
     function on_bar_btn_click () {
       docs_toggle_active = !docs_toggle_active
       // Send message to root module to set docs mode
-      _.up && _.up('set_docs_mode', { active: docs_toggle_active }, {})
+      _.up('set_docs_mode', { active: docs_toggle_active }, {})
       // Also send docs_toggle notification for UI updates
-      _.up && _.up('docs_toggle', { active: docs_toggle_active }, {})
+      _.up('docs_toggle', { active: docs_toggle_active }, {})
       bar_btn.classList.toggle('active', docs_toggle_active)
       _.task_manager('docs_toggle', { active: docs_toggle_active }, {})
     }
   }
-  const tabs = await tabs_component({ ...subs[0], ids: { up: id } }, io.invite('tabs', { up: id }))
+  const tabs = await tabs_component({ ...subs[0] }, io.invite('tabs', { up: id }))
   tabs.classList.add('tabs-bar')
   shadow.querySelector('tabs').replaceWith(tabs)
 
-  const task_mgr = await task_manager({ ...subs[1], ids: { up: id } }, io.invite('task_manager', { up: id }))
+  const task_mgr = await task_manager({ ...subs[1] }, io.invite('task_manager', { up: id }))
   task_mgr.classList.add('bar-btn')
   shadow.querySelector('task-manager').replaceWith(task_mgr)
 
@@ -9002,22 +9074,23 @@ async function tabsbar (opts, invite) {
       type: 'wizard_hat',
       sid: opts.sid
     }
-    _.up && _.up('ui_focus', data, {})
+    _.up('ui_focus', data, {})
   }
   function onmessage (msg) {
     const handler = on_message[msg.type] || onmessage_fail
     handler(msg)
   }
 
-  function handle_docs_toggle (msg) { _.tabs(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
+  function handle_docs_toggle (msg) { _.tabs(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
+  function handle_forward_tabs (msg) { _.tabs(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
 
   function onmessage_fail () {
     // Handle other message types
   }
 
-  function tabs_protocol (msg) { _.up && _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
+  function tabs_protocol (msg) { _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
 
-  function task_manager_protocol (msg) { _.up && _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
+  function task_manager_protocol (msg) { _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
 
   async function onbatch (batch) {
     for (const { type, paths } of batch) {
@@ -9268,20 +9341,20 @@ function fallback_module () {
                 ]
               },
               {
-                name: "Split Tile",
-                icon: "split",
+                name: 'Split Tile',
+                icon: 'split',
                 status: {
                   pinned: false,
                   default: true
                 },
                 steps: [
                   {
-                    name: "Choose Split Direction",
-                    type: "mandatory",
+                    name: 'Choose Split Direction',
+                    type: 'mandatory',
                     is_completed: false,
-                    component: "form_tile_split_choice",
-                    status: "default",
-                    data: ""
+                    component: 'form_tile_split_choice',
+                    status: 'default',
+                    data: ''
                   }
                 ]
               }
@@ -9299,7 +9372,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabsbar/tabsbar.js")
-},{"DOCS":3,"STATE":1,"net_helper":16,"tabs":23,"task_manager":25}],25:[function(require,module,exports){
+},{"DOCS":4,"STATE":1,"net_helper":17,"tabs":24,"task_manager":26}],26:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -9339,7 +9412,9 @@ async function task_manager (opts, invite) {
   shadow.adoptedStyleSheets = [sheet]
   const btn = shadow.querySelector('.task-count-btn')
 
-  io.on.up = onmessage
+  io.on = {
+    up: onmessage
+  }
   if (invite) io.accept(invite)
 
   // DOCS.wrap() is used for automatic docs mode hook
@@ -9351,7 +9426,7 @@ async function task_manager (opts, invite) {
         type: 'task_manager',
         sid: opts.sid
       }
-      _.up && _.up('ui_focus', data, {})
+      _.up('ui_focus', data, {})
     }
   }
 
@@ -9485,7 +9560,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/task_manager/task_manager.js")
-},{"DOCS":3,"STATE":1,"net_helper":16}],26:[function(require,module,exports){
+},{"DOCS":4,"STATE":1,"net_helper":17}],27:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -9500,10 +9575,6 @@ module.exports = taskbar
 async function taskbar (opts, invite) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
-  const ids = opts.ids
-  if (!ids || !ids.up) {
-    throw new Error(`Component ${__filename} requires ids.up to be provided`)
-  }
 
   const on = {
     style: inject
@@ -9516,7 +9587,9 @@ async function taskbar (opts, invite) {
     update_quick_actions_for_app: handle_update_quick_actions_for_app,
     update_quick_actions_input: handle_update_quick_actions_input,
     show_submit_btn: handle_submit_btn_toggle,
-    hide_submit_btn: handle_submit_btn_toggle
+    hide_submit_btn: handle_submit_btn_toggle,
+    add_link_tab: handle_forward_tabsbar,
+    remove_link_tab: handle_forward_tabsbar
   }
   const { io, _ } = net(id)
 
@@ -9538,21 +9611,23 @@ async function taskbar (opts, invite) {
   const tabsbar_slot = shadow.querySelector('.tabsbar-slot')
 
   const subs = await sdb.watch(onbatch)
-  io.on.up = onmessage
-  io.on.action_bar = action_bar_protocol
-  io.on.action_executor = action_executor_protocol
-  io.on.tabsbar = tabsbar_protocol
+  io.on = {
+    up: onmessage,
+    action_bar: action_bar_protocol,
+    action_executor: action_executor_protocol,
+    tabsbar: tabsbar_protocol
+  }
   if (invite) io.accept(invite)
 
-  const action_bar_el = await action_bar({ ...subs[0], ids: { up: id } }, io.invite('action_bar', { up: id }))
+  const action_bar_el = await action_bar({ ...subs[0] }, io.invite('action_bar', { up: id }))
   action_bar_el.classList.add('replaced-action-bar')
   action_bar_slot.replaceWith(action_bar_el)
 
-  const action_executor_el = await action_executor({ ...subs[1], ids: { up: id } }, io.invite('action_executor', { up: id }))
+  const action_executor_el = await action_executor({ ...subs[1] }, io.invite('action_executor', { up: id }))
   action_executor_el.classList.add('replaced-action-executor')
   action_executor_slot.replaceWith(action_executor_el)
 
-  const tabsbar_el = await tabsbar({ ...subs[2], ids: { up: id } }, io.invite('tabsbar', { up: id }))
+  const tabsbar_el = await tabsbar({ ...subs[2] }, io.invite('tabsbar', { up: id }))
   tabsbar_el.classList.add('replaced-tabsbar')
   tabsbar_slot.replaceWith(tabsbar_el)
 
@@ -9591,8 +9666,8 @@ async function taskbar (opts, invite) {
     const handler = action_handlers[msg.type] || action_bar_forward_up
     handler(msg)
 
-    function action_bar_forward_action_executor (msg) { _.action_executor(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
-    function action_bar_forward_up (msg) { _.up && _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
+    function action_bar_forward_action_executor (msg) { _.action_executor(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
+    function action_bar_forward_up (msg) { _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
   }
 
   function action_executor_protocol (msg) {
@@ -9606,28 +9681,30 @@ async function taskbar (opts, invite) {
     }
     const handler = action_handlers[msg.type] || action_executor__noop
     handler(msg)
-    console.error('taskbar: forwarding to up', msg.type)
-    _.up && _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {} )
+    _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {})
 
-    function action_executor__forward_action_bar (msg) { _.action_bar(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
+    function action_executor__forward_action_bar (msg) { _.action_bar(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
     function action_executor__noop () {}
 
-    function action_executor__auto_completed (msg) { _.action_bar('action_submitted', msg.data, msg.head ? { cause: msg.head } : {} ) }
+    function action_executor__auto_completed (msg) { _.action_bar('action_submitted', msg.data, msg.head ? { cause: msg.head } : {}) }
   }
 
   function tabsbar_protocol (msg) {
     const action_handlers = {
-      docs_toggle: tabsbar_docs_toggle
+      docs_toggle: tabsbar_docs_toggle,
+      link_tab_close_clicked: tabsbar_forward_up,
+      link_tab_clicked: tabsbar_forward_up
     }
     const handler = action_handlers[msg.type] || tabsbar__noop
     handler(msg)
-    _.up && _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {} )
+    _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {})
 
     function tabsbar_docs_toggle (msg) {
-      _.action_bar(msg.type, msg.data, msg.head ? { cause: msg.head } : {} )
-      _.action_executor(msg.type, msg.data, msg.head ? { cause: msg.head } : {} )
+      _.action_bar(msg.type, msg.data, msg.head ? { cause: msg.head } : {})
+      _.action_executor(msg.type, msg.data, msg.head ? { cause: msg.head } : {})
     }
 
+    function tabsbar_forward_up (msg) { _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
     function tabsbar__noop () {}
   }
 
@@ -9636,17 +9713,15 @@ async function taskbar (opts, invite) {
     handler(msg)
   }
 
-  function handle_update_steps_wizard_for_app (msg) { _.action_executor(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
-  function handle_docs_toggle (msg) { _.action_bar(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
-  function handle_load_actions (msg) { forward_to_action_bar(msg.type, msg.data, msg) }
-  function handle_step_clicked (msg) { _.action_bar(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
-  function handle_update_quick_actions_for_app (msg) { forward_to_action_bar(msg.type, msg.data, msg) }
-  function handle_update_quick_actions_input (msg) { forward_to_action_bar(msg.type, msg.data, msg) }
-  function handle_submit_btn_toggle (msg) { _.action_bar(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
-  function onmessage_forward_action_bar (msg) { _.action_bar(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
-  function forward_to_action_bar (type, data, msg) {
-    _.action_bar(type, data, msg.head ? { cause: msg.head } : {} )
-  }
+  function handle_update_steps_wizard_for_app (msg) { _.action_executor(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
+  function handle_docs_toggle (msg) { _.action_bar(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
+  function handle_load_actions (msg) { _.action_bar(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
+  function handle_step_clicked (msg) { _.action_bar(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
+  function handle_update_quick_actions_for_app (msg) { _.action_bar(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
+  function handle_update_quick_actions_input (msg) { _.action_bar(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
+  function handle_submit_btn_toggle (msg) { _.action_bar(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
+  function handle_forward_tabsbar (msg) { _.tabsbar(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
+  function onmessage_forward_action_bar (msg) { _.action_bar(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
 }
 
 function fallback_module () {
@@ -9763,7 +9838,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/taskbar/taskbar.js")
-},{"STATE":1,"action_bar":4,"action_executor":5,"net_helper":16,"tabsbar":24}],27:[function(require,module,exports){
+},{"STATE":1,"action_bar":5,"action_executor":6,"net_helper":17,"tabsbar":25}],28:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -9805,16 +9880,18 @@ async function theme_widget (opts, invite) {
 
   let program_container_el = null
   let taskbar_el = null
-  io.on.up = onmessage_from_root
-  io.on.program_container = program_container_protocol
-  io.on.taskbar = taskbar_protocol
+  io.on = {
+    up: onmessage_from_root,
+    program_container: program_container_protocol,
+    taskbar: taskbar_protocol
+  }
   if (invite) io.accept(invite)
 
-  taskbar_el = await taskbar({ ...subs[1], ids: { up: id } }, io.invite('taskbar', { up: id }))
+  taskbar_el = await taskbar({ ...subs[1] }, io.invite('taskbar', { up: id }))
   taskbar_el.classList.add('taskbar')
   taskbar_slot.replaceWith(taskbar_el)
 
-  program_container_el = await program_container({ ...subs[0], ids: { up: id } }, io.invite('program_container', { up: id }))
+  program_container_el = await program_container({ ...subs[0] }, io.invite('program_container', { up: id }))
   program_container_el.classList.add('program-container')
   program_container_slot.replaceWith(program_container_el)
 
@@ -9845,24 +9922,26 @@ async function theme_widget (opts, invite) {
     const action_handlers = {
       update_actions_for_app: root_update_actions_for_app,
       update_quick_actions_for_app: root_forward_taskbar,
-      update_steps_wizard_for_app: root_forward_taskbar
+      update_steps_wizard_for_app: root_forward_taskbar,
+      add_link_tab: root_forward_taskbar,
+      remove_link_tab: root_forward_taskbar
     }
     const handler = action_handlers[msg.type] || fail
     handler(msg)
 
     function root_update_actions_for_app (msg) {
-      if (_.program_container) _.program_container(msg.type, msg.data, msg.head ? { cause: msg.head } : {} )
+      if (_.program_container) _.program_container(msg.type, msg.data, msg.head ? { cause: msg.head } : {})
       else setTimeout(root_retry_send_program_container, 500, msg)
     }
 
-    function root_retry_send_program_container (msg) { _.program_container(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
-    function root_forward_taskbar (msg) { _.taskbar(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
+    function root_retry_send_program_container (msg) { _.program_container(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
+    function root_forward_taskbar (msg) { _.taskbar(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
   }
 
   // Inline focus tracker: handles ui_focus messages from children
   function handle_ui_focus (msg) {
     if (last_focused !== msg.data.type) {
-      _.up && _.up('focused_app_changed', msg.data, {})
+      _.up('focused_app_changed', msg.data, {})
     }
     drive.put('focused/current.json', { value: msg.data.type })
   }
@@ -9881,8 +9960,8 @@ async function theme_widget (opts, invite) {
     handler(msg)
 
     function program_container_forward_ui_focus (msg) { handle_ui_focus(msg) }
-    function program_container_forward_up (msg) { _.up && _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
-    function program_container_forward_taskbar (msg) { _.taskbar(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
+    function program_container_forward_up (msg) { _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
+    function program_container_forward_taskbar (msg) { _.taskbar(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
   }
 
   function taskbar_protocol (msg) {
@@ -9892,20 +9971,17 @@ async function theme_widget (opts, invite) {
       docs_toggle: taskbar_docs_toggle,
       set_docs_mode: taskbar_forward_up,
       action_auto_completed: taskbar_forward_up,
-      action_complete: taskbar_forward_up
+      action_complete: taskbar_forward_up,
+      link_tab_close_clicked: taskbar_forward_up,
+      link_tab_clicked: taskbar_forward_up
     }
     const handler = action_handlers[msg.type] || taskbar_forward_program_container
     handler(msg)
 
     function taskbar_forward_ui_focus (msg) { handle_ui_focus(msg) }
-    function taskbar_forward_up (msg) { 
-      console.error('theme_widget: forwarding to up', msg.type, '_.up exists:', !!_.up)
-      _.up && _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) 
-    }
-    function taskbar_forward_program_container (msg) { _.program_container(msg.type, msg.data, msg.head ? { cause: msg.head } : {} ) }
-    function taskbar_docs_toggle (msg) {
-      _.program_container(msg.type, msg.data, msg.head ? { cause: msg.head } : {} )
-    }
+    function taskbar_forward_up (msg) { _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
+    function taskbar_forward_program_container (msg) { _.program_container(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
+    function taskbar_docs_toggle (msg) { _.program_container(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
   }
 }
 
@@ -10035,363 +10111,41 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/theme_widget/theme_widget.js")
-},{"STATE":1,"net_helper":16,"program_container":18,"taskbar":26}],28:[function(require,module,exports){
-(function (__filename){(function (){
-const STATE = require('STATE')
-const statedb = STATE(__filename)
-const { get } = statedb(fallback_module)
-const net = require('net_helper')
-
-const theme_widget = require('theme_widget')
-
-module.exports = tile_manager
-
-async function tile_manager (opts, invite) {
-  const { id, sdb } = await get(opts.sid)
-  const { drive } = sdb
-
-  const on = {
-    style: inject
-  }
-
-  // Layout state - starts with single tile
-  // direction: 'horizontal' (left/right) or 'vertical' (top/bottom)
-  let layout = {
-    direction: null,  // null = single tile, 'horizontal' or 'vertical' after split
-    tiles: []         // array of { id, element, sid }
-  }
-
-  // Cache for action data to send to new tiles
-  let cached_actions = {
-    update_actions_for_app: null,
-    update_quick_actions_for_app: null,
-    update_steps_wizard_for_app: null
-  }
-
-  let tile_counter = 0
-  const { io, _ } = net(id)
-
-  const el = document.createElement('div')
-  const shadow = el.attachShadow({ mode: 'closed' })
-  shadow.innerHTML = `
-  <div class="tile-manager">
-    <div class="tile-slot" data-tile-id="0"></div>
-  </div>
-  `
-  const sheet = new CSSStyleSheet()
-  shadow.adoptedStyleSheets = [sheet]
-  const container = shadow.querySelector('.tile-manager')
-
-  const subs = await sdb.watch(onbatch)
-
-  io.on.up = onmessage_from_root
-  if (invite) io.accept(invite)
-
-  // Create the first theme_widget
-  await create_tile(0)
-
-  return el
-
-  // ---------------------------
-  // TILE MANAGEMENT
-  // ---------------------------
-
-  async function create_tile (slot_index) {
-    const tile_id = tile_counter++
-    const tile_slot = container.querySelector(`[data-tile-id="${slot_index}"]`)
-    
-    if (!tile_slot) {
-      console.error('tile_manager: slot not found for index', slot_index)
-      return
-    }
-
-    // Get sub for this tile - use existing subs or create fallback
-    const sub_entry = subs[tile_id] || { sid: opts.sid }
-    
-    // Add tile to layout BEFORE creating widget (so messages work during init)
-    const tile_info = {
-      id: tile_id,
-      element: null,
-      slot: tile_slot,
-      sid: sub_entry.sid
-    }
-    layout.tiles.push(tile_info)
-    console.error('tile_manager: tile_info added for tile', tile_id)
-    
-    // Register handler BEFORE calling invite
-    io.on[`tile_${tile_id}`] = create_tile_protocol(tile_id)
-    console.error('tile_manager: handler registered for tile_' + tile_id)
-    const tile_invite = io.invite(`tile_${tile_id}`, { up: id })
-    console.error('tile_manager: invite created for tile_' + tile_id, '_[tile_' + tile_id + '] exists:', !!_[`tile_${tile_id}`])
-
-    const tile_el = await theme_widget(
-      { ...sub_entry, ids: { up: id } },
-      tile_invite
-    )
-    
-    // Update the element reference
-    tile_info.element = tile_el
-    tile_slot.appendChild(tile_el)
-
-    console.error('tile_manager: created tile', tile_id)
-    return tile_id
-  }
-
-  function create_tile_protocol (tile_id) {
-    return function tile_protocol (msg) {
-      const { type, data } = msg
-      console.error(`tile_manager: message from tile_${tile_id}`, type, data)
-
-      // Handle tile split action
-      if (type === 'action_auto_completed' || type === 'action_complete') {
-        console.error('tile_manager: action completed, checking for split', data)
-        const action = data?.selected_action
-        console.error('tile_manager: action name:', action?.name)
-        if (action?.name === 'Split Tile') {
-          // The result field contains the direction as JSON: '["right"]'
-          // This is more reliable than step.data which may be reset
-          let direction = null
-          
-          if (data.result) {
-            try {
-              const results = JSON.parse(data.result)
-              direction = results[0]  // First step's data is the direction
-              console.error('tile_manager: direction from result:', direction)
-            } catch (e) {
-              console.error('tile_manager: failed to parse result', e)
-            }
-          }
-          
-          // Fallback: check step data
-          if (!direction) {
-            const split_step = action.steps.find(s => s.component === 'form_tile_split_choice')
-            console.error('tile_manager: split_step found:', split_step)
-            if (split_step && split_step.data) {
-              direction = split_step.data
-            }
-          }
-          
-          if (direction) {
-            console.error('tile_manager: split requested', direction, 'from tile', tile_id)
-            handle_split(tile_id, direction)
-          } else {
-            console.error('tile_manager: no direction found, cannot split')
-          }
-        }
-      }
-
-      // Forward messages up to root (keep original data format)
-      if (_.up) {
-        _.up(type, data, msg.head ? { cause: msg.head } : {})
-      }
-    }
-  }
-
-  async function handle_split (source_tile_id, direction) {
-    // direction: 'up', 'down', 'left', 'right'
-    console.error('tile_manager: handle_split called', source_tile_id, direction)
-    
-    if (layout.tiles.length >= 2) {
-      console.error('tile_manager: already split, nested splitting not yet supported')
-      return
-    }
-
-    // Determine flex direction based on split direction
-    const is_horizontal = direction === 'left' || direction === 'right'
-    layout.direction = is_horizontal ? 'horizontal' : 'vertical'
-    console.error('tile_manager: layout direction set to', layout.direction)
-
-    // Update container class
-    container.classList.remove('horizontal', 'vertical')
-    container.classList.add(layout.direction)
-
-    // Create second tile slot
-    const new_slot = document.createElement('div')
-    new_slot.className = 'tile-slot'
-    new_slot.setAttribute('data-tile-id', '1')
-
-    // Insert new slot based on direction
-    if (direction === 'left' || direction === 'up') {
-      // New tile goes before existing
-      container.insertBefore(new_slot, container.firstChild)
-    } else {
-      // New tile goes after existing (right, down)
-      container.appendChild(new_slot)
-    }
-    console.error('tile_manager: new slot created')
-
-    // Create the new theme_widget in the new slot
-    await create_tile(1)
-
-    // Send cached actions to the new tile
-    send_cached_actions_to_tile(1)
-
-    console.error('tile_manager: split complete', layout.direction, layout.tiles.length, 'tiles')
-  }
-
-  function send_cached_actions_to_tile (tile_id) {
-    const send = _[`tile_${tile_id}`]
-    if (!send) {
-      console.error('tile_manager: cannot send cached actions, tile_' + tile_id + ' not found')
-      return
-    }
-    
-    console.error('tile_manager: sending cached actions to tile_' + tile_id)
-    
-    for (const [type, data] of Object.entries(cached_actions)) {
-      if (data !== null) {
-        console.error('tile_manager: sending cached', type, 'to tile_' + tile_id)
-        send(type, data, {})
-      }
-    }
-  }
-
-  // ---------------------------
-  // MESSAGE HANDLERS
-  // ---------------------------
-
-  function onmessage_from_root (msg) {
-    const { type, data } = msg
-    console.error('tile_manager: message from root', type, 'tiles:', layout.tiles.length)
-
-    // Cache action data for new tiles
-    if (type === 'update_actions_for_app' || type === 'update_quick_actions_for_app' || type === 'update_steps_wizard_for_app') {
-      cached_actions[type] = data
-      console.error('tile_manager: cached', type)
-    }
-
-    // Forward to all tiles
-    for (const tile of layout.tiles) {
-      const send = _[`tile_${tile.id}`]
-      console.error('tile_manager: forwarding to tile_' + tile.id, 'send exists:', !!send)
-      if (send) {
-        send(type, data, msg.head ? { cause: msg.head } : {})
-      }
-    }
-  }
-
-  // ---------------------------
-  // BATCH HANDLER
-  // ---------------------------
-
-  async function onbatch (batch) {
-    for (const { type, paths } of batch) {
-      const data = await Promise.all(paths.map(load_path_raw))
-      const func = on[type] || fail
-      func({ data, type })
-    }
-
-    function load_path_raw (path) { return drive.get(path).then(read_drive_file_raw) }
-    function read_drive_file_raw (file) { return file.raw }
-  }
-
-  function inject ({ data }) { sheet.replaceSync(data[0]) }
-
-  function fail ({ data, type }) { console.warn('tile_manager: invalid message', { cause: { data, type } }) }
-}
-
-function fallback_module () {
-  return {
-    api: fallback_instance,
-    _: {
-      theme_widget: {
-        $: ''
-      },
-      net_helper: {
-        $: ''
-      }
-    }
-  }
-
-  function fallback_instance () {
-    return {
-      _: {
-        theme_widget: {
-          0: '',
-          1: '',  // Support for second tile
-          mapping: {
-            style: 'style',
-            icons: 'icons',
-            commands: 'commands',
-            scroll: 'scroll',
-            actions: 'actions',
-            hardcons: 'hardcons',
-            files: 'files',
-            highlight: 'highlight',
-            active_tab: 'active_tab',
-            entries: 'entries',
-            runtime: 'runtime',
-            mode: 'mode',
-            flags: 'flags',
-            keybinds: 'keybinds',
-            undo: 'undo',
-            focused: 'focused',
-            temp_actions: 'temp_actions',
-            temp_quick_actions: 'temp_quick_actions',
-            prefs: 'prefs',
-            variables: 'variables',
-            data: 'data',
-            docs: 'docs',
-            docs_style: 'docs_style'
-          }
-        },
-        net_helper: {
-          0: ''
-        }
-      },
-      drive: {
-        'style/': {
-          'tile_manager.css': {
-            $ref: 'style/tile_manager.css'
-          }
-        }
-      }
-    }
-  }
-}
-
-}).call(this)}).call(this,"/src/node_modules/tile_manager/tile_manager.js")
-},{"STATE":1,"net_helper":16,"theme_widget":27}],29:[function(require,module,exports){
+},{"STATE":1,"net_helper":17,"program_container":19,"taskbar":27}],29:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const admin_api = statedb.admin()
 const admin_on = {}
 admin_api.on(handle_admin_message)
-const { sdb, io, id } = statedb(fallback_module)
+const { sdb, io: sdbio, id } = statedb(fallback_module)
 const { drive, admin } = sdb
-const net = require('../src/node_modules/net_helper')
-const DOCS = require('../src/node_modules/DOCS')
+const net = require('net_helper')
+const DOCS = require('DOCS')
 const docs = DOCS(__filename)()
 const docs_admin = docs.admin
-let send_to_theme_widget = null
-const by = id
-let to = null
-let mid = 0
 /******************************************************************************
   PAGE
 ******************************************************************************/
-const navbar = require('../src/node_modules/menu')
-const tile_manager = require('../src/node_modules/tile_manager')
-const theme_widget = require('../src/node_modules/theme_widget')
-const taskbar = require('../src/node_modules/taskbar')
-const tabsbar = require('../src/node_modules/tabsbar')
-const action_bar = require('../src/node_modules/action_bar')
-const program_container = require('../src/node_modules/program_container')
-const tabs = require('../src/node_modules/tabs')
-const console_history = require('../src/node_modules/console_history')
-const actions = require('../src/node_modules/actions')
-const tabbed_editor = require('../src/node_modules/tabbed_editor')
-const task_manager = require('../src/node_modules/task_manager')
-const quick_actions = require('../src/node_modules/quick_actions')
-const graph_explorer_wrapper = require('../src/node_modules/graph_explorer_wrapper')
-const editor = require('../src/node_modules/quick_editor')
-const action_executor = require('../src/node_modules/action_executor')
-const steps_wizard = require('../src/node_modules/steps_wizard')
-const { resource } = require('../src/node_modules/helpers')
+const navbar = require('menu')
+const theme_widget = require('theme_widget')
+const taskbar = require('taskbar')
+const tabsbar = require('tabsbar')
+const action_bar = require('action_bar')
+const program_container = require('program_container')
+const tabs = require('tabs')
+const console_history = require('console_history')
+const actions = require('actions')
+const tabbed_editor = require('tabbed_editor')
+const task_manager = require('task_manager')
+const quick_actions = require('quick_actions')
+const graph_explorer_wrapper = require('graph_explorer_wrapper')
+const editor = require('quick_editor')
+const action_executor = require('action_executor')
+const steps_wizard = require('steps_wizard')
+const { resource } = require('helpers')
 
 const imports = {
-  tile_manager,
   theme_widget,
   taskbar,
   tabsbar,
@@ -10407,32 +10161,12 @@ const imports = {
   action_executor,
   steps_wizard
 }
-config().then(boot_default_page)
+module.exports = ui_gallery
 
-function boot_default_page () { return boot({ sid: '' }) }
-
-async function config () {
-  // const path = path => new URL(`../src/node_modules/${path}`, `file://${__dirname}`).href.slice(8)
-  const html = document.documentElement
-  const meta = document.createElement('meta')
-  // const appleTouch = '<link rel="apple-touch-icon" sizes="180x180" href="./src/node_modules/assets/images/favicon/apple-touch-icon.png">'
-  // const icon32 = '<link rel="icon" type="image/png" sizes="32x32" href="./src/node_modules/assets/images/favicon/favicon-32x32.png">'
-  // const icon16 = '<link rel="icon" type="image/png" sizes="16x16" href="./src/node_modules/assets/images/favicon/favicon-16x16.png">'
-  // const webmanifest = '<link rel="manifest" href="./src/node_modules/assets/images/favicon/site.webmanifest"></link>'
-  const font = 'https://fonts.googleapis.com/css?family=Nunito:300,400,700,900|Slackey&display=swap'
-  const loadFont = `<link href=${font} rel='stylesheet' type='text/css'>`
-  html.setAttribute('lang', 'en')
-  meta.setAttribute('name', 'viewport')
-  meta.setAttribute('content', 'width=device-width,initial-scale=1.0')
-  // @TODO: use font api and cache to avoid re-downloading the font data every time
-  document.head.append(meta)
-  document.head.innerHTML += loadFont // + icon16 + icon32 + webmanifest
-  await document.fonts.ready // @TODO: investigate why there is a FOUC
-}
 /******************************************************************************
   PAGE BOOT
 ******************************************************************************/
-async function boot (opts) {
+async function ui_gallery (opts = {}) {
   // ----------------------------------------
   // ID + JSON STATE
   // ----------------------------------------
@@ -10447,15 +10181,15 @@ async function boot (opts) {
   // ----------------------------------------
   // TEMPLATE
   // ----------------------------------------
-  const el = document.body
+  const el = document.createElement('div')
   const shadow = el.attachShadow({ mode: 'closed' })
   shadow.innerHTML = `
   <div class="navbar-slot"></div>
   <div class="components-wrapper-container">
     <div class="components-wrapper"></div>
   </div>`
-  el.style.margin = 0
-  el.style.backgroundColor = '#d8dee9'
+  document.body.style.margin = 0
+  document.body.style.backgroundColor = '#d8dee9'
 
   // ----------------------------------------
   // ELEMENTS
@@ -10498,9 +10232,25 @@ async function boot (opts) {
     on_resize_toggle: handle_resize_toggle
   }
   const item = resource()
-  io.on(register_io_port)
+  sdbio.on(register_io_port)
   const { io: theme_widget_io, _: theme_widget_send } = net(id)
-  theme_widget_io.on.theme_widget = theme_widget_protocol
+  theme_widget_io.on = {
+    theme_widget: theme_widget_protocol
+  }
+
+  // Create io handles for all preview components to provide up-channel invites
+  const preview_ios = {}
+  const preview_names = Object.keys(imports)
+  for (const name of preview_names) {
+    if (name === 'theme_widget') continue
+    const { io } = net(id)
+    // Register minimal protocol handler so io.invite() can work
+    io.on = {
+      [name]: () => {},
+      up: () => {}
+    }
+    preview_ios[name] = io
+  }
 
   function register_io_port (port) {
     const { by, to } = port
@@ -10517,7 +10267,7 @@ async function boot (opts) {
     }
   }
 
-  const editor_subs = await sdb.get_sub('page>../src/node_modules/quick_editor')
+  const editor_subs = await sdb.get_sub('ui_gallery>quick_editor')
   // const subs = await sdb.watch(onbatch)
   const subs = (await sdb.watch(onbatch)).filter(is_even_index)
 
@@ -10526,7 +10276,8 @@ async function boot (opts) {
   console.log('Page subs', subs)
   const nav_menu_element = await navbar(subs[names.length], names, initial_checked_indices, menu_callbacks)
 
-  navbar_slot.replaceWith(nav_menu_element, await editor(editor_subs[0]))
+  const main_editor = editor_subs[0] ? await editor(editor_subs[0]) : null
+  navbar_slot.replaceWith(nav_menu_element, main_editor || document.createElement('div'))
   await create_component(entries)
   update_resize(resize_enabled)
   window.onload = scroll_to_initial_selected
@@ -10583,16 +10334,16 @@ async function boot (opts) {
       }
 
       function add_action_entry (entry) {
-        result_actions.push({ 
-          action: entry.name, 
-          icon: entry.icon, 
-          pinned: entry.status.pinned, 
-          default: entry.status.default 
+        result_actions.push({
+          action: entry.name,
+          icon: entry.icon,
+          pinned: entry.status.pinned,
+          default: entry.status.default
         })
         result_quick_actions.push({
-          name: entry.name, 
-          icon: entry.icon, 
-          total_steps: entry.steps.length 
+          name: entry.name,
+          icon: entry.icon,
+          total_steps: entry.steps.length
         })
       }
     }
@@ -10611,16 +10362,18 @@ async function boot (opts) {
     `
       const inner = outer.querySelector('.component-wrapper')
       let component_content
-      if (name === 'theme_widget' || name === 'tile_manager') {
-        component_content = await factory({ ...subs[index], ids: { up: id } }, theme_widget_io.invite('theme_widget', { up: id }))
+      if (name === 'theme_widget') {
+        component_content = await factory({ ...subs[index] }, theme_widget_io.invite('theme_widget', { up: id }))
       } else {
-        component_content = await factory({ ...subs[index], ids: { up: id } })
+        const component_io = preview_ios[name]
+        component_content = await factory({ ...subs[index] }, component_io.invite(name, { up: id }))
       }
       component_content.className = 'component-content'
 
       const node_id = admin.status.s2i[subs[index].sid]
       const editor_index = index + 1
-      inner.append(component_content, await editor(editor_subs[editor_index]))
+      const component_editor = editor_subs[editor_index] ? await editor(editor_subs[editor_index]) : null
+      inner.append(component_content, component_editor || document.createElement('div'))
 
       const result = {}
       const drive = admin.status.dataset.drive
@@ -10643,10 +10396,12 @@ async function boot (opts) {
         }
       }
 
-      const editor_id = admin.status.a2i[admin.status.s2i[editor_subs[editor_index].sid]]
-      const port = await item.get(editor_id)
-      // await io.at(editor_id)
-      port.postMessage(result)
+      if (editor_subs[editor_index]) {
+        const editor_id = admin.status.a2i[admin.status.s2i[editor_subs[editor_index].sid]]
+        const port = await item.get(editor_id)
+        // await sdbio.at(editor_id)
+        port.postMessage(result)
+      }
 
       components_wrapper.appendChild(outer)
       wrappers[index] = { outer, inner, name, checkbox_state: is_initially_checked }
@@ -10759,7 +10514,7 @@ async function boot (opts) {
     function read_drive_file_raw (file) { return file.raw }
   }
   function fail (data, type) { console.warn(__filename + 'invalid message', { cause: { data, type } }) }
-    function inject (data) { sheet.replaceSync(data[0]) }
+  function inject (data) { sheet.replaceSync(data[0]) }
   function update_resize (data) {
     console.log('[ update_resize ]', data)
     resize_enabled = data
@@ -10807,37 +10562,37 @@ async function boot (opts) {
       }
     }
 
+    if (!editor_subs[0]) return
     const editor_id = admin.status.a2i[admin.status.s2i[editor_subs[0].sid]]
     const port = await item.get(editor_id)
-    // await io.at(editor_id)
+    // await sdbio.at(editor_id)
     port.postMessage(result)
   }
 }
 function fallback_module () {
-  const menuname = '../src/node_modules/menu'
+  const menuname = 'menu'
   const names = [
-    '../src/node_modules/tile_manager',
-    '../src/node_modules/theme_widget',
-    '../src/node_modules/taskbar',
-    '../src/node_modules/tabsbar',
-    '../src/node_modules/action_bar',
-    '../src/node_modules/program_container',
-    '../src/node_modules/tabs',
-    '../src/node_modules/console_history',
-    '../src/node_modules/actions',
-    '../src/node_modules/tabbed_editor',
-    '../src/node_modules/task_manager',
-    '../src/node_modules/quick_actions',
-    '../src/node_modules/graph_explorer_wrapper',
-    '../src/node_modules/action_executor',
-    '../src/node_modules/steps_wizard'
+    'theme_widget',
+    'taskbar',
+    'tabsbar',
+    'action_bar',
+    'program_container',
+    'tabs',
+    'console_history',
+    'actions',
+    'tabbed_editor',
+    'task_manager',
+    'quick_actions',
+    'graph_explorer_wrapper',
+    'action_executor',
+    'steps_wizard'
   ]
   const subs = {}
   names.forEach(subgen)
-  subs['../src/node_modules/helpers'] = 0
-  subs['../src/node_modules/DOCS'] = 0
-  subs['../src/node_modules/net_helper'] = 0
-  subs['../src/node_modules/taskbar'] = {
+  subs.helpers = 0
+  subs.DOCS = 0
+  subs.net_helper = 0
+  subs.taskbar = {
     $: '',
     0: '',
     mapping: {
@@ -10851,7 +10606,7 @@ function fallback_module () {
       docs: 'docs'
     }
   }
-  subs['../src/node_modules/tabs'] = {
+  subs.tabs = {
     $: '',
     0: '',
     mapping: {
@@ -10863,7 +10618,7 @@ function fallback_module () {
       actions: 'actions'
     }
   }
-  subs['../src/node_modules/program_container'] = {
+  subs.program_container = {
     $: '',
     0: '',
     mapping: {
@@ -10886,7 +10641,7 @@ function fallback_module () {
       docs: 'docs'
     }
   }
-  subs['../src/node_modules/action_executor'] = {
+  subs.action_executor = {
     $: '',
     0: '',
     mapping: {
@@ -10896,7 +10651,7 @@ function fallback_module () {
       data: 'data'
     }
   }
-  subs['../src/node_modules/steps_wizard'] = {
+  subs.steps_wizard = {
     $: '',
     0: '',
     mapping: {
@@ -10904,7 +10659,7 @@ function fallback_module () {
       docs: 'docs'
     }
   }
-  subs['../src/node_modules/tabsbar'] = {
+  subs.tabsbar = {
     $: '',
     0: '',
     mapping: {
@@ -10914,7 +10669,7 @@ function fallback_module () {
       actions: 'actions'
     }
   }
-  subs['../src/node_modules/action_bar'] = {
+  subs.action_bar = {
     $: '',
     0: '',
     mapping: {
@@ -10927,7 +10682,7 @@ function fallback_module () {
       docs: 'docs'
     }
   }
-  subs['../src/node_modules/console_history'] = {
+  subs.console_history = {
     $: '',
     0: '',
     mapping: {
@@ -10939,7 +10694,7 @@ function fallback_module () {
       actions: 'actions'
     }
   }
-  subs['../src/node_modules/actions'] = {
+  subs.actions = {
     $: '',
     0: '',
     mapping: {
@@ -10950,7 +10705,7 @@ function fallback_module () {
       docs: 'docs'
     }
   }
-  subs['../src/node_modules/tabbed_editor'] = {
+  subs.tabbed_editor = {
     $: '',
     0: '',
     mapping: {
@@ -10961,7 +10716,7 @@ function fallback_module () {
       docs: 'docs'
     }
   }
-  subs['../src/node_modules/task_manager'] = {
+  subs.task_manager = {
     $: '',
     0: '',
     mapping: {
@@ -10971,7 +10726,7 @@ function fallback_module () {
       actions: 'actions'
     }
   }
-  subs['../src/node_modules/quick_actions'] = {
+  subs.quick_actions = {
     $: '',
     0: '',
     mapping: {
@@ -10991,43 +10746,14 @@ function fallback_module () {
       docs: 'docs'
     }
   }
-  subs['../src/node_modules/quick_editor'] = {
+  subs.quick_editor = {
     $: '',
     mapping: {
       style: 'style',
       docs: 'docs'
     }
   }
-  subs['../src/node_modules/tile_manager'] = {
-    $: '',
-    0: '',
-    mapping: {
-      style: 'style',
-      commands: 'commands',
-      icons: 'icons',
-      scroll: 'scroll',
-      actions: 'actions',
-      hardcons: 'hardcons',
-      files: 'files',
-      highlight: 'highlight',
-      active_tab: 'active_tab',
-      entries: 'entries',
-      runtime: 'runtime',
-      mode: 'mode',
-      flags: 'flags',
-      keybinds: 'keybinds',
-      undo: 'undo',
-      focused: 'focused',
-      temp_actions: 'temp_actions',
-      temp_quick_actions: 'temp_quick_actions',
-      prefs: 'prefs',
-      variables: 'variables',
-      data: 'data',
-      docs_style: 'docs_style',
-      docs: 'docs'
-    }
-  }
-  subs['../src/node_modules/theme_widget'] = {
+  subs.theme_widget = {
     $: '',
     0: '',
     mapping: {
@@ -11056,7 +10782,7 @@ function fallback_module () {
       docs: 'docs'
     }
   }
-  subs['../src/node_modules/graph_explorer_wrapper'] = {
+  subs.graph_explorer_wrapper = {
     $: '',
     0: '',
     mapping: {
@@ -11071,7 +10797,7 @@ function fallback_module () {
     }
   }
   for (let i = 0; i < Object.keys(subs).length - 1; i++) {
-    subs['../src/node_modules/quick_editor'][i] = quick_editor$
+    subs.quick_editor[i] = quick_editor$
   }
 
   return {
@@ -11238,5 +10964,26 @@ function handle_admin_message (msg) {
   admin_on[type] && admin_on[type]()
 }
 
-}).call(this)}).call(this,"/web/page.js")
-},{"../src/node_modules/DOCS":3,"../src/node_modules/action_bar":4,"../src/node_modules/action_executor":5,"../src/node_modules/actions":6,"../src/node_modules/console_history":7,"../src/node_modules/graph_explorer_wrapper":11,"../src/node_modules/helpers":13,"../src/node_modules/menu":15,"../src/node_modules/net_helper":16,"../src/node_modules/program_container":18,"../src/node_modules/quick_actions":19,"../src/node_modules/quick_editor":20,"../src/node_modules/steps_wizard":21,"../src/node_modules/tabbed_editor":22,"../src/node_modules/tabs":23,"../src/node_modules/tabsbar":24,"../src/node_modules/task_manager":25,"../src/node_modules/taskbar":26,"../src/node_modules/theme_widget":27,"../src/node_modules/tile_manager":28,"STATE":1}]},{},[29]);
+}).call(this)}).call(this,"/src/node_modules/ui_gallery/index.js")
+},{"DOCS":4,"STATE":1,"action_bar":5,"action_executor":6,"actions":7,"console_history":8,"graph_explorer_wrapper":12,"helpers":14,"menu":16,"net_helper":17,"program_container":19,"quick_actions":20,"quick_editor":21,"steps_wizard":22,"tabbed_editor":23,"tabs":24,"tabsbar":25,"task_manager":26,"taskbar":27,"theme_widget":28}],30:[function(require,module,exports){
+const ui_gallery = require('../src/index')
+config().then(boot_default_page)
+
+async function config () {
+  const html = document.documentElement
+  const meta = document.createElement('meta')
+  const font = 'https://fonts.googleapis.com/css?family=Nunito:300,400,700,900|Slackey&display=swap'
+  const loadFont = `<link href=${font} rel='stylesheet' type='text/css'>`
+  html.setAttribute('lang', 'en')
+  meta.setAttribute('name', 'viewport')
+  meta.setAttribute('content', 'width=device-width,initial-scale=1.0')
+  document.head.append(meta)
+  document.head.insertAdjacentHTML('beforeend', loadFont)
+  await document.fonts.ready
+}
+
+async function boot_default_page () {
+  document.body.append(await ui_gallery({ sid: '' }))
+}
+
+},{"../src/index":3}]},{},[30]);
