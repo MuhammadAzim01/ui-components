@@ -71,9 +71,7 @@ async function graph_explorer (opts, protocol) {
   el.className = 'graph-explorer-wrapper'
   const shadow = el.attachShadow({ mode: 'closed' })
   shadow.innerHTML = `
-    <div>
-      <div class="graph-container"></div>
-    </div>
+    <div class="graph-container"></div>
     <div class="searchbar"></div>
     <div class="menubar"></div>
   `
@@ -3141,7 +3139,7 @@ function fallback_module () {
 },{"STATE":1}],3:[function(require,module,exports){
 module.exports = require('ui_gallery')
 
-},{"ui_gallery":29}],4:[function(require,module,exports){
+},{"ui_gallery":31}],4:[function(require,module,exports){
 (function (global){(function (){
 // --- Main Export ---
 // Usage: const docs = DOCS(__filename)(opts.sid)
@@ -6825,7 +6823,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/program_container/program_container.js")
-},{"DOCS":4,"STATE":1,"actions":7,"console_history":8,"docs_window":9,"graph_explorer_wrapper":12,"net_helper":17,"tabbed_editor":23}],20:[function(require,module,exports){
+},{"DOCS":4,"STATE":1,"actions":7,"console_history":8,"docs_window":9,"graph_explorer_wrapper":12,"net_helper":17,"tabbed_editor":24}],20:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -8163,6 +8161,313 @@ function fallback_module () {
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { get } = statedb(fallback_module)
+const net = require('net_helper')
+
+const tabs = require('tabs')
+const program_container = require('program_container')
+const action_bar = require('action_bar')
+const action_executor = require('action_executor')
+
+module.exports = tab_group
+
+async function tab_group (opts, invite) {
+  console.error('tab_group: initializing with opts', opts.sid)
+  const { id, sdb } = await get(opts.sid)
+  const { drive } = sdb
+
+  const on = {
+    style: inject
+  }
+
+  const { io, _ } = net(id)
+
+  const el = document.createElement('div')
+  const shadow = el.attachShadow({ mode: 'closed' })
+  shadow.innerHTML = `
+  <div class="tab-group">
+    <div class="program-container-slot"></div>
+    <div class="action-executor-slot"></div>
+    <div class="action-bar-slot"></div>
+    <div class="tabs-slot"></div>
+  </div>
+  `
+  const sheet = new CSSStyleSheet()
+  shadow.adoptedStyleSheets = [sheet]
+
+  const program_container_slot = shadow.querySelector('.program-container-slot')
+  const action_executor_slot = shadow.querySelector('.action-executor-slot')
+  const action_bar_slot = shadow.querySelector('.action-bar-slot')
+  const tabs_slot = shadow.querySelector('.tabs-slot')
+
+  const subs = await sdb.watch(onbatch)
+  console.error('tab_group: subs ready', subs)
+
+  let tabs_el = null
+  let program_container_el = null
+  let action_bar_el = null
+  let action_executor_el = null
+
+  io.on = {
+    up: onmessage_from_root,
+    tabs: tabs_protocol,
+    program_container: program_container_protocol,
+    action_bar: action_bar_protocol,
+    action_executor: action_executor_protocol
+  }
+  if (invite) {
+    console.error('tab_group: accepting invite')
+    io.accept(invite)
+  }
+
+  console.error('tab_group: creating program_container')
+  program_container_el = await program_container({ ...subs[0], ids: { up: id } }, io.invite('program_container', { up: id }))
+  program_container_el.classList.add('program-container')
+  program_container_slot.replaceWith(program_container_el)
+  console.error('tab_group: program_container created')
+
+  console.error('tab_group: creating action_executor')
+  action_executor_el = await action_executor({ ...subs[1], ids: { up: id } }, io.invite('action_executor', { up: id }))
+  action_executor_el.classList.add('action-executor')
+  action_executor_slot.replaceWith(action_executor_el)
+  console.error('tab_group: action_executor created')
+
+  console.error('tab_group: creating tabs')
+  tabs_el = await tabs({ ...subs[2], ids: { up: id } }, io.invite('tabs', { up: id }))
+  tabs_el.classList.add('tabs')
+  tabs_slot.replaceWith(tabs_el)
+  console.error('tab_group: tabs created')
+
+  console.error('tab_group: creating action_bar')
+  action_bar_el = await action_bar({ ...subs[3], ids: { up: id } }, io.invite('action_bar', { up: id }))
+  action_bar_el.classList.add('action-bar')
+  action_bar_slot.replaceWith(action_bar_el)
+  console.error('tab_group: action_bar created')
+
+  console.error('tab_group: initialization complete')
+  return el
+
+  // ---------------------------
+  // BATCH HANDLER
+  // ---------------------------
+
+  async function onbatch (batch) {
+    for (const { type, paths } of batch) {
+      const data = await Promise.all(paths.map(load_path_raw))
+      const func = on[type] || fail
+      func({ data, type })
+    }
+
+    function load_path_raw (path) { return drive.get(path).then(read_drive_file_raw) }
+    function read_drive_file_raw (file) { return file.raw }
+  }
+
+  function inject ({ data }) { sheet.replaceSync(data[0]) }
+
+  function fail ({ data, type }) { console.error('tab_group: unhandled batch message', { type, data }) }
+
+  // ---------------------------
+  // MESSAGE FROM ROOT (tile_manager)
+  // ---------------------------
+
+  function onmessage_from_root (msg) {
+    const { type } = msg
+    console.error('tab_group: message from root', type)
+
+    if (type === 'update_quick_actions_for_app') {
+      console.error('tab_group: forwarding to action_bar', type)
+      if (_.action_bar) {
+        _.action_bar(type, msg.data, msg.head ? { cause: msg.head } : {})
+      }
+    }
+
+    if (type === 'update_steps_wizard_for_app') {
+      console.error('tab_group: forwarding to action_executor', type)
+      if (_.action_executor) {
+        _.action_executor(type, msg.data, msg.head ? { cause: msg.head } : {})
+      }
+    }
+
+    if (type === 'update_actions_for_app' || type === 'load_actions') {
+      console.error('tab_group: forwarding to program_container', type)
+      if (_.program_container) {
+        _.program_container(type, msg.data, msg.head ? { cause: msg.head } : {})
+      }
+    }
+
+    if (type === 'create_default_tab') {
+      console.error('tab_group: creating default tab', msg.data)
+      if (_.tabs) {
+        _.tabs('add_default_tab', msg.data, msg.head ? { cause: msg.head } : {})
+      }
+    }
+  }
+
+  // ---------------------------
+  // PROTOCOLS
+  // ---------------------------
+
+  function tabs_protocol (msg) {
+    console.error('tab_group: tabs_protocol', msg.type, msg.data)
+    _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {})
+  }
+
+  function program_container_protocol (msg) {
+    const { type } = msg
+    console.error('tab_group: program_container_protocol', type)
+
+    const forward_up = ['ui_focus', 'action_auto_completed', 'action_complete']
+
+    if (forward_up.includes(type)) {
+      console.error('tab_group: forwarding up', type)
+      _.up(type, msg.data, msg.head ? { cause: msg.head } : {})
+    }
+  }
+
+  function action_bar_protocol (msg) {
+    const { type } = msg
+    console.error('tab_group: action_bar_protocol', type)
+
+    const forward_to_executor = [
+      'action_submitted', 'selected_action', 'activate_steps_wizard',
+      'render_form', 'clean_up'
+    ]
+    if (forward_to_executor.includes(type)) {
+      console.error('tab_group: forwarding to action_executor', type)
+      if (_.action_executor) {
+        _.action_executor(type, msg.data, msg.head ? { cause: msg.head } : {})
+      }
+    }
+
+    const forward_up = ['ui_focus', 'display_actions', 'filter_actions', 'console_history_toggle']
+    if (forward_up.includes(type)) {
+      _.up(type, msg.data, msg.head ? { cause: msg.head } : {})
+    }
+  }
+
+  function action_executor_protocol (msg) {
+    const { type } = msg
+    console.error('tab_group: action_executor_protocol', type)
+
+    const forward_to_action_bar = [
+      'selected_action', 'show_submit_btn', 'hide_submit_btn',
+      'update_quick_actions_input', 'step_clicked', 'load_actions'
+    ]
+    if (forward_to_action_bar.includes(type)) {
+      console.error('tab_group: forwarding to action_bar', type)
+      if (_.action_bar) {
+        _.action_bar(type, msg.data, msg.head ? { cause: msg.head } : {})
+      }
+    }
+
+    if (type === 'action_auto_completed') {
+      console.error('tab_group: action_auto_completed - notifying action_bar')
+      if (_.action_bar) {
+        _.action_bar('action_submitted', msg.data, msg.head ? { cause: msg.head } : {})
+      }
+    }
+
+    const forward_up = ['action_auto_completed', 'action_complete']
+    if (forward_up.includes(type)) {
+      console.error('tab_group: forwarding up (action complete)', type)
+      _.up(type, msg.data, msg.head ? { cause: msg.head } : {})
+    }
+  }
+}
+
+function fallback_module () {
+  return {
+    api: fallback_instance,
+    _: {
+      tabs: { $: '' },
+      program_container: { $: '' },
+      action_bar: { $: '' },
+      action_executor: { $: '' },
+      net_helper: { $: '' }
+    }
+  }
+
+  function fallback_instance () {
+    return {
+      _: {
+        program_container: {
+          0: '',
+          mapping: {
+            style: 'style',
+            icons: 'icons',
+            commands: 'commands',
+            scroll: 'scroll',
+            actions: 'actions',
+            hardcons: 'hardcons',
+            files: 'files',
+            highlight: 'highlight',
+            active_tab: 'active_tab',
+            entries: 'entries',
+            runtime: 'runtime',
+            mode: 'mode',
+            flags: 'flags',
+            keybinds: 'keybinds',
+            undo: 'undo',
+            docs_style: 'docs_style',
+            docs: 'docs'
+          }
+        },
+        action_executor: {
+          0: '',
+          mapping: {
+            style: 'style',
+            icons: 'icons',
+            actions: 'actions',
+            docs: 'docs',
+            data: 'data',
+            hardcons: 'hardcons',
+            variables: 'variables'
+          }
+        },
+        tabs: {
+          0: '',
+          mapping: {
+            style: 'style',
+            icons: 'icons',
+            scroll: 'scroll',
+            actions: 'actions',
+            docs: 'docs',
+            variables: 'variables'
+          }
+        },
+        action_bar: {
+          0: '',
+          mapping: {
+            style: 'style',
+            icons: 'icons',
+            actions: 'actions',
+            docs: 'docs',
+            hardcons: 'hardcons',
+            prefs: 'prefs',
+            variables: 'variables',
+            data: 'data'
+          }
+        },
+        net_helper: {
+          0: ''
+        }
+      },
+      drive: {
+        'style/': {
+          'tab_group.css': {
+            $ref: 'style/tab_group.css'
+          }
+        }
+      }
+    }
+  }
+}
+
+}).call(this)}).call(this,"/src/node_modules/tab_group/tab_group.js")
+},{"STATE":1,"action_bar":5,"action_executor":6,"net_helper":17,"program_container":19,"tabs":25}],24:[function(require,module,exports){
+(function (__filename){(function (){
+const STATE = require('STATE')
+const statedb = STATE(__filename)
+const { get } = statedb(fallback_module)
 const DOCS = require('DOCS')
 const net = require('net_helper')
 
@@ -8560,7 +8865,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabbed_editor/tabbed_editor.js")
-},{"DOCS":4,"STATE":1,"net_helper":17}],24:[function(require,module,exports){
+},{"DOCS":4,"STATE":1,"net_helper":17}],25:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -8959,7 +9264,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabs/tabs.js")
-},{"DOCS":4,"STATE":1,"net_helper":17}],25:[function(require,module,exports){
+},{"DOCS":4,"STATE":1,"net_helper":17}],26:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const state_db = STATE(__filename)
@@ -9372,7 +9677,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabsbar/tabsbar.js")
-},{"DOCS":4,"STATE":1,"net_helper":17,"tabs":24,"task_manager":26}],26:[function(require,module,exports){
+},{"DOCS":4,"STATE":1,"net_helper":17,"tabs":25,"task_manager":27}],27:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -9560,7 +9865,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/task_manager/task_manager.js")
-},{"DOCS":4,"STATE":1,"net_helper":17}],27:[function(require,module,exports){
+},{"DOCS":4,"STATE":1,"net_helper":17}],28:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -9838,7 +10143,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/taskbar/taskbar.js")
-},{"STATE":1,"action_bar":5,"action_executor":6,"net_helper":17,"tabsbar":25}],28:[function(require,module,exports){
+},{"STATE":1,"action_bar":5,"action_executor":6,"net_helper":17,"tabsbar":26}],29:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -10111,7 +10416,451 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/theme_widget/theme_widget.js")
-},{"STATE":1,"net_helper":17,"program_container":19,"taskbar":27}],29:[function(require,module,exports){
+},{"STATE":1,"net_helper":17,"program_container":19,"taskbar":28}],30:[function(require,module,exports){
+(function (__filename){(function (){
+const STATE = require('STATE')
+const statedb = STATE(__filename)
+const { get } = statedb(fallback_module)
+const net = require('net_helper')
+
+const theme_widget = require('theme_widget')
+const tab_group = require('tab_group')
+
+module.exports = tile_manager
+
+async function tile_manager (opts, invite) {
+  const { id, sdb } = await get(opts.sid)
+  const { drive } = sdb
+
+  const on = {
+    style: inject
+  }
+
+  const layout = {
+    direction: null,
+    tiles: [], // array of { id, element, sid }
+    collapsed: false // responsive collapse state
+  }
+
+  const cached_actions = {
+    update_actions_for_app: null,
+    update_quick_actions_for_app: null,
+    update_steps_wizard_for_app: null
+  }
+
+  let tile_counter = 0
+  const COLLAPSE_THRESHOLD = 600
+  const { io, _ } = net(id)
+
+  const el = document.createElement('div')
+  const shadow = el.attachShadow({ mode: 'closed' })
+  shadow.innerHTML = `
+  <div class="tile-manager">
+    <div class="tile-slot" data-tile-id="0"></div>
+  </div>
+  `
+  const sheet = new CSSStyleSheet()
+  shadow.adoptedStyleSheets = [sheet]
+  const container = shadow.querySelector('.tile-manager')
+
+  const subs = await sdb.watch(onbatch)
+
+  io.on = {
+    up: onmessage_from_root
+  }
+  if (invite) io.accept(invite)
+
+  const resize_observer = new ResizeObserver(entries => {
+    for (const entry of entries) {
+      const width = entry.contentRect.width
+      handle_resize(width)
+    }
+  })
+  resize_observer.observe(el)
+
+  await create_tile(0)
+
+  return el
+
+  // ---------------------------
+  // RESPONSIVE COLLAPSE
+  // ---------------------------
+
+  function handle_resize (width) {
+    if (layout.tiles.length < 2) return
+
+    const should_collapse = width < COLLAPSE_THRESHOLD
+
+    if (should_collapse && !layout.collapsed) {
+      collapse_split()
+    } else if (!should_collapse && layout.collapsed) {
+      expand_split()
+    }
+  }
+
+  function collapse_split () {
+    console.error('tile_manager: collapsing split')
+    layout.collapsed = true
+
+    for (const tile of layout.tiles) {
+      if (tile.id !== 0 && tile.element) {
+        tile.element.parentNode.style.display = 'none'
+      }
+    }
+
+    container.classList.add('collapsed')
+    container.classList.remove('horizontal', 'vertical')
+  }
+
+  function expand_split () {
+    console.error('tile_manager: expanding split')
+    layout.collapsed = false
+
+    for (const tile of layout.tiles) {
+      if (tile.id !== 0 && tile.element) {
+        tile.element.parentNode.style.display = ''
+      }
+    }
+
+    container.classList.remove('collapsed')
+    if (layout.direction) {
+      container.classList.add(layout.direction)
+    }
+  }
+
+  // ---------------------------
+  // TILE MANAGEMENT
+  // ---------------------------
+
+  async function create_tile (slot_index) {
+    const tile_id = tile_counter++
+    const tile_slot = container.querySelector(`[data-tile-id="${slot_index}"]`)
+
+    if (!tile_slot) {
+      console.error('tile_manager: slot not found for index', slot_index)
+      return
+    }
+
+    const sub_entry = subs[tile_id] || { sid: opts.sid }
+
+    const tile_info = {
+      id: tile_id,
+      element: null,
+      slot: tile_slot,
+      sid: sub_entry.sid
+    }
+    layout.tiles.push(tile_info)
+    console.error('tile_manager: tile_info added for tile', tile_id)
+
+    io.on[`tile_${tile_id}`] = create_tile_protocol(tile_id)
+    console.error('tile_manager: handler registered for tile_' + tile_id)
+    const tile_invite = io.invite(`tile_${tile_id}`, { up: id })
+    console.error('tile_manager: invite created for tile_' + tile_id, '_[tile_' + tile_id + '] exists:', !!_[`tile_${tile_id}`])
+
+    const component = tile_id === 0 ? theme_widget : tab_group
+    const tile_el = await component(
+      { ...sub_entry, ids: { up: id } },
+      tile_invite
+    )
+
+    tile_info.element = tile_el
+    tile_slot.appendChild(tile_el)
+
+    console.error('tile_manager: created tile', tile_id)
+    return tile_id
+  }
+
+  function create_tile_protocol (tile_id) {
+    return function tile_protocol (msg) {
+      const { type, data } = msg
+      console.error(`tile_manager: message from tile_${tile_id}`, type, data)
+
+      if (tile_id === 0 && type === 'link_tab_close_clicked') {
+        console.error('tile_manager: link tab close clicked, merging tile', data.tile_id)
+        handle_merge(data.tile_id)
+        return
+      }
+
+      if (tile_id === 0 && type === 'link_tab_clicked') {
+        console.error('tile_manager: link tab clicked, focusing tile', data.tile_id)
+        focus_tile(data.tile_id)
+        return
+      }
+
+      if (type === 'action_auto_completed' || type === 'action_complete') {
+        console.error('tile_manager: action completed, checking for split', data)
+        const action = data?.selected_action
+        console.error('tile_manager: action name:', action?.name)
+        if (action?.name === 'Split Tile') {
+          let direction = null
+
+          if (data.result) {
+            try {
+              const results = JSON.parse(data.result)
+              direction = results[0] // First step's data is the direction
+              console.error('tile_manager: direction from result:', direction)
+            } catch (e) {
+              console.error('tile_manager: failed to parse result', e)
+            }
+          }
+
+          if (!direction) {
+            const split_step = action.steps.find(s => s.component === 'form_tile_split_choice')
+            console.error('tile_manager: split_step found:', split_step)
+            if (split_step && split_step.data) {
+              direction = split_step.data
+            }
+          }
+
+          if (direction) {
+            console.error('tile_manager: split requested', direction, 'from tile', tile_id)
+            handle_split(tile_id, direction)
+          } else {
+            console.error('tile_manager: no direction found, cannot split')
+          }
+        }
+      }
+
+      if (_.up) {
+        _.up(type, data, msg.head ? { cause: msg.head } : {})
+      }
+    }
+  }
+
+  async function handle_split (source_tile_id, direction) {
+    if (layout.tiles.length >= 2) {
+      console.error('tile_manager: already split, nested splitting not yet supported')
+      return
+    }
+
+    const is_horizontal = direction === 'left' || direction === 'right'
+    layout.direction = is_horizontal ? 'horizontal' : 'vertical'
+    layout.split_direction = direction
+    console.error('tile_manager: layout direction set to', layout.direction)
+
+    container.classList.remove('horizontal', 'vertical')
+    container.classList.add(layout.direction)
+
+    const new_slot = document.createElement('div')
+    new_slot.className = 'tile-slot'
+    new_slot.setAttribute('data-tile-id', '1')
+
+    if (direction === 'left' || direction === 'up') {
+      container.insertBefore(new_slot, container.firstChild)
+    } else {
+      container.appendChild(new_slot)
+    }
+    console.error('tile_manager: new slot created')
+
+    const new_tile_id = await create_tile(1)
+
+    send_cached_actions_to_tile(1)
+
+    const new_tile_send = _[`tile_${new_tile_id}`]
+    if (new_tile_send) {
+      console.error('tile_manager: sending create_default_tab to new tile')
+      new_tile_send('create_default_tab', {
+        name: 'New Tab',
+        program: 'text_editor',
+        tile_id: new_tile_id
+      }, {})
+    }
+
+    const root_tile_send = _.tile_0
+    if (root_tile_send) {
+      console.error('tile_manager: sending add_link_tab to root tile')
+      root_tile_send('add_link_tab', { tile_id: new_tile_id, direction, name: 'Split ' + direction }, {})
+    }
+
+    console.error('tile_manager: split complete', layout.direction, layout.tiles.length, 'tiles')
+  }
+
+  function handle_merge (tile_id_to_remove) {
+    console.error('tile_manager: handle_merge', tile_id_to_remove)
+
+    const tile_info = layout.tiles.find(t => t.id === tile_id_to_remove)
+    if (!tile_info) {
+      console.error('tile_manager: tile not found for merge', tile_id_to_remove)
+      return
+    }
+
+    if (tile_info.element && tile_info.element.parentNode) {
+      tile_info.element.parentNode.remove()
+    }
+
+    layout.tiles = layout.tiles.filter(t => t.id !== tile_id_to_remove)
+    layout.direction = null
+    layout.split_direction = null
+    layout.collapsed = false
+
+    container.classList.remove('horizontal', 'vertical', 'collapsed')
+
+    const root_tile_send = _.tile_0
+    if (root_tile_send) {
+      console.error('tile_manager: sending remove_link_tab to root tile')
+      root_tile_send('remove_link_tab', { tile_id: tile_id_to_remove }, {})
+    }
+
+    console.error('tile_manager: merge complete, tiles remaining:', layout.tiles.length)
+  }
+
+  function focus_tile (tile_id) {
+    console.error('tile_manager: focus_tile', tile_id)
+
+    if (layout.collapsed) {
+      expand_split()
+    }
+
+    for (const tile of layout.tiles) {
+      const slot = tile.element?.parentNode
+      if (slot) {
+        slot.classList.toggle('focused', tile.id === tile_id)
+      }
+    }
+
+    const tile_info = layout.tiles.find(t => t.id === tile_id)
+    if (tile_info?.element) {
+      tile_info.element.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
+  }
+
+  function send_cached_actions_to_tile (tile_id) {
+    const send = _[`tile_${tile_id}`]
+    if (!send) {
+      console.error('tile_manager: cannot send cached actions, tile_' + tile_id + ' not found')
+      return
+    }
+
+    console.error('tile_manager: sending cached actions to tile_' + tile_id)
+
+    for (const [type, data] of Object.entries(cached_actions)) {
+      if (data !== null) {
+        console.error('tile_manager: sending cached', type, 'to tile_' + tile_id)
+        send(type, data, {})
+      }
+    }
+  }
+
+  // ---------------------------
+  // MESSAGE HANDLERS
+  // ---------------------------
+
+  function onmessage_from_root (msg) {
+    const { type, data } = msg
+    console.error('tile_manager: message from root', type, 'tiles:', layout.tiles.length)
+
+    // Cache action data for new tiles
+    if (type === 'update_actions_for_app' || type === 'update_quick_actions_for_app' || type === 'update_steps_wizard_for_app') {
+      cached_actions[type] = data
+      console.error('tile_manager: cached', type)
+    }
+
+    // Forward to all tiles
+    for (const tile of layout.tiles) {
+      const send = _[`tile_${tile.id}`]
+      console.error('tile_manager: forwarding to tile_' + tile.id, 'send exists:', !!send)
+      if (send) {
+        send(type, data, msg.head ? { cause: msg.head } : {})
+      }
+    }
+  }
+
+  // ---------------------------
+  // BATCH HANDLER
+  // ---------------------------
+
+  async function onbatch (batch) {
+    for (const { type, paths } of batch) {
+      const data = await Promise.all(paths.map(load_path_raw))
+      const func = on[type] || fail
+      func({ data, type })
+    }
+
+    function load_path_raw (path) { return drive.get(path).then(read_drive_file_raw) }
+    function read_drive_file_raw (file) { return file.raw }
+  }
+
+  function inject ({ data }) { sheet.replaceSync(data[0]) }
+
+  function fail ({ data, type }) { console.warn('tile_manager: invalid message', { cause: { data, type } }) }
+}
+
+function fallback_module () {
+  return {
+    api: fallback_instance,
+    _: {
+      theme_widget: {
+        $: ''
+      },
+      tab_group: {
+        $: ''
+      },
+      net_helper: {
+        $: ''
+      }
+    }
+  }
+
+  function fallback_instance () {
+    return {
+      _: {
+        theme_widget: {
+          0: '',
+          mapping: {
+            style: 'style',
+            icons: 'icons',
+            commands: 'commands',
+            scroll: 'scroll',
+            actions: 'actions',
+            hardcons: 'hardcons',
+            files: 'files',
+            highlight: 'highlight',
+            active_tab: 'active_tab',
+            entries: 'entries',
+            runtime: 'runtime',
+            mode: 'mode',
+            flags: 'flags',
+            keybinds: 'keybinds',
+            undo: 'undo',
+            focused: 'focused',
+            temp_actions: 'temp_actions',
+            temp_quick_actions: 'temp_quick_actions',
+            prefs: 'prefs',
+            variables: 'variables',
+            data: 'data',
+            docs: 'docs',
+            docs_style: 'docs_style'
+          }
+        },
+        tab_group: {
+          1: '',
+          2: '',
+          3: '',
+          mapping: {
+            style: 'style',
+            icons: 'icons',
+            actions: 'actions',
+            docs: 'docs',
+            docs_style: 'docs_style'
+          }
+        },
+        net_helper: {
+          0: ''
+        }
+      },
+      drive: {
+        'style/': {
+          'tile_manager.css': {
+            $ref: 'style/tile_manager.css'
+          }
+        }
+      }
+    }
+  }
+}
+
+}).call(this)}).call(this,"/src/node_modules/tile_manager/tile_manager.js")
+},{"STATE":1,"net_helper":17,"tab_group":23,"theme_widget":29}],31:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -10135,6 +10884,7 @@ const action_bar = require('action_bar')
 const program_container = require('program_container')
 const tabs = require('tabs')
 const console_history = require('console_history')
+const tile_manager = require('tile_manager')
 const actions = require('actions')
 const tabbed_editor = require('tabbed_editor')
 const task_manager = require('task_manager')
@@ -10158,6 +10908,7 @@ const imports = {
   task_manager,
   quick_actions,
   graph_explorer_wrapper,
+  tile_manager,
   action_executor,
   steps_wizard
 }
@@ -10572,6 +11323,7 @@ async function ui_gallery (opts = {}) {
 function fallback_module () {
   const menuname = 'menu'
   const names = [
+    'tile_manager',
     'theme_widget',
     'taskbar',
     'tabsbar',
@@ -10592,6 +11344,35 @@ function fallback_module () {
   subs.helpers = 0
   subs.DOCS = 0
   subs.net_helper = 0
+  subs.tile_manager = {
+    $: '',
+    0: '',
+    mapping: {
+      style: 'style',
+      commands: 'commands',
+      icons: 'icons',
+      scroll: 'scroll',
+      actions: 'actions',
+      hardcons: 'hardcons',
+      files: 'files',
+      highlight: 'highlight',
+      active_tab: 'active_tab',
+      entries: 'entries',
+      runtime: 'runtime',
+      mode: 'mode',
+      flags: 'flags',
+      keybinds: 'keybinds',
+      undo: 'undo',
+      focused: 'focused',
+      temp_actions: 'temp_actions',
+      temp_quick_actions: 'temp_quick_actions',
+      prefs: 'prefs',
+      variables: 'variables',
+      data: 'data',
+      docs_style: 'docs_style',
+      docs: 'docs'
+    }
+  }
   subs.taskbar = {
     $: '',
     0: '',
@@ -10965,7 +11746,7 @@ function handle_admin_message (msg) {
 }
 
 }).call(this)}).call(this,"/src/node_modules/ui_gallery/index.js")
-},{"DOCS":4,"STATE":1,"action_bar":5,"action_executor":6,"actions":7,"console_history":8,"graph_explorer_wrapper":12,"helpers":14,"menu":16,"net_helper":17,"program_container":19,"quick_actions":20,"quick_editor":21,"steps_wizard":22,"tabbed_editor":23,"tabs":24,"tabsbar":25,"task_manager":26,"taskbar":27,"theme_widget":28}],30:[function(require,module,exports){
+},{"DOCS":4,"STATE":1,"action_bar":5,"action_executor":6,"actions":7,"console_history":8,"graph_explorer_wrapper":12,"helpers":14,"menu":16,"net_helper":17,"program_container":19,"quick_actions":20,"quick_editor":21,"steps_wizard":22,"tabbed_editor":24,"tabs":25,"tabsbar":26,"task_manager":27,"taskbar":28,"theme_widget":29,"tile_manager":30}],32:[function(require,module,exports){
 const ui_gallery = require('../src/index')
 config().then(boot_default_page)
 
@@ -10986,4 +11767,4 @@ async function boot_default_page () {
   document.body.append(await ui_gallery({ sid: '' }))
 }
 
-},{"../src/index":3}]},{},[30]);
+},{"../src/index":3}]},{},[32]);
