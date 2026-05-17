@@ -114,6 +114,7 @@ describe('steps_wizard - Protocol Communication', () => {
       const body = functionMatch[2].trim()
 
       // Create the actual function from the source code
+      // eslint-disable-next-line no-new-func
       const can_access = new Function(params, `${body}\nreturn true`)
 
       // Now verify it has the CORRECT logic by checking what it actually does
