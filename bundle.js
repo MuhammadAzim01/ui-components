@@ -3553,7 +3553,7 @@ function fallback_module () {
                 flex-direction: row;
                 flex-wrap: nowrap;
                 align-items: center;
-                min-width: 300px;
+                min-width: 340px;
               }
               .hide {
                 display: none;
@@ -9483,7 +9483,7 @@ function fallback_module () {
                 flex-direction: row;
                 flex-wrap: nowrap;
                 align-items: stretch;
-                width: 300px;
+                width: 256px;
               }
               .hat-btn, .bar-btn {
                 display: flex;
@@ -10122,7 +10122,7 @@ function fallback_module () {
                 flex-direction: row;
                 justify-content: space-between;
               }
-              @container (max-width: 700px) {
+              @container (max-width: 768px) {
                 .bottom-slot {
                   flex-direction: column;
                 }
@@ -10274,7 +10274,6 @@ async function theme_widget (opts, invite) {
   }
 
   function taskbar_protocol (msg) {
-    console.error('theme_widget: taskbar_protocol', msg.type, msg.data)
     const action_handlers = {
       ui_focus: taskbar_forward_ui_focus,
       docs_toggle: taskbar_docs_toggle,
@@ -10370,6 +10369,7 @@ function fallback_module () {
                 height: 100%;
                 background: #131315;
                 min-height: 0;
+                min-width: 400px;
               }
               .program-container {
                 flex: 1 1 auto;
@@ -11740,7 +11740,7 @@ async function config () {
 }
 
 async function boot_default_page () {
-  document.body.append(await ui_gallery({ sid: '' }))
+  document.body.append(await ui_gallery())
 }
 
 },{"../src/index":3}]},{},[32]);
