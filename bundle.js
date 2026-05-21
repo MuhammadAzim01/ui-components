@@ -8208,11 +8208,11 @@ async function tab_group (opts, invite) {
   let action_executor_el = null
 
   io.on = {
-    up: onmessage_from_root,
-    tabs: tabs_protocol,
-    program_container: program_container_protocol,
-    action_bar: action_bar_protocol,
-    action_executor: action_executor_protocol
+    up: protocol_from_root(),
+    tabs: protocol_from_tabs(),
+    program_container: protocol_from_program_container(),
+    action_bar: protocol_from_action_bar(),
+    action_executor: protocol_from_action_executor()
   }
   if (invite) {
     console.error('tab_group: accepting invite')
@@ -8269,108 +8269,132 @@ async function tab_group (opts, invite) {
   // MESSAGE FROM ROOT (tile_manager)
   // ---------------------------
 
-  function onmessage_from_root (msg) {
-    const { type } = msg
-    console.error('tab_group: message from root', type)
-
-    if (type === 'update_quick_actions_for_app') {
-      console.error('tab_group: forwarding to action_bar', type)
-      if (_.action_bar) {
-        _.action_bar(type, msg.data, msg.head ? { cause: msg.head } : {})
-      }
+  function protocol_from_root () {
+    const on = {
+      update_quick_actions_for_app,
+      update_steps_wizard_for_app,
+      update_actions_for_app: forward_to_program_container,
+      load_actions: forward_to_program_container,
+      create_default_tab
     }
-
-    if (type === 'update_steps_wizard_for_app') {
-      console.error('tab_group: forwarding to action_executor', type)
-      if (_.action_executor) {
-        _.action_executor(type, msg.data, msg.head ? { cause: msg.head } : {})
-      }
+    return function onmessage (msg) {
+      console.error('tab_group: message from root', msg.type)
+      ;(on[msg.type] || onfail)(msg)
     }
-
-    if (type === 'update_actions_for_app' || type === 'load_actions') {
-      console.error('tab_group: forwarding to program_container', type)
-      if (_.program_container) {
-        _.program_container(type, msg.data, msg.head ? { cause: msg.head } : {})
-      }
+    function update_quick_actions_for_app (msg) {
+      console.error('tab_group: forwarding to action_bar', msg.type)
+      const refs = msg.head ? { cause: msg.head } : {}
+      _.action_bar?.(msg.type, msg.data, refs)
     }
-
-    if (type === 'create_default_tab') {
+    function update_steps_wizard_for_app (msg) {
+      console.error('tab_group: forwarding to action_executor', msg.type)
+      const refs = msg.head ? { cause: msg.head } : {}
+      _.action_executor?.(msg.type, msg.data, refs)
+    }
+    function forward_to_program_container (msg) {
+      console.error('tab_group: forwarding to program_container', msg.type)
+      const refs = msg.head ? { cause: msg.head } : {}
+      _.program_container?.(msg.type, msg.data, refs)
+    }
+    function create_default_tab (msg) {
       console.error('tab_group: creating default tab', msg.data)
-      if (_.tabs) {
-        _.tabs('add_default_tab', msg.data, msg.head ? { cause: msg.head } : {})
-      }
+      const refs = msg.head ? { cause: msg.head } : {}
+      _.tabs?.('add_default_tab', msg.data, refs)
     }
+    function onfail (msg) { console.error('tab_group: unknown root message', msg) }
   }
 
   // ---------------------------
   // PROTOCOLS
   // ---------------------------
 
-  function tabs_protocol (msg) {
-    console.error('tab_group: tabs_protocol', msg.type, msg.data)
-    _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {})
-  }
-
-  function program_container_protocol (msg) {
-    const { type } = msg
-    console.error('tab_group: program_container_protocol', type)
-
-    const forward_up = ['ui_focus', 'action_auto_completed', 'action_complete']
-
-    if (forward_up.includes(type)) {
-      console.error('tab_group: forwarding up', type)
-      _.up(type, msg.data, msg.head ? { cause: msg.head } : {})
+  function protocol_from_tabs () {
+    return function onmessage (msg) {
+      console.error('tab_group: tabs_protocol', msg.type, msg.data)
+      const refs = msg.head ? { cause: msg.head } : {}
+      _.up(msg.type, msg.data, refs)
     }
   }
 
-  function action_bar_protocol (msg) {
-    const { type } = msg
-    console.error('tab_group: action_bar_protocol', type)
-
-    const forward_to_executor = [
-      'action_submitted', 'selected_action', 'activate_steps_wizard',
-      'render_form', 'clean_up'
-    ]
-    if (forward_to_executor.includes(type)) {
-      console.error('tab_group: forwarding to action_executor', type)
-      if (_.action_executor) {
-        _.action_executor(type, msg.data, msg.head ? { cause: msg.head } : {})
-      }
+  function protocol_from_program_container () {
+    const forward_up = {
+      ui_focus: forward,
+      action_auto_completed: forward,
+      action_complete: forward
     }
-
-    const forward_up = ['ui_focus', 'display_actions', 'filter_actions', 'console_history_toggle']
-    if (forward_up.includes(type)) {
-      _.up(type, msg.data, msg.head ? { cause: msg.head } : {})
+    return function onmessage (msg) {
+      console.error('tab_group: program_container_protocol', msg.type)
+      ;(forward_up[msg.type] || onfail)(msg)
     }
+    function forward (msg) {
+      const refs = msg.head ? { cause: msg.head } : {}
+      _.up(msg.type, msg.data, refs)
+    }
+    function onfail (msg) { console.error('tab_group: unhandled program_container msg', msg) }
   }
 
-  function action_executor_protocol (msg) {
-    const { type } = msg
-    console.error('tab_group: action_executor_protocol', type)
-
-    const forward_to_action_bar = [
-      'selected_action', 'show_submit_btn', 'hide_submit_btn',
-      'update_quick_actions_input', 'step_clicked', 'load_actions'
-    ]
-    if (forward_to_action_bar.includes(type)) {
-      console.error('tab_group: forwarding to action_bar', type)
-      if (_.action_bar) {
-        _.action_bar(type, msg.data, msg.head ? { cause: msg.head } : {})
-      }
+  function protocol_from_action_bar () {
+    const forward_to_executor = {
+      action_submitted: to_executor,
+      selected_action: to_executor,
+      activate_steps_wizard: to_executor,
+      render_form: to_executor,
+      clean_up: to_executor
     }
-
-    if (type === 'action_auto_completed') {
-      console.error('tab_group: action_auto_completed - notifying action_bar')
-      if (_.action_bar) {
-        _.action_bar('action_submitted', msg.data, msg.head ? { cause: msg.head } : {})
-      }
+    const forward_up = {
+      ui_focus: to_up,
+      display_actions: to_up,
+      filter_actions: to_up,
+      console_history_toggle: to_up
     }
-
-    const forward_up = ['action_auto_completed', 'action_complete']
-    if (forward_up.includes(type)) {
-      console.error('tab_group: forwarding up (action complete)', type)
-      _.up(type, msg.data, msg.head ? { cause: msg.head } : {})
+    return function onmessage (msg) {
+      console.error('tab_group: action_bar_protocol', msg.type)
+      const handler = forward_to_executor[msg.type] || forward_up[msg.type] || onfail
+      handler(msg)
     }
+    function to_executor (msg) {
+      const refs = msg.head ? { cause: msg.head } : {}
+      _.action_executor?.(msg.type, msg.data, refs)
+    }
+    function to_up (msg) {
+      const refs = msg.head ? { cause: msg.head } : {}
+      _.up(msg.type, msg.data, refs)
+    }
+    function onfail (msg) { console.error('tab_group: unhandled action_bar msg', msg) }
+  }
+
+  function protocol_from_action_executor () {
+    const forward_to_action_bar = {
+      selected_action: to_action_bar,
+      show_submit_btn: to_action_bar,
+      hide_submit_btn: to_action_bar,
+      update_quick_actions_input: to_action_bar,
+      step_clicked: to_action_bar,
+      load_actions: to_action_bar
+    }
+    const forward_up = {
+      action_auto_completed: to_up_and_bar,
+      action_complete: to_up
+    }
+    return function onmessage (msg) {
+      console.error('tab_group: action_executor_protocol', msg.type)
+      const handler = forward_to_action_bar[msg.type] || forward_up[msg.type] || onfail
+      handler(msg)
+    }
+    function to_action_bar (msg) {
+      const refs = msg.head ? { cause: msg.head } : {}
+      _.action_bar?.(msg.type, msg.data, refs)
+    }
+    function to_up (msg) {
+      const refs = msg.head ? { cause: msg.head } : {}
+      _.up(msg.type, msg.data, refs)
+    }
+    function to_up_and_bar (msg) {
+      const refs = msg.head ? { cause: msg.head } : {}
+      _.action_bar?.('action_submitted', msg.data, refs)
+      _.up(msg.type, msg.data, refs)
+    }
+    function onfail (msg) { console.error('tab_group: unhandled action_executor msg', msg) }
   }
 }
 
@@ -8896,6 +8920,9 @@ async function component (opts, invite) {
   let init = false
   let variables = []
   let dricons = []
+  let active = null
+  const default_tabs = {}
+  const link_tabs = {}
   const docs = DOCS(__filename)(opts.sid)
   const { io, _ } = net(id)
 
@@ -8908,7 +8935,7 @@ async function component (opts, invite) {
 
   await sdb.watch(onbatch)
   io.on = {
-    up: onmessage
+    up: protocol_from_up()
   }
   if (invite) io.accept(invite)
   if (entries) {
@@ -8972,99 +8999,91 @@ async function component (opts, invite) {
   }
   return div
 
-  function onmessage (msg) {
-    const { type, data } = msg
-    console.error('tabs: onmessage', type, data)
-
-    if (type === 'add_link_tab') {
-      console.error('tabs: adding link tab', data)
-      add_link_tab(data)
-    } else if (type === 'remove_link_tab') {
-      console.error('tabs: removing link tab', data)
-      remove_link_tab(data)
-    } else if (type === 'add_default_tab') {
-      console.error('tabs: adding default tab', data)
-      add_default_tab(data)
+  function protocol_from_up () {
+    const on = {
+      add_link_tab: handle_add_link_tab,
+      remove_link_tab: handle_remove_link_tab,
+      add_default_tab: handle_add_default_tab
     }
+    return function onmessage (msg) {
+      console.error('tabs: message from up', msg)
+      ;(on[msg.type] || onfail)(msg)
+    }
+    function handle_add_link_tab ({ data }) { add_link_tab(data) }
+    function handle_remove_link_tab ({ data }) { remove_link_tab(data) }
+    function handle_add_default_tab ({ data }) { add_default_tab(data) }
+    function onfail (msg) { console.error('tabs: unknown message', msg) }
   }
 
   function add_default_tab ({ name, program, tile_id }) {
     const tab_id = `tab_${Date.now()}`
-
     const el = document.createElement('div')
     el.innerHTML = `
     <span class="icon">${dricons[1] || '📄'}</span>
     <span class='name'>${tab_id}</span>
     <span class="name">${name || 'New Tab'}</span>
     <button class="btn">${dricons[0] || '×'}</button>`
-
     el.className = 'tabsbtn default-tab active'
-    el.setAttribute('data-tab-id', tab_id)
-    el.setAttribute('data-program', program || 'text_editor')
-
     const name_el = el.querySelector('.name')
     const close_btn = el.querySelector('.btn')
+    default_tabs[tab_id] = { el, name_el, close_btn, name, program }
+    if (active) active.classList.remove('active')
+    active = el
+    name_el.onclick = switch_active
+    close_btn.onclick = close_tab
+    entries.appendChild(el)
+    console.error('tabs: default tab added', tab_id)
 
-    name_el.onclick = () => {
+    function switch_active () {
       console.error('tabs: default tab clicked', tab_id)
-      entries.querySelectorAll('.tabsbtn').forEach(t => t.classList.remove('active'))
+      if (active) active.classList.remove('active')
       el.classList.add('active')
-      _.up('tab_name_clicked', { id: tab_id, name, program }, {})
+      active = el
+      const data = { id: tab_id, name, program }
+      _.up('tab_name_clicked', data, {})
     }
-
-    close_btn.onclick = (e) => {
+    function close_tab (e) {
       e.stopPropagation()
       console.error('tabs: default tab close clicked', tab_id)
       el.remove()
+      delete default_tabs[tab_id]
+      if (active === el) active = null
       _.up('tab_close_clicked', { id: tab_id, name }, {})
+      if (Object.keys(default_tabs).length === 0) {
+        _.up('all_tabs_closed', null, {})
+      }
     }
-
-    entries.appendChild(el)
-    console.error('tabs: default tab added', tab_id)
   }
 
   function add_link_tab ({ tile_id, name, direction }) {
     const link_tab_id = `split_tile_${tile_id}`
-    const existing = entries.querySelector(`[data-link-tab-id="${link_tab_id}"]`)
-    if (existing) {
+    if (link_tabs[link_tab_id]) {
       console.error('tabs: link tab already exists', link_tab_id)
       return
     }
-
     const el = document.createElement('div')
     el.innerHTML = `
     <span class="icon">⊞</span>
-    <span class='name'>${link_tab_id}</span>
-    <span class="name">${name || 'Split ' + direction}</span>
-    <button class="btn">${dricons[0] || '×'}</button>`
-
+    <span class="name">${name || 'Split ' + direction}</span>`
     el.className = 'tabsbtn link-tab'
-    el.setAttribute('data-link-tab-id', link_tab_id)
-    el.setAttribute('data-tile-id', tile_id)
-
     const name_el = el.querySelector('.name')
-    const close_btn = el.querySelector('.btn')
+    link_tabs[link_tab_id] = { el, name_el, tile_id, name, direction }
+    el.onclick = on_link_tab_click
+    entries.appendChild(el)
+    console.error('tabs: link tab added', link_tab_id)
 
-    name_el.onclick = () => {
+    function on_link_tab_click () {
       console.error('tabs: link tab clicked', link_tab_id)
       _.up('link_tab_clicked', { tile_id, link_tab_id }, {})
     }
-
-    close_btn.onclick = (e) => {
-      e.stopPropagation()
-      console.error('tabs: link tab close clicked', link_tab_id)
-      _.up('link_tab_close_clicked', { tile_id, link_tab_id }, {})
-    }
-
-    entries.appendChild(el)
-    console.error('tabs: link tab added', link_tab_id)
   }
 
   function remove_link_tab ({ tile_id }) {
     const link_tab_id = `split_tile_${tile_id}`
-    const el = entries.querySelector(`[data-link-tab-id="${link_tab_id}"]`)
-    if (el) {
-      el.remove()
+    const tab = link_tabs[link_tab_id]
+    if (tab) {
+      tab.el.remove()
+      delete link_tabs[link_tab_id]
       console.error('tabs: link tab removed', link_tab_id)
     }
   }
@@ -9083,38 +9102,23 @@ async function component (opts, invite) {
 
     name_el.draggable = false
 
-    // Add click handler for tab name (switch/toggle tab)
     name_el.onclick = docs.wrap(on_tab_name_click, get_doc_content)
+    close_btn.onclick = docs.wrap(on_tab_close_click, get_doc_content)
 
     async function on_tab_name_click () {
-      if (_) {
-        const data = {
-          type: 'tab',
-          sid: opts.sid
-        }
-        _.up('ui_focus', data, {})
-        _.up('tab_name_clicked', { id, name }, {})
-      }
+      const data = { type: 'tab', sid: opts.sid }
+      _.up('ui_focus', data, {})
+      _.up('tab_name_clicked', { id, name }, {})
     }
-
+    async function on_tab_close_click (e) {
+      e.stopPropagation()
+      const data = { type: 'tab', sid: opts.sid }
+      _.up('ui_focus', data, {})
+      _.up('tab_close_clicked', { id, name }, {})
+    }
     async function get_doc_content () {
       const doc_file = await drive.get('docs/README.md')
       return doc_file.raw || 'No documentation available'
-    }
-
-    // Add click handler for close button
-    close_btn.onclick = docs.wrap(on_tab_close_click, get_doc_content)
-
-    async function on_tab_close_click (e) {
-      e.stopPropagation()
-      if (_) {
-        const data = {
-          type: 'tab',
-          sid: opts.sid
-        }
-        _.up('ui_focus', data, {})
-        _.up('tab_close_clicked', { id, name }, {})
-      }
     }
 
     entries.appendChild(el)
@@ -9127,7 +9131,7 @@ async function component (opts, invite) {
       func(data, type)
     }
     if (!init) {
-      variables.forEach(create_btn)
+      if (!opts.ids) variables.forEach(create_btn)
       init = true
     } else {
       // TODO: Here we can handle drive updates
@@ -10466,17 +10470,18 @@ async function tile_manager (opts, invite) {
   const subs = await sdb.watch(onbatch)
 
   io.on = {
-    up: onmessage_from_root
+    up: protocol_from_root()
   }
   if (invite) io.accept(invite)
 
-  const resize_observer = new ResizeObserver(entries => {
-    for (const entry of entries) {
-      const width = entry.contentRect.width
-      handle_resize(width)
-    }
-  })
+  const resize_observer = new ResizeObserver(on_resize_observed)
   resize_observer.observe(el)
+
+  function on_resize_observed (entries) {
+    for (const entry of entries) {
+      handle_resize(entry.contentRect.width)
+    }
+  }
 
   await create_tile(0)
 
@@ -10575,15 +10580,15 @@ async function tile_manager (opts, invite) {
       const { type, data } = msg
       console.error(`tile_manager: message from tile_${tile_id}`, type, data)
 
-      if (tile_id === 0 && type === 'link_tab_close_clicked') {
-        console.error('tile_manager: link tab close clicked, merging tile', data.tile_id)
-        handle_merge(data.tile_id)
-        return
-      }
-
       if (tile_id === 0 && type === 'link_tab_clicked') {
         console.error('tile_manager: link tab clicked, focusing tile', data.tile_id)
         focus_tile(data.tile_id)
+        return
+      }
+
+      if (tile_id !== 0 && type === 'all_tabs_closed') {
+        console.error('tile_manager: all tabs closed in split tile', tile_id)
+        handle_merge(tile_id)
         return
       }
 
@@ -10621,9 +10626,8 @@ async function tile_manager (opts, invite) {
         }
       }
 
-      if (_.up) {
-        _.up(type, data, msg.head ? { cause: msg.head } : {})
-      }
+      const refs = msg.head ? { cause: msg.head } : {}
+      _.up?.(type, data, refs)
     }
   }
 
@@ -10658,11 +10662,9 @@ async function tile_manager (opts, invite) {
 
     const new_tile_send = _[`tile_${new_tile_id}`]
     if (new_tile_send) {
-      console.error('tile_manager: sending create_default_tab to new tile')
       new_tile_send('create_default_tab', {
         name: 'New Tab',
-        program: 'text_editor',
-        tile_id: new_tile_id
+        program: 'text_editor'
       }, {})
     }
 
@@ -10745,22 +10747,23 @@ async function tile_manager (opts, invite) {
   // MESSAGE HANDLERS
   // ---------------------------
 
-  function onmessage_from_root (msg) {
-    const { type, data } = msg
-    console.error('tile_manager: message from root', type, 'tiles:', layout.tiles.length)
-
-    // Cache action data for new tiles
-    if (type === 'update_actions_for_app' || type === 'update_quick_actions_for_app' || type === 'update_steps_wizard_for_app') {
-      cached_actions[type] = data
-      console.error('tile_manager: cached', type)
+  function protocol_from_root () {
+    const cacheable = {
+      update_actions_for_app: true,
+      update_quick_actions_for_app: true,
+      update_steps_wizard_for_app: true
     }
-
-    // Forward to all tiles
-    for (const tile of layout.tiles) {
-      const send = _[`tile_${tile.id}`]
-      console.error('tile_manager: forwarding to tile_' + tile.id, 'send exists:', !!send)
-      if (send) {
-        send(type, data, msg.head ? { cause: msg.head } : {})
+    return function onmessage (msg) {
+      const { type, data } = msg
+      console.error('tile_manager: message from root', type, 'tiles:', layout.tiles.length)
+      if (cacheable[type]) {
+        cached_actions[type] = data
+        console.error('tile_manager: cached', type)
+      }
+      const refs = msg.head ? { cause: msg.head } : {}
+      for (const tile of layout.tiles) {
+        const send = _[`tile_${tile.id}`]
+        if (send) send(type, data, refs)
       }
     }
   }
@@ -10896,6 +10899,7 @@ const steps_wizard = require('steps_wizard')
 const { resource } = require('helpers')
 
 const imports = {
+  tile_manager,
   theme_widget,
   taskbar,
   tabsbar,
@@ -10908,7 +10912,6 @@ const imports = {
   task_manager,
   quick_actions,
   graph_explorer_wrapper,
-  tile_manager,
   action_executor,
   steps_wizard
 }
@@ -11050,6 +11053,7 @@ async function ui_gallery (opts = {}) {
 
     function handle_focused_app_changed (msg) {
       const actions = docs_admin.get_actions(msg.data.sid)
+      console.error("Test Focused app changed:", msg.data.sid, actions)
       update_actions_for_app(actions, msg)
     }
 
@@ -11113,8 +11117,9 @@ async function ui_gallery (opts = {}) {
     `
       const inner = outer.querySelector('.component-wrapper')
       let component_content
-      if (name === 'theme_widget') {
-        component_content = await factory({ ...subs[index] }, theme_widget_io.invite('theme_widget', { up: id }))
+      
+      if (name === 'theme_widget'  || name === 'tile_manager') {
+        component_content = await factory({ ...subs[index], ids: { up: id } }, theme_widget_io.invite('theme_widget', { up: id }))
       } else {
         const component_io = preview_ios[name]
         component_content = await factory({ ...subs[index] }, component_io.invite(name, { up: id }))
@@ -11344,35 +11349,6 @@ function fallback_module () {
   subs.helpers = 0
   subs.DOCS = 0
   subs.net_helper = 0
-  subs.tile_manager = {
-    $: '',
-    0: '',
-    mapping: {
-      style: 'style',
-      commands: 'commands',
-      icons: 'icons',
-      scroll: 'scroll',
-      actions: 'actions',
-      hardcons: 'hardcons',
-      files: 'files',
-      highlight: 'highlight',
-      active_tab: 'active_tab',
-      entries: 'entries',
-      runtime: 'runtime',
-      mode: 'mode',
-      flags: 'flags',
-      keybinds: 'keybinds',
-      undo: 'undo',
-      focused: 'focused',
-      temp_actions: 'temp_actions',
-      temp_quick_actions: 'temp_quick_actions',
-      prefs: 'prefs',
-      variables: 'variables',
-      data: 'data',
-      docs_style: 'docs_style',
-      docs: 'docs'
-    }
-  }
   subs.taskbar = {
     $: '',
     0: '',
