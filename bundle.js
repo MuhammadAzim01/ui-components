@@ -3141,7 +3141,7 @@ function fallback_module () {
 },{"STATE":1}],3:[function(require,module,exports){
 module.exports = require('ui_gallery')
 
-},{"ui_gallery":29}],4:[function(require,module,exports){
+},{"ui_gallery":31}],4:[function(require,module,exports){
 (function (global){(function (){
 // --- Main Export ---
 // Usage: const docs = DOCS(__filename)(opts.sid)
@@ -3249,6 +3249,7 @@ function wrap_isolated (handler_string, meta = {}) {
   try {
     const params = 'meta, make_sys'
     const source = `(${wrap.toString()})(${handler_string}, ${params})`
+    // eslint-disable-next-line no-new-func
     const isolated_fn = new Function(params, source)(meta, create_sys_api)
     return isolated_fn
   } catch (err) {
@@ -4268,8 +4269,34 @@ function fallback_module () {
                 max-height: 100%;
                 min-height: 0;
                 width: 100%;
+                box-sizing: border-box;
                 overflow-y: auto;
+                scrollbar-gutter: stable;
+                scrollbar-width: thin;
+                scrollbar-color: #3c3c3c transparent;
                 color: #e8eaed;
+              }
+
+              .actions-container::-webkit-scrollbar {
+                width: 10px;
+                height: 10px;
+              }
+
+              .actions-container::-webkit-scrollbar-track {
+                background: transparent;
+              }
+
+              .actions-container::-webkit-scrollbar-thumb {
+                background: #3c3c3c;
+                border: 2px solid transparent;
+                border-radius: 999px;
+                background-clip: content-box;
+              }
+
+              .actions-container::-webkit-scrollbar-thumb:hover {
+                background: #5f6368;
+                border: 2px solid transparent;
+                background-clip: content-box;
               }
               
               .actions-menu {
@@ -4904,7 +4931,7 @@ function fallback_module () {
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { get } = statedb(fallback_module)
-const DOCS = require('DOCS')
+// const DOCS = require('DOCS')
 const net = require('net_helper')
 
 module.exports = form_input
@@ -5026,23 +5053,23 @@ function fallback_module () {
   return {
     api: fallback_instance,
     _: {
-      DOCS: {
-        $: ''
-      },
       net_helper: {
         $: ''
       }
+      // DOCS: {
+      //   $: ''
+      // },
     }
   }
   function fallback_instance () {
     return {
       _: {
-        DOCS: {
-          0: ''
-        },
         net_helper: {
           0: ''
         }
+        // DOCS: {
+        //   0: ''
+        // },
       },
       drive: {
         'style/': {
@@ -5103,12 +5130,12 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/form_input/form_input.js")
-},{"DOCS":4,"STATE":1,"net_helper":17}],11:[function(require,module,exports){
+},{"STATE":1,"net_helper":17}],11:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { get } = statedb(fallback_module)
-const DOCS = require('DOCS')
+// const DOCS = require('DOCS')
 const net = require('net_helper')
 
 module.exports = form_tile_split_choice
@@ -5249,16 +5276,16 @@ function fallback_module () {
   return {
     api: fallback_instance,
     _: {
-      DOCS: { $: '' },
       net_helper: { $: '' }
+      // DOCS: { $: '' },
     }
   }
 
   function fallback_instance () {
     return {
       _: {
-        DOCS: { 0: '' },
         net_helper: { 0: '' }
+        // DOCS: { 0: '' },
       },
       drive: {
         'style/': {
@@ -5274,7 +5301,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/form_tile_split_choice/form_tile_split_choice.js")
-},{"DOCS":4,"STATE":1,"net_helper":17}],12:[function(require,module,exports){
+},{"STATE":1,"net_helper":17}],12:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5667,7 +5694,7 @@ function resource (timeout = 1000) {
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { get } = statedb(fallback_module)
-const DOCS = require('DOCS')
+// const DOCS = require('DOCS')
 const net = require('net_helper')
 
 module.exports = input_test
@@ -5792,23 +5819,23 @@ function fallback_module () {
   return {
     api: fallback_instance,
     _: {
-      DOCS: {
-        $: ''
-      },
       net_helper: {
         $: ''
       }
+      // DOCS: {
+      //   $: ''
+      // },
     }
   }
   function fallback_instance () {
     return {
       _: {
-        DOCS: {
-          0: ''
-        },
         net_helper: {
           0: ''
         }
+        // DOCS: {
+        //   0: ''
+        // },
       },
       drive: {
         'style/': {
@@ -5875,7 +5902,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/input_test/input_test.js")
-},{"DOCS":4,"STATE":1,"net_helper":17}],16:[function(require,module,exports){
+},{"STATE":1,"net_helper":17}],16:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -6337,8 +6364,8 @@ function fallback_module () {
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { get } = statedb(fallback_module)
-const DOCS = require('DOCS')
-const docs = DOCS(__filename)()
+// const DOCS = require('DOCS')
+// const docs = DOCS(__filename)()
 const net = require('net_helper')
 
 const console_history = require('console_history')
@@ -6652,12 +6679,12 @@ function fallback_module () {
       docs_window: {
         $: ''
       },
-      DOCS: {
-        $: ''
-      },
       net_helper: {
         $: ''
       }
+      // DOCS: {
+      //   $: ''
+      // },
     }
   }
 
@@ -6714,12 +6741,12 @@ function fallback_module () {
             style: 'docs_style'
           }
         },
-        DOCS: {
-          0: ''
-        },
         net_helper: {
           0: ''
         }
+        // DOCS: {
+        //   0: ''
+        // },
       },
       drive: {
         'style/': {
@@ -6770,21 +6797,38 @@ function fallback_module () {
                 background-color: #161b22;
                 border: 1px solid #21262d;
                 border-radius: 6px;
+                box-sizing: border-box;
                 overflow: auto;
+                scrollbar-gutter: stable;
+                scrollbar-width: thin;
+                scrollbar-color: #30363d transparent;
+              }
+              .console-history::-webkit-scrollbar {
+                width: 10px;
+                height: 10px;
+              }
+              .console-history::-webkit-scrollbar-track {
+                background: transparent;
+              }
+              .console-history::-webkit-scrollbar-thumb {
+                background: #30363d;
+                border: 2px solid transparent;
+                border-radius: 999px;
+                background-clip: content-box;
+              }
+              .console-history::-webkit-scrollbar-thumb:hover {
+                background: #484f58;
+                border: 2px solid transparent;
+                background-clip: content-box;
               }
               .actions {
                 grid-row: 3;
                 grid-column: 1;
                 position: relative;
-                width: 100%;
-                height: auto;
-                max-height: 100%;
-                min-height: 0;
-                min-width: 0;
                 background-color: #161b22;
                 border: 1px solid #21262d;
                 border-radius: 6px;
-                overflow: auto;
+                overflow: hidden;
               }
               .tabbed-editor {
                 position: relative;
@@ -6825,7 +6869,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/program_container/program_container.js")
-},{"DOCS":4,"STATE":1,"actions":7,"console_history":8,"docs_window":9,"graph_explorer_wrapper":12,"net_helper":17,"tabbed_editor":23}],20:[function(require,module,exports){
+},{"STATE":1,"actions":7,"console_history":8,"docs_window":9,"graph_explorer_wrapper":12,"net_helper":17,"tabbed_editor":24}],20:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -8163,7 +8207,338 @@ function fallback_module () {
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { get } = statedb(fallback_module)
-const DOCS = require('DOCS')
+const net = require('net_helper')
+
+const tabs = require('tabs')
+const program_container = require('program_container')
+const action_bar = require('action_bar')
+const action_executor = require('action_executor')
+
+module.exports = tab_group
+
+async function tab_group (opts, invite) {
+  console.error('tab_group: initializing with opts', opts.sid)
+  const { id, sdb } = await get(opts.sid)
+  const { drive } = sdb
+
+  const on = {
+    style: inject
+  }
+
+  const { io, _ } = net(id)
+
+  const el = document.createElement('div')
+  const shadow = el.attachShadow({ mode: 'closed' })
+  shadow.innerHTML = `
+  <div class="tab-group">
+    <div class="program-container-slot"></div>
+    <div class="action-executor-slot"></div>
+    <div class="action-bar-slot"></div>
+    <div class="tabs-slot"></div>
+  </div>
+  `
+  const sheet = new CSSStyleSheet()
+  shadow.adoptedStyleSheets = [sheet]
+
+  const program_container_slot = shadow.querySelector('.program-container-slot')
+  const action_executor_slot = shadow.querySelector('.action-executor-slot')
+  const action_bar_slot = shadow.querySelector('.action-bar-slot')
+  const tabs_slot = shadow.querySelector('.tabs-slot')
+
+  const subs = await sdb.watch(onbatch)
+  console.error('tab_group: subs ready', subs)
+
+  let tabs_el = null
+  let program_container_el = null
+  let action_bar_el = null
+  let action_executor_el = null
+
+  io.on = {
+    up: protocol_from_root(),
+    tabs: protocol_from_tabs(),
+    program_container: protocol_from_program_container(),
+    action_bar: protocol_from_action_bar(),
+    action_executor: protocol_from_action_executor()
+  }
+  if (invite) {
+    console.error('tab_group: accepting invite')
+    io.accept(invite)
+  }
+
+  console.error('tab_group: creating program_container')
+  program_container_el = await program_container({ ...subs[0], ids: { up: id } }, io.invite('program_container', { up: id }))
+  program_container_el.classList.add('program-container')
+  program_container_slot.replaceWith(program_container_el)
+  console.error('tab_group: program_container created')
+
+  console.error('tab_group: creating action_executor')
+  action_executor_el = await action_executor({ ...subs[1], ids: { up: id } }, io.invite('action_executor', { up: id }))
+  action_executor_el.classList.add('action-executor')
+  action_executor_slot.replaceWith(action_executor_el)
+  console.error('tab_group: action_executor created')
+
+  console.error('tab_group: creating tabs')
+  tabs_el = await tabs({ ...subs[2], ids: { up: id } }, io.invite('tabs', { up: id }))
+  tabs_el.classList.add('tabs')
+  tabs_slot.replaceWith(tabs_el)
+  console.error('tab_group: tabs created')
+
+  console.error('tab_group: creating action_bar')
+  action_bar_el = await action_bar({ ...subs[3], ids: { up: id } }, io.invite('action_bar', { up: id }))
+  action_bar_el.classList.add('action-bar')
+  action_bar_slot.replaceWith(action_bar_el)
+  console.error('tab_group: action_bar created')
+
+  console.error('tab_group: initialization complete')
+  return el
+
+  // ---------------------------
+  // BATCH HANDLER
+  // ---------------------------
+
+  async function onbatch (batch) {
+    for (const { type, paths } of batch) {
+      const data = await Promise.all(paths.map(load_path_raw))
+      const func = on[type] || fail
+      func({ data, type })
+    }
+
+    function load_path_raw (path) { return drive.get(path).then(read_drive_file_raw) }
+    function read_drive_file_raw (file) { return file.raw }
+  }
+
+  function inject ({ data }) { sheet.replaceSync(data[0]) }
+
+  function fail ({ data, type }) { console.error('tab_group: unhandled batch message', { type, data }) }
+
+  // ---------------------------
+  // MESSAGE FROM ROOT (tile_manager)
+  // ---------------------------
+
+  function protocol_from_root () {
+    const on = {
+      update_quick_actions_for_app,
+      update_steps_wizard_for_app,
+      update_actions_for_app: forward_to_program_container,
+      load_actions: forward_to_program_container,
+      create_default_tab
+    }
+    return function onmessage (msg) {
+      console.error('tab_group: message from root', msg.type)
+      ;(on[msg.type] || onfail)(msg)
+    }
+    function update_quick_actions_for_app (msg) {
+      console.error('tab_group: forwarding to action_bar', msg.type)
+      const refs = msg.head ? { cause: msg.head } : {}
+      _.action_bar?.(msg.type, msg.data, refs)
+    }
+    function update_steps_wizard_for_app (msg) {
+      console.error('tab_group: forwarding to action_executor', msg.type)
+      const refs = msg.head ? { cause: msg.head } : {}
+      _.action_executor?.(msg.type, msg.data, refs)
+    }
+    function forward_to_program_container (msg) {
+      console.error('tab_group: forwarding to program_container', msg.type)
+      const refs = msg.head ? { cause: msg.head } : {}
+      _.program_container?.(msg.type, msg.data, refs)
+    }
+    function create_default_tab (msg) {
+      console.error('tab_group: creating default tab', msg.data)
+      const refs = msg.head ? { cause: msg.head } : {}
+      _.tabs?.('add_default_tab', msg.data, refs)
+    }
+    function onfail (msg) { console.error('tab_group: unknown root message', msg) }
+  }
+
+  // ---------------------------
+  // PROTOCOLS
+  // ---------------------------
+
+  function protocol_from_tabs () {
+    return function onmessage (msg) {
+      console.error('tab_group: tabs_protocol', msg.type, msg.data)
+      const refs = msg.head ? { cause: msg.head } : {}
+      _.up(msg.type, msg.data, refs)
+    }
+  }
+
+  function protocol_from_program_container () {
+    const forward_up = {
+      ui_focus: forward,
+      action_auto_completed: forward,
+      action_complete: forward
+    }
+    return function onmessage (msg) {
+      console.error('tab_group: program_container_protocol', msg.type)
+      ;(forward_up[msg.type] || onfail)(msg)
+    }
+    function forward (msg) {
+      const refs = msg.head ? { cause: msg.head } : {}
+      _.up(msg.type, msg.data, refs)
+    }
+    function onfail (msg) { console.error('tab_group: unhandled program_container msg', msg) }
+  }
+
+  function protocol_from_action_bar () {
+    const forward_to_executor = {
+      action_submitted: to_executor,
+      selected_action: to_executor,
+      activate_steps_wizard: to_executor,
+      render_form: to_executor,
+      clean_up: to_executor
+    }
+    const forward_up = {
+      ui_focus: to_up,
+      display_actions: to_up,
+      filter_actions: to_up,
+      console_history_toggle: to_up
+    }
+    return function onmessage (msg) {
+      console.error('tab_group: action_bar_protocol', msg.type)
+      const handler = forward_to_executor[msg.type] || forward_up[msg.type] || onfail
+      handler(msg)
+    }
+    function to_executor (msg) {
+      const refs = msg.head ? { cause: msg.head } : {}
+      _.action_executor?.(msg.type, msg.data, refs)
+    }
+    function to_up (msg) {
+      const refs = msg.head ? { cause: msg.head } : {}
+      _.up(msg.type, msg.data, refs)
+    }
+    function onfail (msg) { console.error('tab_group: unhandled action_bar msg', msg) }
+  }
+
+  function protocol_from_action_executor () {
+    const forward_to_action_bar = {
+      selected_action: to_action_bar,
+      show_submit_btn: to_action_bar,
+      hide_submit_btn: to_action_bar,
+      update_quick_actions_input: to_action_bar,
+      step_clicked: to_action_bar,
+      load_actions: to_action_bar
+    }
+    const forward_up = {
+      action_auto_completed: to_up_and_bar,
+      action_complete: to_up
+    }
+    return function onmessage (msg) {
+      console.error('tab_group: action_executor_protocol', msg.type)
+      const handler = forward_to_action_bar[msg.type] || forward_up[msg.type] || onfail
+      handler(msg)
+    }
+    function to_action_bar (msg) {
+      const refs = msg.head ? { cause: msg.head } : {}
+      _.action_bar?.(msg.type, msg.data, refs)
+    }
+    function to_up (msg) {
+      const refs = msg.head ? { cause: msg.head } : {}
+      _.up(msg.type, msg.data, refs)
+    }
+    function to_up_and_bar (msg) {
+      const refs = msg.head ? { cause: msg.head } : {}
+      _.action_bar?.('action_submitted', msg.data, refs)
+      _.up(msg.type, msg.data, refs)
+    }
+    function onfail (msg) { console.error('tab_group: unhandled action_executor msg', msg) }
+  }
+}
+
+function fallback_module () {
+  return {
+    api: fallback_instance,
+    _: {
+      tabs: { $: '' },
+      program_container: { $: '' },
+      action_bar: { $: '' },
+      action_executor: { $: '' },
+      net_helper: { $: '' }
+    }
+  }
+
+  function fallback_instance () {
+    return {
+      _: {
+        program_container: {
+          0: '',
+          mapping: {
+            style: 'style',
+            icons: 'icons',
+            commands: 'commands',
+            scroll: 'scroll',
+            actions: 'actions',
+            hardcons: 'hardcons',
+            files: 'files',
+            highlight: 'highlight',
+            active_tab: 'active_tab',
+            entries: 'entries',
+            runtime: 'runtime',
+            mode: 'mode',
+            flags: 'flags',
+            keybinds: 'keybinds',
+            undo: 'undo',
+            docs_style: 'docs_style',
+            docs: 'docs'
+          }
+        },
+        action_executor: {
+          0: '',
+          mapping: {
+            style: 'style',
+            icons: 'icons',
+            actions: 'actions',
+            docs: 'docs',
+            data: 'data',
+            hardcons: 'hardcons',
+            variables: 'variables'
+          }
+        },
+        tabs: {
+          0: '',
+          mapping: {
+            style: 'style',
+            icons: 'icons',
+            scroll: 'scroll',
+            actions: 'actions',
+            docs: 'docs',
+            variables: 'variables'
+          }
+        },
+        action_bar: {
+          0: '',
+          mapping: {
+            style: 'style',
+            icons: 'icons',
+            actions: 'actions',
+            docs: 'docs',
+            hardcons: 'hardcons',
+            prefs: 'prefs',
+            variables: 'variables',
+            data: 'data'
+          }
+        },
+        net_helper: {
+          0: ''
+        }
+      },
+      drive: {
+        'style/': {
+          'tab_group.css': {
+            $ref: 'style/tab_group.css'
+          }
+        }
+      }
+    }
+  }
+}
+
+}).call(this)}).call(this,"/src/node_modules/tab_group/tab_group.js")
+},{"STATE":1,"action_bar":5,"action_executor":6,"net_helper":17,"program_container":19,"tabs":25}],24:[function(require,module,exports){
+(function (__filename){(function (){
+const STATE = require('STATE')
+const statedb = STATE(__filename)
+const { get } = statedb(fallback_module)
+// const DOCS = require('DOCS')
 const net = require('net_helper')
 
 module.exports = tabbed_editor
@@ -8348,24 +8723,24 @@ function fallback_module () {
   return {
     api: fallback_instance,
     _: {
-      DOCS: {
-        $: ''
-      },
       net_helper: {
         $: ''
       }
+      // DOCS: {
+      //   $: ''
+      // },
     }
   }
 
   function fallback_instance () {
     return {
       _: {
-        DOCS: {
-          0: ''
-        },
         net_helper: {
           0: ''
         }
+        // DOCS: {
+        //   0: ''
+        // },
       },
       drive: {
         'files/': {
@@ -8432,6 +8807,7 @@ function fallback_module () {
                 position: relative;
                 border: 1px solid #30363d;
                 border-radius: 6px;
+                box-sizing: border-box;
                 overflow: hidden;
               }
 
@@ -8469,7 +8845,11 @@ function fallback_module () {
                 min-height: 0;
                 height: 100%;
                 position: relative;
+                box-sizing: border-box;
                 overflow: auto;
+                scrollbar-gutter: stable;
+                scrollbar-width: thin;
+                scrollbar-color: #30363d transparent;
                 background-color: #0d1117;
               }
 
@@ -8527,21 +8907,25 @@ function fallback_module () {
               }
 
               .editor-wrapper::-webkit-scrollbar {
-                width: 8px;
-                height: 8px;
+                width: 10px;
+                height: 10px;
               }
 
               .editor-wrapper::-webkit-scrollbar-track {
-                background: #161b22;
+                background: transparent;
               }
 
               .editor-wrapper::-webkit-scrollbar-thumb {
                 background: #30363d;
-                border-radius: 4px;
+                border: 2px solid transparent;
+                border-radius: 999px;
+                background-clip: content-box;
               }
 
               .editor-wrapper::-webkit-scrollbar-thumb:hover {
                 background: #484f58;
+                border: 2px solid transparent;
+                background-clip: content-box;
               }
             `
           }
@@ -8560,7 +8944,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabbed_editor/tabbed_editor.js")
-},{"DOCS":4,"STATE":1,"net_helper":17}],24:[function(require,module,exports){
+},{"STATE":1,"net_helper":17}],25:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -8591,6 +8975,9 @@ async function component (opts, invite) {
   let init = false
   let variables = []
   let dricons = []
+  let active = null
+  const default_tabs = {}
+  const link_tabs = {}
   const docs = DOCS(__filename)(opts.sid)
   const { io, _ } = net(id)
 
@@ -8603,7 +8990,7 @@ async function component (opts, invite) {
 
   await sdb.watch(onbatch)
   io.on = {
-    up: onmessage
+    up: protocol_from_up()
   }
   if (invite) io.accept(invite)
   if (entries) {
@@ -8667,99 +9054,91 @@ async function component (opts, invite) {
   }
   return div
 
-  function onmessage (msg) {
-    const { type, data } = msg
-    console.error('tabs: onmessage', type, data)
-
-    if (type === 'add_link_tab') {
-      console.error('tabs: adding link tab', data)
-      add_link_tab(data)
-    } else if (type === 'remove_link_tab') {
-      console.error('tabs: removing link tab', data)
-      remove_link_tab(data)
-    } else if (type === 'add_default_tab') {
-      console.error('tabs: adding default tab', data)
-      add_default_tab(data)
+  function protocol_from_up () {
+    const on = {
+      add_link_tab: handle_add_link_tab,
+      remove_link_tab: handle_remove_link_tab,
+      add_default_tab: handle_add_default_tab
     }
+    return function onmessage (msg) {
+      console.error('tabs: message from up', msg)
+      ;(on[msg.type] || onfail)(msg)
+    }
+    function handle_add_link_tab ({ data }) { add_link_tab(data) }
+    function handle_remove_link_tab ({ data }) { remove_link_tab(data) }
+    function handle_add_default_tab ({ data }) { add_default_tab(data) }
+    function onfail (msg) { console.error('tabs: unknown message', msg) }
   }
 
   function add_default_tab ({ name, program, tile_id }) {
     const tab_id = `tab_${Date.now()}`
-
     const el = document.createElement('div')
     el.innerHTML = `
     <span class="icon">${dricons[1] || '📄'}</span>
     <span class='name'>${tab_id}</span>
     <span class="name">${name || 'New Tab'}</span>
     <button class="btn">${dricons[0] || '×'}</button>`
-
     el.className = 'tabsbtn default-tab active'
-    el.setAttribute('data-tab-id', tab_id)
-    el.setAttribute('data-program', program || 'text_editor')
-
     const name_el = el.querySelector('.name')
     const close_btn = el.querySelector('.btn')
+    default_tabs[tab_id] = { el, name_el, close_btn, name, program }
+    if (active) active.classList.remove('active')
+    active = el
+    name_el.onclick = switch_active
+    close_btn.onclick = close_tab
+    entries.appendChild(el)
+    console.error('tabs: default tab added', tab_id)
 
-    name_el.onclick = () => {
+    function switch_active () {
       console.error('tabs: default tab clicked', tab_id)
-      entries.querySelectorAll('.tabsbtn').forEach(t => t.classList.remove('active'))
+      if (active) active.classList.remove('active')
       el.classList.add('active')
-      _.up('tab_name_clicked', { id: tab_id, name, program }, {})
+      active = el
+      const data = { id: tab_id, name, program }
+      _.up('tab_name_clicked', data, {})
     }
-
-    close_btn.onclick = (e) => {
+    function close_tab (e) {
       e.stopPropagation()
       console.error('tabs: default tab close clicked', tab_id)
       el.remove()
+      delete default_tabs[tab_id]
+      if (active === el) active = null
       _.up('tab_close_clicked', { id: tab_id, name }, {})
+      if (Object.keys(default_tabs).length === 0) {
+        _.up('all_tabs_closed', null, {})
+      }
     }
-
-    entries.appendChild(el)
-    console.error('tabs: default tab added', tab_id)
   }
 
   function add_link_tab ({ tile_id, name, direction }) {
     const link_tab_id = `split_tile_${tile_id}`
-    const existing = entries.querySelector(`[data-link-tab-id="${link_tab_id}"]`)
-    if (existing) {
+    if (link_tabs[link_tab_id]) {
       console.error('tabs: link tab already exists', link_tab_id)
       return
     }
-
     const el = document.createElement('div')
     el.innerHTML = `
     <span class="icon">⊞</span>
-    <span class='name'>${link_tab_id}</span>
-    <span class="name">${name || 'Split ' + direction}</span>
-    <button class="btn">${dricons[0] || '×'}</button>`
-
+    <span class="name">${name || 'Split ' + direction}</span>`
     el.className = 'tabsbtn link-tab'
-    el.setAttribute('data-link-tab-id', link_tab_id)
-    el.setAttribute('data-tile-id', tile_id)
-
     const name_el = el.querySelector('.name')
-    const close_btn = el.querySelector('.btn')
+    link_tabs[link_tab_id] = { el, name_el, tile_id, name, direction }
+    el.onclick = on_link_tab_click
+    entries.appendChild(el)
+    console.error('tabs: link tab added', link_tab_id)
 
-    name_el.onclick = () => {
+    function on_link_tab_click () {
       console.error('tabs: link tab clicked', link_tab_id)
       _.up('link_tab_clicked', { tile_id, link_tab_id }, {})
     }
-
-    close_btn.onclick = (e) => {
-      e.stopPropagation()
-      console.error('tabs: link tab close clicked', link_tab_id)
-      _.up('link_tab_close_clicked', { tile_id, link_tab_id }, {})
-    }
-
-    entries.appendChild(el)
-    console.error('tabs: link tab added', link_tab_id)
   }
 
   function remove_link_tab ({ tile_id }) {
     const link_tab_id = `split_tile_${tile_id}`
-    const el = entries.querySelector(`[data-link-tab-id="${link_tab_id}"]`)
-    if (el) {
-      el.remove()
+    const tab = link_tabs[link_tab_id]
+    if (tab) {
+      tab.el.remove()
+      delete link_tabs[link_tab_id]
       console.error('tabs: link tab removed', link_tab_id)
     }
   }
@@ -8778,38 +9157,23 @@ async function component (opts, invite) {
 
     name_el.draggable = false
 
-    // Add click handler for tab name (switch/toggle tab)
     name_el.onclick = docs.wrap(on_tab_name_click, get_doc_content)
+    close_btn.onclick = docs.wrap(on_tab_close_click, get_doc_content)
 
     async function on_tab_name_click () {
-      if (_) {
-        const data = {
-          type: 'tab',
-          sid: opts.sid
-        }
-        _.up('ui_focus', data, {})
-        _.up('tab_name_clicked', { id, name }, {})
-      }
+      const data = { type: 'tab', sid: opts.sid }
+      _.up('ui_focus', data, {})
+      _.up('tab_name_clicked', { id, name }, {})
     }
-
+    async function on_tab_close_click (e) {
+      e.stopPropagation()
+      const data = { type: 'tab', sid: opts.sid }
+      _.up('ui_focus', data, {})
+      _.up('tab_close_clicked', { id, name }, {})
+    }
     async function get_doc_content () {
       const doc_file = await drive.get('docs/README.md')
       return doc_file.raw || 'No documentation available'
-    }
-
-    // Add click handler for close button
-    close_btn.onclick = docs.wrap(on_tab_close_click, get_doc_content)
-
-    async function on_tab_close_click (e) {
-      e.stopPropagation()
-      if (_) {
-        const data = {
-          type: 'tab',
-          sid: opts.sid
-        }
-        _.up('ui_focus', data, {})
-        _.up('tab_close_clicked', { id, name }, {})
-      }
     }
 
     entries.appendChild(el)
@@ -8822,7 +9186,7 @@ async function component (opts, invite) {
       func(data, type)
     }
     if (!init) {
-      variables.forEach(create_btn)
+      if (!opts.ids) variables.forEach(create_btn)
       init = true
     } else {
       // TODO: Here we can handle drive updates
@@ -8959,7 +9323,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabs/tabs.js")
-},{"DOCS":4,"STATE":1,"net_helper":17}],25:[function(require,module,exports){
+},{"DOCS":4,"STATE":1,"net_helper":17}],26:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const state_db = STATE(__filename)
@@ -9372,7 +9736,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabsbar/tabsbar.js")
-},{"DOCS":4,"STATE":1,"net_helper":17,"tabs":24,"task_manager":26}],26:[function(require,module,exports){
+},{"DOCS":4,"STATE":1,"net_helper":17,"tabs":25,"task_manager":27}],27:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -9560,7 +9924,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/task_manager/task_manager.js")
-},{"DOCS":4,"STATE":1,"net_helper":17}],27:[function(require,module,exports){
+},{"DOCS":4,"STATE":1,"net_helper":17}],28:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -9838,7 +10202,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/taskbar/taskbar.js")
-},{"STATE":1,"action_bar":5,"action_executor":6,"net_helper":17,"tabsbar":25}],28:[function(require,module,exports){
+},{"STATE":1,"action_bar":5,"action_executor":6,"net_helper":17,"tabsbar":26}],29:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -10111,7 +10475,450 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/theme_widget/theme_widget.js")
-},{"STATE":1,"net_helper":17,"program_container":19,"taskbar":27}],29:[function(require,module,exports){
+},{"STATE":1,"net_helper":17,"program_container":19,"taskbar":28}],30:[function(require,module,exports){
+(function (__filename){(function (){
+const STATE = require('STATE')
+const statedb = STATE(__filename)
+const { get } = statedb(fallback_module)
+const net = require('net_helper')
+
+const theme_widget = require('theme_widget')
+const tab_group = require('tab_group')
+
+module.exports = tile_manager
+
+async function tile_manager (opts, invite) {
+  const { id, sdb } = await get(opts.sid)
+  const { drive } = sdb
+
+  const on = {
+    style: inject
+  }
+
+  const layout = {
+    direction: null,
+    tiles: [], // array of { id, element, sid }
+    collapsed: false // responsive collapse state
+  }
+
+  const cached_actions = {
+    update_actions_for_app: null,
+    update_quick_actions_for_app: null,
+    update_steps_wizard_for_app: null
+  }
+
+  let tile_counter = 0
+  const COLLAPSE_THRESHOLD = 600
+  const { io, _ } = net(id)
+
+  const el = document.createElement('div')
+  const shadow = el.attachShadow({ mode: 'closed' })
+  shadow.innerHTML = `
+  <div class="tile-manager">
+    <div class="tile-slot" data-tile-id="0"></div>
+  </div>
+  `
+  const sheet = new CSSStyleSheet()
+  shadow.adoptedStyleSheets = [sheet]
+  const container = shadow.querySelector('.tile-manager')
+
+  const subs = await sdb.watch(onbatch)
+
+  io.on = {
+    up: protocol_from_root()
+  }
+  if (invite) io.accept(invite)
+
+  const resize_observer = new ResizeObserver(on_resize_observed)
+  resize_observer.observe(el)
+
+  function on_resize_observed (entries) {
+    for (const entry of entries) {
+      handle_resize(entry.contentRect.width)
+    }
+  }
+
+  await create_tile(0)
+
+  return el
+
+  // ---------------------------
+  // RESPONSIVE COLLAPSE
+  // ---------------------------
+
+  function handle_resize (width) {
+    if (layout.tiles.length < 2) return
+
+    const should_collapse = width < COLLAPSE_THRESHOLD
+
+    if (should_collapse && !layout.collapsed) {
+      collapse_split()
+    } else if (!should_collapse && layout.collapsed) {
+      expand_split()
+    }
+  }
+
+  function collapse_split () {
+    console.error('tile_manager: collapsing split')
+    layout.collapsed = true
+
+    for (const tile of layout.tiles) {
+      if (tile.id !== 0 && tile.element) {
+        tile.element.parentNode.style.display = 'none'
+      }
+    }
+
+    container.classList.add('collapsed')
+    container.classList.remove('horizontal', 'vertical')
+  }
+
+  function expand_split () {
+    console.error('tile_manager: expanding split')
+    layout.collapsed = false
+
+    for (const tile of layout.tiles) {
+      if (tile.id !== 0 && tile.element) {
+        tile.element.parentNode.style.display = ''
+      }
+    }
+
+    container.classList.remove('collapsed')
+    if (layout.direction) {
+      container.classList.add(layout.direction)
+    }
+  }
+
+  // ---------------------------
+  // TILE MANAGEMENT
+  // ---------------------------
+
+  async function create_tile (slot_index) {
+    const tile_id = tile_counter++
+    const tile_slot = container.querySelector(`[data-tile-id="${slot_index}"]`)
+
+    if (!tile_slot) {
+      console.error('tile_manager: slot not found for index', slot_index)
+      return
+    }
+
+    const sub_entry = subs[tile_id] || { sid: opts.sid }
+
+    const tile_info = {
+      id: tile_id,
+      element: null,
+      slot: tile_slot,
+      sid: sub_entry.sid
+    }
+    layout.tiles.push(tile_info)
+    console.error('tile_manager: tile_info added for tile', tile_id)
+
+    io.on[`tile_${tile_id}`] = create_tile_protocol(tile_id)
+    console.error('tile_manager: handler registered for tile_' + tile_id)
+    const tile_invite = io.invite(`tile_${tile_id}`, { up: id })
+    console.error('tile_manager: invite created for tile_' + tile_id, '_[tile_' + tile_id + '] exists:', !!_[`tile_${tile_id}`])
+
+    const component = tile_id === 0 ? theme_widget : tab_group
+    const tile_el = await component(
+      { ...sub_entry, ids: { up: id } },
+      tile_invite
+    )
+
+    tile_info.element = tile_el
+    tile_slot.appendChild(tile_el)
+
+    console.error('tile_manager: created tile', tile_id)
+    return tile_id
+  }
+
+  function create_tile_protocol (tile_id) {
+    return function tile_protocol (msg) {
+      const { type, data } = msg
+      console.error(`tile_manager: message from tile_${tile_id}`, type, data)
+
+      if (tile_id === 0 && type === 'link_tab_clicked') {
+        console.error('tile_manager: link tab clicked, focusing tile', data.tile_id)
+        focus_tile(data.tile_id)
+        return
+      }
+
+      if (tile_id !== 0 && type === 'all_tabs_closed') {
+        console.error('tile_manager: all tabs closed in split tile', tile_id)
+        handle_merge(tile_id)
+        return
+      }
+
+      if (type === 'action_auto_completed' || type === 'action_complete') {
+        console.error('tile_manager: action completed, checking for split', data)
+        const action = data?.selected_action
+        console.error('tile_manager: action name:', action?.name)
+        if (action?.name === 'Split Tile') {
+          let direction = null
+
+          if (data.result) {
+            try {
+              const results = JSON.parse(data.result)
+              direction = results[0] // First step's data is the direction
+              console.error('tile_manager: direction from result:', direction)
+            } catch (e) {
+              console.error('tile_manager: failed to parse result', e)
+            }
+          }
+
+          if (!direction) {
+            const split_step = action.steps.find(s => s.component === 'form_tile_split_choice')
+            console.error('tile_manager: split_step found:', split_step)
+            if (split_step && split_step.data) {
+              direction = split_step.data
+            }
+          }
+
+          if (direction) {
+            console.error('tile_manager: split requested', direction, 'from tile', tile_id)
+            handle_split(tile_id, direction)
+          } else {
+            console.error('tile_manager: no direction found, cannot split')
+          }
+        }
+      }
+
+      const refs = msg.head ? { cause: msg.head } : {}
+      _.up?.(type, data, refs)
+    }
+  }
+
+  async function handle_split (source_tile_id, direction) {
+    if (layout.tiles.length >= 2) {
+      console.error('tile_manager: already split, nested splitting not yet supported')
+      return
+    }
+
+    const is_horizontal = direction === 'left' || direction === 'right'
+    layout.direction = is_horizontal ? 'horizontal' : 'vertical'
+    layout.split_direction = direction
+    console.error('tile_manager: layout direction set to', layout.direction)
+
+    container.classList.remove('horizontal', 'vertical')
+    container.classList.add(layout.direction)
+
+    const new_slot = document.createElement('div')
+    new_slot.className = 'tile-slot'
+    new_slot.setAttribute('data-tile-id', '1')
+
+    if (direction === 'left' || direction === 'up') {
+      container.insertBefore(new_slot, container.firstChild)
+    } else {
+      container.appendChild(new_slot)
+    }
+    console.error('tile_manager: new slot created')
+
+    const new_tile_id = await create_tile(1)
+
+    send_cached_actions_to_tile(1)
+
+    const new_tile_send = _[`tile_${new_tile_id}`]
+    if (new_tile_send) {
+      new_tile_send('create_default_tab', {
+        name: 'New Tab',
+        program: 'text_editor'
+      }, {})
+    }
+
+    const root_tile_send = _.tile_0
+    if (root_tile_send) {
+      console.error('tile_manager: sending add_link_tab to root tile')
+      root_tile_send('add_link_tab', { tile_id: new_tile_id, direction, name: 'Split ' + direction }, {})
+    }
+
+    console.error('tile_manager: split complete', layout.direction, layout.tiles.length, 'tiles')
+  }
+
+  function handle_merge (tile_id_to_remove) {
+    console.error('tile_manager: handle_merge', tile_id_to_remove)
+
+    const tile_info = layout.tiles.find(t => t.id === tile_id_to_remove)
+    if (!tile_info) {
+      console.error('tile_manager: tile not found for merge', tile_id_to_remove)
+      return
+    }
+
+    if (tile_info.element && tile_info.element.parentNode) {
+      tile_info.element.parentNode.remove()
+    }
+
+    layout.tiles = layout.tiles.filter(t => t.id !== tile_id_to_remove)
+    layout.direction = null
+    layout.split_direction = null
+    layout.collapsed = false
+
+    container.classList.remove('horizontal', 'vertical', 'collapsed')
+
+    const root_tile_send = _.tile_0
+    if (root_tile_send) {
+      console.error('tile_manager: sending remove_link_tab to root tile')
+      root_tile_send('remove_link_tab', { tile_id: tile_id_to_remove }, {})
+    }
+
+    console.error('tile_manager: merge complete, tiles remaining:', layout.tiles.length)
+  }
+
+  function focus_tile (tile_id) {
+    console.error('tile_manager: focus_tile', tile_id)
+
+    if (layout.collapsed) {
+      expand_split()
+    }
+
+    for (const tile of layout.tiles) {
+      const slot = tile.element?.parentNode
+      if (slot) {
+        slot.classList.toggle('focused', tile.id === tile_id)
+      }
+    }
+
+    const tile_info = layout.tiles.find(t => t.id === tile_id)
+    if (tile_info?.element) {
+      tile_info.element.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
+  }
+
+  function send_cached_actions_to_tile (tile_id) {
+    const send = _[`tile_${tile_id}`]
+    if (!send) {
+      console.error('tile_manager: cannot send cached actions, tile_' + tile_id + ' not found')
+      return
+    }
+
+    console.error('tile_manager: sending cached actions to tile_' + tile_id)
+
+    for (const [type, data] of Object.entries(cached_actions)) {
+      if (data !== null) {
+        console.error('tile_manager: sending cached', type, 'to tile_' + tile_id)
+        send(type, data, {})
+      }
+    }
+  }
+
+  // ---------------------------
+  // MESSAGE HANDLERS
+  // ---------------------------
+
+  function protocol_from_root () {
+    const cacheable = {
+      update_actions_for_app: true,
+      update_quick_actions_for_app: true,
+      update_steps_wizard_for_app: true
+    }
+    return function onmessage (msg) {
+      const { type, data } = msg
+      console.error('tile_manager: message from root', type, 'tiles:', layout.tiles.length)
+      if (cacheable[type]) {
+        cached_actions[type] = data
+        console.error('tile_manager: cached', type)
+      }
+      const refs = msg.head ? { cause: msg.head } : {}
+      for (const tile of layout.tiles) {
+        const send = _[`tile_${tile.id}`]
+        if (send) send(type, data, refs)
+      }
+    }
+  }
+
+  // ---------------------------
+  // BATCH HANDLER
+  // ---------------------------
+
+  async function onbatch (batch) {
+    for (const { type, paths } of batch) {
+      const data = await Promise.all(paths.map(load_path_raw))
+      const func = on[type] || fail
+      func({ data, type })
+    }
+
+    function load_path_raw (path) { return drive.get(path).then(read_drive_file_raw) }
+    function read_drive_file_raw (file) { return file.raw }
+  }
+
+  function inject ({ data }) { sheet.replaceSync(data[0]) }
+
+  function fail ({ data, type }) { console.warn('tile_manager: invalid message', { cause: { data, type } }) }
+}
+
+function fallback_module () {
+  return {
+    api: fallback_instance,
+    _: {
+      theme_widget: {
+        $: ''
+      },
+      tab_group: {
+        $: ''
+      },
+      net_helper: {
+        $: ''
+      }
+    }
+  }
+
+  function fallback_instance () {
+    return {
+      _: {
+        theme_widget: {
+          0: '',
+          mapping: {
+            style: 'style',
+            icons: 'icons',
+            commands: 'commands',
+            scroll: 'scroll',
+            actions: 'actions',
+            hardcons: 'hardcons',
+            files: 'files',
+            highlight: 'highlight',
+            active_tab: 'active_tab',
+            entries: 'entries',
+            runtime: 'runtime',
+            mode: 'mode',
+            flags: 'flags',
+            keybinds: 'keybinds',
+            undo: 'undo',
+            focused: 'focused',
+            temp_actions: 'temp_actions',
+            temp_quick_actions: 'temp_quick_actions',
+            prefs: 'prefs',
+            variables: 'variables',
+            data: 'data',
+            docs: 'docs',
+            docs_style: 'docs_style'
+          }
+        },
+        tab_group: {
+          1: '',
+          2: '',
+          3: '',
+          mapping: {
+            style: 'style',
+            icons: 'icons',
+            actions: 'actions',
+            docs: 'docs',
+            docs_style: 'docs_style'
+          }
+        },
+        net_helper: {
+          0: ''
+        }
+      },
+      drive: {
+        'style/': {
+          'tile_manager.css': {
+            $ref: 'style/tile_manager.css'
+          }
+        }
+      }
+    }
+  }
+}
+
+}).call(this)}).call(this,"/src/node_modules/tile_manager/tile_manager.js")
+},{"STATE":1,"net_helper":17,"tab_group":23,"theme_widget":29}],31:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -10135,6 +10942,7 @@ const action_bar = require('action_bar')
 const program_container = require('program_container')
 const tabs = require('tabs')
 const console_history = require('console_history')
+const tile_manager = require('tile_manager')
 const actions = require('actions')
 const tabbed_editor = require('tabbed_editor')
 const task_manager = require('task_manager')
@@ -10146,6 +10954,7 @@ const steps_wizard = require('steps_wizard')
 const { resource } = require('helpers')
 
 const imports = {
+  tile_manager,
   theme_widget,
   taskbar,
   tabsbar,
@@ -10233,23 +11042,15 @@ async function ui_gallery (opts = {}) {
   }
   const item = resource()
   sdbio.on(register_io_port)
-  const { io: theme_widget_io, _: theme_widget_send } = net(id)
-  theme_widget_io.on = {
-    theme_widget: theme_widget_protocol
+  const { io, _: send } = net(id)
+  io.on = {
+    theme_widget: theme_widget_protocol,
+    up: () => {}
   }
-
-  // Create io handles for all preview components to provide up-channel invites
-  const preview_ios = {}
   const preview_names = Object.keys(imports)
   for (const name of preview_names) {
     if (name === 'theme_widget') continue
-    const { io } = net(id)
-    // Register minimal protocol handler so io.invite() can work
-    io.on = {
-      [name]: () => {},
-      up: () => {}
-    }
-    preview_ios[name] = io
+    io.on[name] = () => {}
   }
 
   function register_io_port (port) {
@@ -10299,6 +11100,7 @@ async function ui_gallery (opts = {}) {
 
     function handle_focused_app_changed (msg) {
       const actions = docs_admin.get_actions(msg.data.sid)
+      // console.error("Test Focused app changed:", msg.data.sid, actions)
       update_actions_for_app(actions, msg)
     }
 
@@ -10316,9 +11118,9 @@ async function ui_gallery (opts = {}) {
       }
 
       const refs = msg.head ? { cause: msg.head } : {}
-      theme_widget_send.theme_widget('update_actions_for_app', actions_data, refs)
-      theme_widget_send.theme_widget('update_quick_actions_for_app', quick_actions_data, refs)
-      theme_widget_send.theme_widget('update_steps_wizard_for_app', steps_wizard_data, refs)
+      send.theme_widget('update_actions_for_app', actions_data, refs)
+      send.theme_widget('update_quick_actions_for_app', quick_actions_data, refs)
+      send.theme_widget('update_steps_wizard_for_app', steps_wizard_data, refs)
     }
 
     async function get_component_actions (data) {
@@ -10351,6 +11153,8 @@ async function ui_gallery (opts = {}) {
   return el
   async function create_component (entries_obj) {
     let index = 0
+    const component_counters = {}
+    
     for (const [name, factory] of entries_obj) {
       const is_initially_checked = initial_checked_indices.length === 0 || initial_checked_indices.includes(index + 1)
       const outer = document.createElement('div')
@@ -10362,15 +11166,27 @@ async function ui_gallery (opts = {}) {
     `
       const inner = outer.querySelector('.component-wrapper')
       let component_content
-      if (name === 'theme_widget') {
-        component_content = await factory({ ...subs[index] }, theme_widget_io.invite('theme_widget', { up: id }))
+      
+      // Match sub to factory by component name in type field
+      component_counters[name] = (component_counters[name] || 0) + 1
+      const matching_subs = subs.filter(s => s.type && s.type.endsWith(`>${name}`))
+      const occurrence_index = component_counters[name] - 1
+      const sub = matching_subs[occurrence_index]
+      
+      if (!sub) {
+        console.error(`No sub found for component: ${name} \n make sure that the imports variable property name is same as the required component name`)
+        index++
+        continue
+      }
+      
+      if (name === 'theme_widget'  || name === 'tile_manager') {
+        component_content = await factory({ ...sub }, io.invite('theme_widget', { up: id }))
       } else {
-        const component_io = preview_ios[name]
-        component_content = await factory({ ...subs[index] }, component_io.invite(name, { up: id }))
+        component_content = await factory({ ...sub }, io.invite(name, { up: id }))
       }
       component_content.className = 'component-content'
 
-      const node_id = admin.status.s2i[subs[index].sid]
+      const node_id = admin.status.s2i[sub.sid]
       const editor_index = index + 1
       const component_editor = editor_subs[editor_index] ? await editor(editor_subs[editor_index]) : null
       inner.append(component_content, component_editor || document.createElement('div'))
@@ -10524,7 +11340,7 @@ async function ui_gallery (opts = {}) {
       const wrapper = wrap.outer.querySelector('.component-wrapper')
       if (wrapper) {
         wrapper.style.resize = resize_enabled ? 'both' : 'none'
-        wrapper.style.overflow = resize_enabled ? 'auto' : 'visible'
+        wrapper.style.overflow = resize_enabled ? 'hidden' : 'visible'
       }
     }
   }
@@ -10572,6 +11388,7 @@ async function ui_gallery (opts = {}) {
 function fallback_module () {
   const menuname = 'menu'
   const names = [
+    'tile_manager',
     'theme_widget',
     'taskbar',
     'tabsbar',
@@ -10892,7 +11709,7 @@ function fallback_module () {
             pointer-events: none;
             z-index: 15;
             resize: both;
-            overflow: auto;
+            overflow: hidden;
           }
           .quick-editor {
             position: absolute;
@@ -10965,7 +11782,7 @@ function handle_admin_message (msg) {
 }
 
 }).call(this)}).call(this,"/src/node_modules/ui_gallery/index.js")
-},{"DOCS":4,"STATE":1,"action_bar":5,"action_executor":6,"actions":7,"console_history":8,"graph_explorer_wrapper":12,"helpers":14,"menu":16,"net_helper":17,"program_container":19,"quick_actions":20,"quick_editor":21,"steps_wizard":22,"tabbed_editor":23,"tabs":24,"tabsbar":25,"task_manager":26,"taskbar":27,"theme_widget":28}],30:[function(require,module,exports){
+},{"DOCS":4,"STATE":1,"action_bar":5,"action_executor":6,"actions":7,"console_history":8,"graph_explorer_wrapper":12,"helpers":14,"menu":16,"net_helper":17,"program_container":19,"quick_actions":20,"quick_editor":21,"steps_wizard":22,"tabbed_editor":24,"tabs":25,"tabsbar":26,"task_manager":27,"taskbar":28,"theme_widget":29,"tile_manager":30}],32:[function(require,module,exports){
 const ui_gallery = require('../src/index')
 config().then(boot_default_page)
 
@@ -10985,4 +11802,4 @@ async function config () {
 async function boot_default_page () {
   document.body.append(await ui_gallery())
 }
-},{"../src/index":3}]},{},[30]);
+},{"../src/index":3}]},{},[32]);
