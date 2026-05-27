@@ -62,8 +62,8 @@ describe('steps_wizard - Protocol Communication', () => {
     const accessible = true
 
     // This mimics the actual code in steps_wizard.js line 115:
-    // _.up('step_clicked', { ...step, index, total_steps: steps.length, is_accessible: accessible }, {})
-    const head = child._.up('step_clicked', { ...step, index, total_steps: steps.length, is_accessible: accessible }, {})
+    // _.up('step_clicked', {}, { ...step, index, total_steps: steps.length, is_accessible: accessible })
+    const head = child._.up('step_clicked', {}, { ...step, index, total_steps: steps.length, is_accessible: accessible })
 
     // Verify message structure
     expect(receivedMessages).toHaveLength(1)
