@@ -1,21 +1,20 @@
 (function(){function r(e,n,t){function o(i,f){if(!n[i]){if(!e[i]){var c="function"==typeof require&&require;if(!f&&c)return c(i,!0);if(u)return u(i,!0);var a=new Error("Cannot find module '"+i+"'");throw a.code="MODULE_NOT_FOUND",a}var p=n[i]={exports:{}};e[i][0].call(p.exports,function(r){var n=e[i][1][r];return o(n||r)},p,p.exports,r,e,n,t)}return n[i].exports}for(var u="function"==typeof require&&require,i=0;i<t.length;i++)o(t[i]);return o}return r})()({1:[function(require,module,exports){
-
-},{}],2:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { get } = statedb(fallback_module)
+const net = require('./net_helper')
 
 module.exports = graph_explorer
 
-async function graph_explorer (opts, protocol) {
+async function graph_explorer (opts, invite) {
   /******************************************************************************
   COMPONENT INITIALIZATION
     - This sets up the initial state, variables, and the basic DOM structure.
     - It also initializes the IntersectionObserver for virtual scrolling and
       sets up the watcher for state changes.
   ******************************************************************************/
-  const { sdb } = await get(opts.sid)
+  const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
 
   let vertical_scroll_value = 0
@@ -57,12 +56,12 @@ async function graph_explorer (opts, protocol) {
   let keybinds = {} // Store keyboard navigation bindings
   let undo_stack = [] // Stack to track drive state changes for undo functionality
 
-  // Protocol system for message-based communication
-  let send = null
-  let graph_explorer_mid = 0 // Message ID counter for graph_explorer.js -> page.js messages
-  if (protocol) {
-    send = protocol(msg => onmessage(msg))
+  const { io, _ } = net(id)
+  io.on = {
+    up: onmessage
   }
+  if (!invite) throw new Error('graph_explorer requires a net_helper invite')
+  io.accept(invite)
 
   // Create db object that communicates via protocol messages
   db = create_db()
@@ -71,9 +70,7 @@ async function graph_explorer (opts, protocol) {
   el.className = 'graph-explorer-wrapper'
   const shadow = el.attachShadow({ mode: 'closed' })
   shadow.innerHTML = `
-    <div>
-      <div class="graph-container"></div>
-    </div>
+    <div class="graph-container"></div>
     <div class="searchbar"></div>
     <div class="menubar"></div>
   `
@@ -120,7 +117,7 @@ async function graph_explorer (opts, protocol) {
   /******************************************************************************
   ESSAGE HANDLING
     - Handles incoming messages and sends outgoing messages.
-    - Messages follow standardized format: { head: [by, to, mid], refs, type, data }
+    - Messages follow standardized net_helper format: { head, refs, type, data, meta }
   ******************************************************************************/
   function onmessage (msg) {
     const { type, data } = msg
@@ -152,7 +149,7 @@ async function graph_explorer (opts, protocol) {
       const { mode: new_mode } = data
       if (new_mode && ['default', 'menubar', 'search'].includes(new_mode)) {
         update_drive_state({ type: 'mode/current_mode', message: new_mode })
-        send_message({ type: 'mode_changed', data: { mode: new_mode } })
+        send_message({ type: 'mode_changed', refs: { cause: msg.head }, data: { mode: new_mode } })
       }
     }
 
@@ -163,7 +160,7 @@ async function graph_explorer (opts, protocol) {
         drive_updated_by_search = true
         update_drive_state({ type: 'mode/search_query', message: query })
         if (mode === 'search') perform_search(query)
-        send_message({ type: 'search_query_changed', data: { query } })
+        send_message({ type: 'search_query_changed', refs: { cause: msg.head }, data: { query } })
       }
     }
 
@@ -171,7 +168,7 @@ async function graph_explorer (opts, protocol) {
       const { instance_paths } = data
       if (Array.isArray(instance_paths)) {
         update_drive_state({ type: 'runtime/selected_instance_paths', message: instance_paths })
-        send_message({ type: 'selection_changed', data: { selected: instance_paths } })
+        send_message({ type: 'selection_changed', refs: { cause: msg.head }, data: { selected: instance_paths } })
       }
     }
 
@@ -182,7 +179,7 @@ async function graph_explorer (opts, protocol) {
         instance_states[instance_path].expanded_hubs = expand_hubs
         drive_updated_by_toggle = true
         update_drive_state({ type: 'runtime/instance_states', message: instance_states })
-        send_message({ type: 'node_expanded', data: { instance_path, expand_subs, expand_hubs } })
+        send_message({ type: 'node_expanded', refs: { cause: msg.head }, data: { instance_path, expand_subs, expand_hubs } })
       }
     }
 
@@ -193,7 +190,7 @@ async function graph_explorer (opts, protocol) {
         instance_states[instance_path].expanded_hubs = false
         drive_updated_by_toggle = true
         update_drive_state({ type: 'runtime/instance_states', message: instance_states })
-        send_message({ type: 'node_collapsed', data: { instance_path } })
+        send_message({ type: 'node_collapsed', refs: { cause: msg.head }, data: { instance_path } })
       }
     }
 
@@ -205,22 +202,22 @@ async function graph_explorer (opts, protocol) {
         } else if (toggle_type === 'hubs') {
           await toggle_hubs(instance_path)
         }
-        send_message({ type: 'node_toggled', data: { instance_path, toggle_type } })
+        send_message({ type: 'node_toggled', refs: { cause: msg.head }, data: { instance_path, toggle_type } })
       }
     }
 
     function handle_get_selected (data) {
-      send_message({ type: 'selected_nodes', data: { selected: selected_instance_paths } })
+      send_message({ type: 'selected_nodes', refs: { cause: msg.head }, data: { selected: selected_instance_paths } })
     }
 
     function handle_get_confirmed (data) {
-      send_message({ type: 'confirmed_nodes', data: { confirmed: confirmed_instance_paths } })
+      send_message({ type: 'confirmed_nodes', refs: { cause: msg.head }, data: { confirmed: confirmed_instance_paths } })
     }
 
     function handle_clear_selection (data) {
       update_drive_state({ type: 'runtime/selected_instance_paths', message: [] })
       update_drive_state({ type: 'runtime/confirmed_selected', message: [] })
-      send_message({ type: 'selection_cleared', data: {} })
+      send_message({ type: 'selection_cleared', refs: { cause: msg.head }, data: {} })
     }
 
     function handle_set_flag (data) {
@@ -232,7 +229,7 @@ async function graph_explorer (opts, protocol) {
       } else if (flag_type === 'recursive_collapse') {
         update_drive_state({ type: 'flags/recursive_collapse', message: value })
       }
-      send_message({ type: 'flag_changed', data: { flag_type, value } })
+      send_message({ type: 'flag_changed', refs: { cause: msg.head }, data: { flag_type, value } })
     }
 
     function handle_scroll_to_node (data) {
@@ -241,7 +238,7 @@ async function graph_explorer (opts, protocol) {
       if (node_index !== -1) {
         const scroll_position = node_index * node_height
         container.scrollTop = scroll_position
-        send_message({ type: 'scrolled_to_node', data: { instance_path, scroll_position } })
+        send_message({ type: 'scrolled_to_node', refs: { cause: msg.head }, data: { instance_path, scroll_position } })
       }
     }
   }
@@ -271,15 +268,14 @@ async function graph_explorer (opts, protocol) {
       if (container) container.replaceChildren()
     }
   }
-  function send_message (msg) {
-    if (send) {
-      send(msg)
-    }
+  function send_message ({ type, refs = {}, data = {} }) {
+    return _.up(type, refs, data)
   }
 
   function create_db () {
-    // Pending requests map: key is message head [by, to, mid], value is {resolve, reject}
+    // Pending requests map: key is net_helper message head, value is {resolve, reject}
     const pending_requests = new Map()
+    const early_responses = new Map()
 
     return {
       // All operations are async via protocol messages
@@ -301,23 +297,21 @@ async function graph_explorer (opts, protocol) {
           pending.resolve(msg.data.result)
           pending_requests.delete(request_head_key)
         } else {
-          console.warn('[graph_explorer] No pending request for response:', msg.refs.cause)
+          early_responses.set(request_head_key, msg)
         }
       }
     }
 
     function send_db_request (operation, params) {
       return new Promise((resolve, reject) => {
-        const head = ['graph_explorer', 'page_js', graph_explorer_mid++]
+        const head = send_message({ type: operation, refs: {}, data: params })
         const head_key = JSON.stringify(head)
         pending_requests.set(head_key, { resolve, reject })
-
-        send_message({
-          head,
-          refs: null, // New request has no references
-          type: operation,
-          data: params
-        })
+        const early_response = early_responses.get(head_key)
+        if (early_response) {
+          early_responses.delete(head_key)
+          db.handle_response(early_response)
+        }
       })
     }
   }
@@ -3138,10 +3132,71 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/node_modules/graph-explorer/lib/graph_explorer.js")
-},{"STATE":1}],3:[function(require,module,exports){
+},{"./net_helper":2,"STATE":3}],2:[function(require,module,exports){
+(function (__filename){(function (){
+module.exports = net
+
+function net (id) {
+  const [label, io, _, sub, hub] = [`[${id}@${__filename}]`, { invite, accept, on: {} }, {}, {}, {}]
+  return { io, _ }
+  function forward (to, M) {
+    if (to.startsWith(id)) {
+      const ups = [...new Set(Object.keys(hub).map(id => hub[id].tx))]
+      for (const tx of ups) tx(M)
+      return
+    }
+    for (const id of Object.keys(sub)) if (to.startsWith(id)) return sub[id].tx(M)
+    throw new Error(`${label} unknown recipient "${to}"`)
+  }
+  function invite (name, ids) {
+    if (!io.on[name]) throw new Error(`${label} no protocol handler for "${name}"`)
+    return Object.assign(invite, { ids })
+    function invite (tx) {
+      const rx = router(sub)
+      add(name, tx, tx.id, rx, sub)
+      return rx
+    }
+  }
+  function accept (invite) {
+    const rx = router(hub)
+    const tx = invite(Object.assign(rx, { id }))
+    for (const [name, to] of Object.entries(invite.ids)) {
+      if (hub[to]) throw new Error(`${label} already connected to "${to}"`)
+      if (!io.on[name]) throw new Error(`${label} no "${name}" protocol for "${to}"`)
+      add(name, tx, to, rx, hub)
+    }
+  }
+  function router ($) {
+    return function rx (M) {
+      const { head: [by, to] } = M
+      console.log(`[M]\n${by} \n to: \n ${to}`, M)
+      if (to !== id) return forward(to, M)
+      if (!$[by]) throw new Error(`${label} unknown sender "${by}"`)
+      const { name } = $[by].state
+      if (!io.on[name]) throw new Error(`${label} no "${name}" protocol for "${to}"`)
+      io.on[name](M)
+    }
+  }
+  function add (name, tx, to, rx, $) {
+    const state = { name, to, mid: 0 }
+    _[name] = send
+    $[to] = { rx, tx, state }
+    function send (type, refs = {}, data = null) {
+      const head = [id, to, state.mid++]
+      const meta = { time: Date.now(), stack: (new Error().stack) }
+      tx({ head, refs, type, data, meta })
+      return head
+    }
+  }
+}
+
+}).call(this)}).call(this,"/graph-explorer/lib/net_helper/net_helper.js")
+},{}],3:[function(require,module,exports){
+
+},{}],4:[function(require,module,exports){
 module.exports = require('ui_gallery')
 
-},{"ui_gallery":31}],4:[function(require,module,exports){
+},{"ui_gallery":32}],5:[function(require,module,exports){
 (function (global){(function (){
 // --- Main Export ---
 // Usage: const docs = DOCS(__filename)(opts.sid)
@@ -3303,7 +3358,7 @@ function create_context (filename, sid) {
 }
 
 }).call(this)}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],5:[function(require,module,exports){
+},{}],6:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -3396,7 +3451,7 @@ async function action_bar (opts, invite) {
   function iconject ({ data }) { console_icon = data[0] }
 
   async function onhistory () {
-    _.up('console_history_toggle', null, {})
+    _.up('console_history_toggle', {}, null)
     // const head2 = [by, to, mid++]
     // _.up({ head: head2, refs, type: 'ui_focus', data: 'command_history' })
   }
@@ -3420,27 +3475,27 @@ async function action_bar (opts, invite) {
     handler(msg)
   }
 
-  function quick_actions_filter_actions (msg) { _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
+  function quick_actions_filter_actions (msg) { _.up(msg.type, msg.head ? { cause: msg.head } : {}, msg.data) }
   function quick_actions_display_actions (msg) {
     const { data } = msg
-    _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {})
+    _.up(msg.type, msg.head ? { cause: msg.head } : {}, msg.data)
     const display = typeof data === 'string' ? data : data.display
     const reason = typeof data === 'string' ? '' : data.reason
     const should_clean = display === 'none' && reason !== 'selected'
     if (should_clean) {
-      _.up('clean_up', selected_action, msg.head ? { cause: msg.head } : {})
+      _.up('clean_up', msg.head ? { cause: msg.head } : {}, selected_action)
     }
   }
 
   function quick_actions_action_submitted (msg) {
-    _.quick_actions('deactivate_input_field', { reason: 'completed' }, msg.head ? { cause: msg.head } : {})
-    _.up('action_submitted', { selected_action }, msg.head ? { cause: msg.head } : {})
+    _.quick_actions('deactivate_input_field', msg.head ? { cause: msg.head } : {}, { reason: 'completed' })
+    _.up('action_submitted', msg.head ? { cause: msg.head } : {}, { selected_action })
   }
 
   function onmessage (msg) {
     const { type } = msg
     if (type === 'docs_toggle') {
-      _.quick_actions(type, msg.data, msg.head ? { cause: msg.head } : {})
+      _.quick_actions(type, msg.head ? { cause: msg.head } : {}, msg.data)
     } else {
       const handler = parent_handler[type] || fail
       handler(msg)
@@ -3451,41 +3506,41 @@ async function action_bar (opts, invite) {
     // const { data } = msg
   }
   function parent_selected_action (msg) {
-    _.quick_actions(msg.type, msg.data, msg.head ? { cause: msg.head } : {})
+    _.quick_actions(msg.type, msg.head ? { cause: msg.head } : {}, msg.data)
   }
-  function show_submit_btn (msg) { _.quick_actions('show_submit_btn', null, msg.head ? { cause: msg.head } : {}) }
-  function hide_submit_btn (msg) { _.quick_actions('hide_submit_btn', null, msg.head ? { cause: msg.head } : {}) }
+  function show_submit_btn (msg) { _.quick_actions('show_submit_btn', msg.head ? { cause: msg.head } : {}, null) }
+  function hide_submit_btn (msg) { _.quick_actions('hide_submit_btn', msg.head ? { cause: msg.head } : {}, null) }
 
   function update_quick_actions_for_app (msg) {
     const { data, type } = msg
-    _.quick_actions(type, data, msg.head ? { cause: msg.head } : {})
+    _.quick_actions(type, msg.head ? { cause: msg.head } : {}, data)
   }
 
   function update_quick_actions_input (msg) {
     const { data } = msg
     selected_action = data || null
-    _.quick_actions('update_input_command', data, msg.head ? { cause: msg.head } : {})
+    _.quick_actions('update_input_command', msg.head ? { cause: msg.head } : {}, data)
   }
 
-  function quick_actions_activate_steps_wizard (msg) { _.up('activate_steps_wizard', msg.data, msg.head ? { cause: msg.head } : {}) }
+  function quick_actions_activate_steps_wizard (msg) { _.up('activate_steps_wizard', msg.head ? { cause: msg.head } : {}, msg.data) }
 
   function parent_step_clicked (msg) {
     const { data } = msg
-    _.quick_actions('update_current_step', data, msg.head ? { cause: msg.head } : {})
-    _.up('render_form', data, msg.head ? { cause: msg.head } : {})
+    _.quick_actions('update_current_step', msg.head ? { cause: msg.head } : {}, data)
+    _.up('render_form', msg.head ? { cause: msg.head } : {}, data)
   }
 
   function parent__action_submitted (msg) {
-    _.quick_actions('deactivate_input_field', { reason: 'completed' }, msg.head ? { cause: msg.head } : {})
-    _.up('action_submitted', msg.data, msg.head ? { cause: msg.head } : {})
+    _.quick_actions('deactivate_input_field', msg.head ? { cause: msg.head } : {}, { reason: 'completed' })
+    _.up('action_submitted', msg.head ? { cause: msg.head } : {}, msg.data)
   }
 
   function parent__clean_up (msg) {
-    _.quick_actions('deactivate_input_field', { reason: 'cancel' }, msg.head ? { cause: msg.head } : {})
-    _.up('clean_up', msg.data, msg.head ? { cause: msg.head } : {})
+    _.quick_actions('deactivate_input_field', msg.head ? { cause: msg.head } : {}, { reason: 'cancel' })
+    _.up('clean_up', msg.head ? { cause: msg.head } : {}, msg.data)
   }
 
-  function ui_focus_docs (msg) { _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
+  function ui_focus_docs (msg) { _.up(msg.type, msg.head ? { cause: msg.head } : {}, msg.data) }
 }
 
 function fallback_module () {
@@ -3596,7 +3651,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/action_bar/action_bar.js")
-},{"DOCS":4,"STATE":1,"net_helper":17,"quick_actions":20}],6:[function(require,module,exports){
+},{"DOCS":5,"STATE":3,"net_helper":18,"quick_actions":21}],7:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -3737,7 +3792,7 @@ async function action_executor (opts, invite) {
   }
 
   function program_load_actions (data, type, msg) {
-    _.up(type, data, msg.head ? { cause: msg.head } : {})
+    _.up(type, msg.head ? { cause: msg.head } : {}, data)
   }
 
   // -------------------------------
@@ -3752,20 +3807,20 @@ async function action_executor (opts, invite) {
     const { type } = msg
     const handler = steps_handlers[type]
     if (handler) handler(msg)
-    else _.up(type, msg.data, msg.head ? { cause: msg.head } : {})
+    else _.up(type, msg.head ? { cause: msg.head } : {}, msg.data)
   }
 
   function steps_wizard_step_clicked (msg) {
     const { data } = msg
     const refs = msg.head ? { cause: msg.head } : {}
-    _.up('step_clicked', data, refs)
+    _.up('step_clicked', refs, data)
 
     if (should_execute_step(data)) {
-      _.up('execute_step', {
+      _.up('execute_step', refs, {
         action: selected_action,
         step: data,
         commands: data.commands
-      }, refs)
+      })
     }
 
     function should_execute_step (step_data) {
@@ -3803,11 +3858,11 @@ async function action_executor (opts, invite) {
     console.error('action_executor: step updated', step)
 
     const refs = msg.head ? { cause: msg.head } : {}
-    _.program('update_data', all_data, refs)
-    _.steps_wizard('init_data', selected_action.steps, refs)
+    _.program('update_data', refs, all_data)
+    _.steps_wizard('init_data', refs, selected_action.steps)
 
     if (selected_action.steps[selected_action.steps.length - 1]?.is_completed) {
-      _.up('show_submit_btn', null, refs)
+      _.up('show_submit_btn', refs, null)
     }
   }
 
@@ -3823,9 +3878,9 @@ async function action_executor (opts, invite) {
       data: data.value !== undefined ? data.value : undefined
     })
     const refs = msg.head ? { cause: msg.head } : {}
-    _.program('update_data', all_data, refs)
-    _.steps_wizard('init_data', selected_action.steps, refs)
-    _.up('hide_submit_btn', null, refs)
+    _.program('update_data', refs, all_data)
+    _.steps_wizard('init_data', refs, selected_action.steps)
+    _.up('hide_submit_btn', refs, null)
   }
 
   function form__action_complete (data, type, msg) {
@@ -3840,7 +3895,7 @@ async function action_executor (opts, invite) {
 
     if (all_mandatory_complete) {
       hide_all_forms()
-      _.up('action_auto_completed', { selected_action, trigger: 'form' }, msg.head ? { cause: msg.head } : {})
+      _.up('action_auto_completed', msg.head ? { cause: msg.head } : {}, { selected_action, trigger: 'form' })
     }
 
     function is_step_complete_or_optional (step) {
@@ -3855,9 +3910,9 @@ async function action_executor (opts, invite) {
   function onmessage (msg) {
     const { type } = msg
     if (type === 'docs_toggle') {
-      _.steps_wizard(type, msg.data, msg.head ? { cause: msg.head } : {})
+      _.steps_wizard(type, msg.head ? { cause: msg.head } : {}, msg.data)
       for (const name in component_modules) {
-        _[name](type, msg.data, msg.head ? { cause: msg.head } : {})
+        _[name](type, msg.head ? { cause: msg.head } : {}, msg.data)
       }
     } else {
       parent_handler[type](msg)
@@ -3870,7 +3925,7 @@ async function action_executor (opts, invite) {
   }
 
   function load_actions (msg) {
-    _.program(msg.type, msg.data, msg.head ? { cause: msg.head } : {})
+    _.program(msg.type, msg.head ? { cause: msg.head } : {}, msg.data)
   }
 
   function action_submitted (msg) {
@@ -3878,7 +3933,7 @@ async function action_executor (opts, invite) {
     data.result = JSON.stringify(selected_action.steps.map(step => step.data), null, 2)
 
     reset_selected_action_steps()
-    _.program('display_result', data, msg.head ? { cause: msg.head } : {})
+    _.program('display_result', msg.head ? { cause: msg.head } : {}, data)
   }
 
   function reset_selected_action_steps () {
@@ -3895,7 +3950,7 @@ async function action_executor (opts, invite) {
     render_form_component(data.component)
     const send = _[data.component]
     if (send) {
-      send('step_data', data, msg.head ? { cause: msg.head } : {})
+      send('step_data', msg.head ? { cause: msg.head } : {}, data)
     }
   }
 
@@ -3903,7 +3958,7 @@ async function action_executor (opts, invite) {
 
   function update_data (msg) {
     const { data: msg_data, type } = msg
-    _.program(type, msg_data, msg.head ? { cause: msg.head } : {})
+    _.program(type, msg.head ? { cause: msg.head } : {}, msg_data)
   }
 
   function activate_steps_wizard (msg) {
@@ -3913,14 +3968,17 @@ async function action_executor (opts, invite) {
     if (!steps_data) return
     steps_toggle_view('block')
     const data = steps_data.steps
-    _.steps_wizard('init_data', data, msg.head ? { cause: msg.head } : {})
+    _.steps_wizard('init_data', msg.head ? { cause: msg.head } : {}, data)
 
-    function matches_selected_action (action) { return action.name === msg.data }
+    function matches_selected_action (action) {
+      const target = typeof msg.data === 'string' ? msg.data : msg.data?.name
+      return action.name === target
+    }
   }
 
   function form_data (msg) {
     // forward init_data to steps_wizard with current action steps
-    _.steps_wizard('init_data', msg.data, msg.head ? { cause: msg.head } : {})
+    _.steps_wizard('init_data', msg.head ? { cause: msg.head } : {}, msg.data)
   }
 
   function clean_up (msg) {
@@ -4023,7 +4081,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/action_executor/action_executor.js")
-},{"STATE":1,"net_helper":17,"program":18,"steps_wizard":22}],7:[function(require,module,exports){
+},{"STATE":3,"net_helper":18,"program":19,"steps_wizard":23}],8:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4089,21 +4147,21 @@ async function actions (opts, invite) {
   function handle_load_actions (data) {
     const converted_actions = Object.keys(data).map(convert_action_key)
     actions = converted_actions
+    if (actions.length > 0) docs.register_actions(actions)
     create_actions_menu()
 
     function convert_action_key (action_key) {
       return {
-        action: action_key,
-        pinned: false,
-        default: true,
-        icon: 'file'
+        name: action_key,
+        icon: 'file',
+        status: { pinned: false, default: true },
+        steps: []
       }
     }
   }
 
   function send_selected_action (msg) {
-    const action_data = msg.data.data || msg.data
-    _.up('selected_action', action_data, msg.head ? { cause: msg.head } : {})
+    _.up('selected_action', msg.head ? { cause: msg.head } : {}, msg.data)
   }
 
   async function onbatch (batch) {
@@ -4139,6 +4197,7 @@ async function actions (opts, invite) {
   function onactions (data) {
     const vars = typeof data[0] === 'string' ? JSON.parse(data[0]) : data[0]
     actions = vars
+    if (actions.length > 0) docs.register_actions(actions)
     create_actions_menu()
   }
 
@@ -4154,13 +4213,13 @@ async function actions (opts, invite) {
     const this_icon = icons[index] || icons[0]
     action_item.innerHTML = `
     <div class="action-icon">${this_icon}</div>
-    <div class="action-name">${action_data.action}</div>
-    <div class="action-pin">${action_data.pin ? hardcons.pin : hardcons.unpin}</div>
-    <div class="action-default">${action_data.default ? hardcons.default : hardcons.undefault}</div>`
+    <div class="action-name">${action_data.name}</div>
+    <div class="action-pin">${action_data.status && action_data.status.pinned ? hardcons.pin : hardcons.unpin}</div>
+    <div class="action-default">${action_data.status && action_data.status.default ? hardcons.default : hardcons.undefault}</div>`
     action_item.onclick = docs.wrap(on_action_item_click, get_doc_content)
     actions_menu.appendChild(action_item)
 
-    function on_action_item_click () { send_selected_action({ data: action_data.action }) }
+    function on_action_item_click () { send_selected_action({ data: action_data }) }
     async function get_doc_content () {
       const doc_file = await drive.get('docs/README.md')
       return doc_file.raw || 'No documentation available'
@@ -4360,7 +4419,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/actions/actions.js")
-},{"DOCS":4,"STATE":1,"net_helper":17}],8:[function(require,module,exports){
+},{"DOCS":5,"STATE":3,"net_helper":18}],9:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4456,8 +4515,8 @@ async function console_history (opts, invite) {
         type: 'command_history',
         sid: opts.sid
       }
-      _.up('ui_focus', data, {})
-      _.up('command_clicked', command_data, {})
+      _.up('ui_focus', {}, data)
+      _.up('command_clicked', {}, command_data)
     }
 
     async function get_doc_content () {
@@ -4779,7 +4838,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/console_history/console_history.js")
-},{"DOCS":4,"STATE":1,"net_helper":17}],9:[function(require,module,exports){
+},{"DOCS":5,"STATE":3,"net_helper":18}],10:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4824,7 +4883,7 @@ async function docs_window (opts, invite) {
   return el
 
   function onclose () {
-    _.up('close_docs', null, {})
+    _.up('close_docs', {}, null)
   }
 
   function onmessage (msg) {
@@ -4926,7 +4985,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/docs_window/docs_window.js")
-},{"STATE":1,"net_helper":17}],10:[function(require,module,exports){
+},{"STATE":3,"net_helper":18}],11:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4976,16 +5035,16 @@ async function form_input (opts, invite) {
       input_field: input_field_el.value
     })
     if (input_field_el.value.length >= 10) {
-      _.up('action_submitted', {
+      _.up('action_submitted', {}, {
         value: input_field_el.value,
         index: current_step.index !== undefined ? current_step.index : 0
-      }, {})
+      })
       console.log('mark_as_complete')
     } else {
-      _.up('action_incomplete', {
+      _.up('action_incomplete', {}, {
         value: input_field_el.value,
         index: current_step.index !== undefined ? current_step.index : 0
-      }, {})
+      })
     }
   }
 
@@ -5130,7 +5189,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/form_input/form_input.js")
-},{"STATE":1,"net_helper":17}],11:[function(require,module,exports){
+},{"STATE":3,"net_helper":18}],12:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5244,11 +5303,11 @@ async function form_tile_split_choice (opts, invite) {
     const choice = ev.currentTarget.getAttribute('data-choice')
     await drive.put('data/form_tile_split_choice.json', { choice })
     highlight_choice(choice)
-    _.up('action_submitted', { value: choice, index: current_step?.index ?? 0 }, {})
+    _.up('action_submitted', {}, { value: choice, index: current_step?.index ?? 0 })
 
     // If this is a single-step action, auto-complete the action
     if (current_step && current_step.total_steps === 1) {
-      _.up('action_complete', { value: choice }, {})
+      _.up('action_complete', {}, { value: choice })
     }
   }
 
@@ -5301,7 +5360,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/form_tile_split_choice/form_tile_split_choice.js")
-},{"STATE":1,"net_helper":17}],12:[function(require,module,exports){
+},{"STATE":3,"net_helper":18}],13:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5319,17 +5378,16 @@ async function graph_explorer_wrapper (opts, invite) {
   let db = null
   let latest_entries = null
   const pending_to_graph_explorer = []
-  let send_to_graph_explorer = null
+  let graph_explorer_connected = false
   let graph_explorer_db_ready = false
 
   // Protocol
   const { io, _ } = net(id)
   io.on = {
-    up: onmessage
+    up: onmessage,
+    graph_explorer: graph_explorer_protocol
   }
   if (invite) io.accept(invite)
-
-  let child_mid = 0
 
   const on = {
     theme: inject,
@@ -5344,7 +5402,9 @@ async function graph_explorer_wrapper (opts, invite) {
 
   const subs = await sdb.watch(onbatch)
 
-  const explorer_el = await graph_explorer(subs[0], graph_explorer_protocol)
+  const explorer_el = await graph_explorer(subs[0], io.invite('graph_explorer', { up: id }))
+  graph_explorer_connected = true
+  Promise.resolve().then(sync_initial_state_to_child)
   shadow.append(explorer_el)
 
   return el
@@ -5373,32 +5433,33 @@ async function graph_explorer_wrapper (opts, invite) {
     const commands = get_step_commands(msg.data)
     for (const command of commands) {
       const refs = msg.head ? { cause: msg.head } : {}
-      send_to_graph_explorer_message(command.type, command.data !== undefined ? command.data : {}, refs)
+      const data = command.data !== undefined ? command.data : {}
+      send_to_graph_explorer_message(command.type, refs, data)
     }
   }
 
   function parent_forward_to_graph_explorer (msg) {
     const refs = msg.head ? { cause: msg.head } : {}
-    send_to_graph_explorer_message(msg.type, msg.data, refs)
+    send_to_graph_explorer_message(msg.type, refs, msg.data)
   }
 
-  function send_to_graph_explorer_message (type, data, refs) {
+  function send_to_graph_explorer_message (type, refs, data) {
     if (!can_send_to_graph_explorer()) {
-      pending_to_graph_explorer.push({ type, data, refs })
+      pending_to_graph_explorer.push({ type, refs, data })
       return
     }
-    send_child_message(type, data, refs)
+    send_child_message(type, refs, data)
   }
 
   function flush_to_graph_explorer_queue () {
     while (can_send_to_graph_explorer() && pending_to_graph_explorer.length) {
       const next_msg = pending_to_graph_explorer.shift()
-      send_child_message(next_msg.type, next_msg.data, next_msg.refs)
+      send_child_message(next_msg.type, next_msg.refs, next_msg.data)
     }
   }
 
   function can_send_to_graph_explorer () {
-    return Boolean(send_to_graph_explorer && graph_explorer_db_ready)
+    return graph_explorer_connected && graph_explorer_db_ready
   }
 
   function get_step_commands (data) {
@@ -5458,8 +5519,8 @@ async function graph_explorer_wrapper (opts, invite) {
   }
 
   function notify_db_initialized (entries) {
-    if (!send_to_graph_explorer) return
-    send_child_message('db_initialized', { entries })
+    if (!graph_explorer_connected) return
+    _.graph_explorer('db_initialized', {}, { entries })
     graph_explorer_db_ready = true
     flush_to_graph_explorer_queue()
   }
@@ -5468,27 +5529,18 @@ async function graph_explorer_wrapper (opts, invite) {
   // PROTOCOL
   // ---------------------------------------------------------
 
-  function graph_explorer_protocol (send) {
-    send_to_graph_explorer = send
-    Promise.resolve().then(sync_initial_state_to_child)
-    return on_graph_explorer_message
+  function graph_explorer_protocol (msg) {
+    const { type } = msg
 
-    function on_graph_explorer_message (msg) {
-      const { type } = msg
-
-      if (type.startsWith('db_')) {
-        handle_db_request(msg)
-      } else {
-        _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {})
-      }
+    if (type.startsWith('db_')) {
+      handle_db_request(msg)
+    } else {
+      _.up(msg.type, msg.head ? { cause: msg.head } : {}, msg.data)
     }
   }
 
-  function send_child_message (type, data = {}, refs = {}) {
-    const head = [id, 'graph-explorer', child_mid++]
-    const meta = { time: Date.now(), stack: (new Error().stack) }
-    send_to_graph_explorer({ head, refs, type, data, meta })
-    return head
+  function send_child_message (type, refs = {}, data = {}) {
+    return _.graph_explorer(type, refs, data)
   }
 
   function sync_initial_state_to_child () {
@@ -5512,7 +5564,11 @@ async function graph_explorer_wrapper (opts, invite) {
       db_keys: () => db.keys(),
       db_raw: () => db.raw()
     }
-    const method = db_handler[operation] || db_fail
+    const method = db_handler[operation]
+    if (!method) {
+      db_fail()
+      return
+    }
     const result = method(params.path)
     send_response(request_head, result)
 
@@ -5523,7 +5579,7 @@ async function graph_explorer_wrapper (opts, invite) {
   }
 
   function send_response (request_head, result) {
-    send_child_message('db_response', { result }, { cause: request_head })
+    send_child_message('db_response', { cause: request_head }, { result })
   }
 }
 
@@ -5634,7 +5690,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/graph_explorer_wrapper/graph_explorer_wrapper.js")
-},{"./graphdb":13,"STATE":1,"graph-explorer":2,"net_helper":17}],13:[function(require,module,exports){
+},{"./graphdb":14,"STATE":3,"graph-explorer":1,"net_helper":18}],14:[function(require,module,exports){
 module.exports = graphdb
 
 function graphdb (entries) {
@@ -5663,7 +5719,7 @@ function graphdb (entries) {
   function raw () { return entries }
 }
 
-},{}],14:[function(require,module,exports){
+},{}],15:[function(require,module,exports){
 module.exports = { resource }
 
 function resource (timeout = 1000) {
@@ -5689,7 +5745,7 @@ function resource (timeout = 1000) {
   }
 }
 
-},{}],15:[function(require,module,exports){
+},{}],16:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5739,16 +5795,16 @@ async function input_test (opts, invite) {
     })
 
     if (input_field_el.value.length >= 10) {
-      _.up('action_submitted', {
+      _.up('action_submitted', {}, {
         value: input_field_el.value,
         index: current_step.index !== undefined ? current_step.index : 0
-      }, {})
+      })
       console.log('mark_as_complete')
     } else {
-      _.up('action_incomplete', {
+      _.up('action_incomplete', {}, {
         value: input_field_el.value,
         index: current_step.index !== undefined ? current_step.index : 0
-      }, {})
+      })
     }
   }
 
@@ -5902,7 +5958,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/input_test/input_test.js")
-},{"STATE":1,"net_helper":17}],16:[function(require,module,exports){
+},{"STATE":3,"net_helper":18}],17:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -6184,7 +6240,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/menu/menu.js")
-},{"STATE":1}],17:[function(require,module,exports){
+},{"STATE":3}],18:[function(require,module,exports){
 (function (__filename){(function (){
 module.exports = net
 
@@ -6233,7 +6289,7 @@ function net (id) {
     const state = { name, to, mid: 0 }
     _[name] = send
     $[to] = { rx, tx, state }
-    function send (type, data = [], refs = {}) {
+    function send (type, refs = {}, data = null) {
       const head = [id, to, state.mid++]
       const meta = { time: Date.now(), stack: (new Error().stack) }
       tx({ head, refs, type, data, meta })
@@ -6243,7 +6299,7 @@ function net (id) {
 }
 
 }).call(this)}).call(this,"/src/node_modules/net_helper/net_helper.js")
-},{}],18:[function(require,module,exports){
+},{}],19:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -6359,7 +6415,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/program/program.js")
-},{"STATE":1,"form_input":10,"form_tile_split_choice":11,"input_test":15,"net_helper":17}],19:[function(require,module,exports){
+},{"STATE":3,"form_input":11,"form_tile_split_choice":12,"input_test":16,"net_helper":18}],20:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -6454,7 +6510,7 @@ async function program_container (opts, invite) {
     graph_explorer_el.classList.add('hide')
 
     // Send message to root to set doc display handler
-    _.up('set_doc_display_handler', { callback: on_doc_display }, {})
+    _.up('set_doc_display_handler', {}, { callback: on_doc_display })
   }
 
   if (!invite) {
@@ -6568,14 +6624,14 @@ async function program_container (opts, invite) {
   function on_doc_display (display_data) {
     const { content, sid } = display_data
     docs_window_el.classList.remove('hide')
-    _.docs_window('display_doc', { content, sid })
+    _.docs_window('display_doc', {}, { content, sid })
   }
 
   // ---------
   // PROTOCOLS
   // ---------
 
-  function console_history_protocol (msg) { _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
+  function console_history_protocol (msg) { _.up(msg.type, msg.head ? { cause: msg.head } : {}, msg.data) }
 
   function actions_protocol (msg) {
     const action_handlers = {
@@ -6587,19 +6643,19 @@ async function program_container (opts, invite) {
     const handler = action_handlers[msg.type] || actions_forward_up
     handler(msg)
 
-    function actions_forward_up (msg) { _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
+    function actions_forward_up (msg) { _.up(msg.type, msg.head ? { cause: msg.head } : {}, msg.data) }
   }
 
   function actions_selected_action (msg) {
     const { data } = msg
-    _.up('update_quick_actions_input', data, msg.head ? { cause: msg.head } : {})
+    _.up('update_quick_actions_input', msg.head ? { cause: msg.head } : {}, data)
   }
 
-  function actions_ui_focus_docs (msg) { _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
+  function actions_ui_focus_docs (msg) { _.up(msg.type, msg.head ? { cause: msg.head } : {}, msg.data) }
 
-  function tabbed_editor_protocol (msg) { _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
+  function tabbed_editor_protocol (msg) { _.up(msg.type, msg.head ? { cause: msg.head } : {}, msg.data) }
 
-  function graph_explorer_protocol (msg) { _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
+  function graph_explorer_protocol (msg) { _.up(msg.type, msg.head ? { cause: msg.head } : {}, msg.data) }
 
   function docs_window_protocol (msg) {
     const action_handlers = {
@@ -6607,7 +6663,7 @@ async function program_container (opts, invite) {
     }
     const handler = action_handlers[msg.type] || docs_window_noop
     handler(msg)
-    _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {})
+    _.up(msg.type, msg.head ? { cause: msg.head } : {}, msg.data)
 
     function docs_window_close_docs () { docs_window_el.classList.add('hide') }
     function docs_window_noop () {}
@@ -6634,28 +6690,28 @@ async function program_container (opts, invite) {
     function onmessage_console_history_toggle () { console_history_toggle_view() }
     function onmessage_graph_explorer_toggle () { graph_explorer_toggle_view() }
     function onmessage_display_actions (msg) { actions_toggle_view(msg.data) }
-    function onmessage_filter_actions (msg) { _.actions(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
-    function onmessage_tab_close_clicked (msg) { _.tabbed_editor('close_tab', msg.data, msg.head ? { cause: msg.head } : {}) }
-    function onmessage_entry_toggled (msg) { _.graph_explorer(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
+    function onmessage_filter_actions (msg) { _.actions(msg.type, msg.head ? { cause: msg.head } : {}, msg.data) }
+    function onmessage_tab_close_clicked (msg) { _.tabbed_editor('close_tab', msg.head ? { cause: msg.head } : {}, msg.data) }
+    function onmessage_entry_toggled (msg) { _.graph_explorer(msg.type, msg.head ? { cause: msg.head } : {}, msg.data) }
     function onmessage_execute_step (msg) {
       if (!msg.data || !Array.isArray(msg.data.commands) || msg.data.commands.length === 0) return
       set_panel_visibility(graph_explorer_el, true)
       graph_explorer_view = true
       update_program_layout()
-      _.graph_explorer(msg.type, msg.data, msg.head ? { cause: msg.head } : {})
+      _.graph_explorer(msg.type, msg.head ? { cause: msg.head } : {}, msg.data)
     }
-    function onmessage_send_actions (msg) { _.actions(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
+    function onmessage_send_actions (msg) { _.actions(msg.type, msg.head ? { cause: msg.head } : {}, msg.data) }
     function onmessage_tab_name_clicked (msg) {
       tabbed_editor_toggle_view(true)
-      _.tabbed_editor('toggle_tab', msg.data, msg.head ? { cause: msg.head } : {})
+      _.tabbed_editor('toggle_tab', msg.head ? { cause: msg.head } : {}, msg.data)
     }
     function onmessage_switch_tab (msg) {
       tabbed_editor_toggle_view(true)
-      _.tabbed_editor(msg.type, msg.data, msg.head ? { cause: msg.head } : {})
+      _.tabbed_editor(msg.type, msg.head ? { cause: msg.head } : {}, msg.data)
     }
     function onmessage_display_doc (msg) {
       docs_window_el.classList.remove('hide')
-      _.docs_window(msg.type, msg.data, msg.head ? { cause: msg.head } : {})
+      _.docs_window(msg.type, msg.head ? { cause: msg.head } : {}, msg.data)
     }
   }
 }
@@ -6869,7 +6925,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/program_container/program_container.js")
-},{"STATE":1,"actions":7,"console_history":8,"docs_window":9,"graph_explorer_wrapper":12,"net_helper":17,"tabbed_editor":24}],20:[function(require,module,exports){
+},{"STATE":3,"actions":8,"console_history":9,"docs_window":10,"graph_explorer_wrapper":13,"net_helper":18,"tabbed_editor":25}],21:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -6969,16 +7025,16 @@ async function quick_actions (opts, invite) {
   }
 
   function onsubmit () {
-    _.up('action_submitted', null, {})
+    _.up('action_submitted', {}, null)
   }
 
   function onconfirm () {
-    _.up('activate_steps_wizard', stored_selected_action, {})
+    _.up('activate_steps_wizard', {}, stored_selected_action)
   }
   function oninput (e) {
     const value = e.target.value
     if (enable_input_field_tooltips) update_input_tooltip(value)
-    _.up('filter_actions', value, {})
+    _.up('filter_actions', {}, value)
   }
 
   function update_input_display (selected_action = null) {
@@ -6986,7 +7042,7 @@ async function quick_actions (opts, invite) {
       action_selected = true
       slash_prefix.style.display = 'inline'
       command_text.style.display = 'inline'
-      command_text.textContent = `#${selected_action.action}`
+      command_text.textContent = `#${selected_action.name}`
       current_step.textContent = selected_action.current_step ? selected_action.current_step : 1
       total_steps.textContent = selected_action.total_steps ? selected_action.total_steps : 1
       step_display.style.display = 'inline-flex'
@@ -7017,7 +7073,7 @@ async function quick_actions (opts, invite) {
 
     if (enable_input_field_tooltips) update_input_tooltip('')
 
-    _.up('display_actions', { display: 'block', reason: 'browse' }, {})
+    _.up('display_actions', {}, { display: 'block', reason: 'browse' })
   }
 
   function onmessage (msg) {
@@ -7047,7 +7103,7 @@ async function quick_actions (opts, invite) {
     update_input_display()
     hide_input_tooltip()
 
-    _.up('display_actions', { display: 'none', reason }, {})
+    _.up('display_actions', {}, { display: 'none', reason })
   }
 
   function show_submit_btn () {
@@ -7095,6 +7151,7 @@ async function quick_actions (opts, invite) {
   function onactions (data) {
     const vars = typeof data[0] === 'string' ? JSON.parse(data[0]) : data[0]
     defaults = vars
+    if (defaults.length > 0) docs.register_actions(defaults)
     create_default_actions(defaults)
   }
 
@@ -7129,7 +7186,7 @@ async function quick_actions (opts, invite) {
     function on_action_btn_mouseenter () { show_tooltip(btn, action.name) }
 
     function onclick () {
-      _.up('update_quick_actions_input', action.name, {})
+      _.up('update_quick_actions_input', {}, action)
     }
   }
 
@@ -7204,25 +7261,27 @@ async function quick_actions (opts, invite) {
 
     if (matching_action) {
       const pass_data = {
-        action: matching_action.name,
+        name: matching_action.name,
         current_step: 1,
-        total_steps: matching_action.total_steps || 1
+        total_steps: matching_action.steps ? matching_action.steps.length : 1
       }
       update_input_display(pass_data)
     } else {
-      // TODO: Strictly handle this case
       const pass_data = {
-        action: command.action,
+        name: typeof command === 'string' ? command : command.name,
         current_step: 1,
         total_steps: 3
       }
       update_input_display(pass_data)
     }
 
-    _.up('display_actions', { display: 'none', reason: 'selected' }, {})
-    _.up('activate_steps_wizard', stored_selected_action, {})
+    _.up('display_actions', {}, { display: 'none', reason: 'selected' })
+    _.up('activate_steps_wizard', {}, stored_selected_action)
 
-    function matches_selected_command (action) { return action.name === command || action.action === command }
+    function matches_selected_command (action) {
+      const target = typeof command === 'string' ? command : command?.name
+      return action.name === target
+    }
   }
 
   function show_tooltip (btn, name) {
@@ -7544,7 +7603,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/quick_actions/quick_actions.js")
-},{"DOCS":4,"STATE":1,"net_helper":17}],21:[function(require,module,exports){
+},{"DOCS":5,"STATE":3,"net_helper":18}],22:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -7988,7 +8047,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/quick_editor/quick_editor.js")
-},{"STATE":1,"helpers":14}],22:[function(require,module,exports){
+},{"STATE":3,"helpers":15}],23:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -8006,7 +8065,6 @@ async function steps_wizard (opts, invite) {
     style: inject
   }
 
-  let variables = []
   let currentActiveStep = 0
   const docs = DOCS(__filename)(opts.sid)
   const { io, _ } = net(id)
@@ -8030,34 +8088,12 @@ async function steps_wizard (opts, invite) {
   const steps_entries = shadow.querySelector('.steps-slot')
   await sdb.watch(onbatch)
 
-  // for demo purpose
-  render_steps([
-    { name: 'Optional Step', type: 'optional', is_completed: false, component: 'form_input', status: 'default', data: '' },
-    { name: 'Split Tile', type: 'mandatory', is_completed: false, component: 'form_tile_split_choice', status: 'default', data: '' },
-    { name: 'Step 3', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
-    { name: 'Step 4', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
-    { name: 'Step 5', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' }
-  ], false)
-
   return el
 
   function onmessage ({ type, data }) {
     // docs_toggle handled globally by DOCS module
-    if (type === 'init_data') {
-      // If data contains steps from the new action format, use them
-      if (data) {
-        render_steps(data, true)
-      } else {
-        // Fallback to default steps
-        variables = [
-          { name: 'Optional Step', type: 'optional', is_completed: false, component: 'form_input', status: 'default', data: '' },
-          { name: 'Split Tile', type: 'mandatory', is_completed: false, component: 'form_tile_split_choice', status: 'default', data: '' },
-          { name: 'Step 3', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: 'asdasd' },
-          { name: 'Step 4', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' },
-          { name: 'Step 5', type: 'mandatory', is_completed: false, component: 'form_input', status: 'default', data: '' }
-        ]
-        render_steps(variables, true)
-      }
+    if (type === 'init_data' && data) {
+      render_steps(data, true)
     }
   }
 
@@ -8106,7 +8142,7 @@ async function steps_wizard (opts, invite) {
         currentActiveStep = index
         center_step(btn)
         render_steps(steps, false)
-        _.up('step_clicked', { ...step, index, total_steps: steps.length, is_accessible: accessible }, {})
+        _.up('step_clicked', {}, { ...step, index, total_steps: steps.length, is_accessible: accessible })
       }
 
       async function get_doc_content () {
@@ -8119,7 +8155,7 @@ async function steps_wizard (opts, invite) {
       if (auto_focus_first && index === 0) {
         btn.classList.add('active')
         center_step(btn)
-        _.up('step_clicked', { ...step, index: 0, total_steps: steps.length, is_accessible: accessible }, {})
+        _.up('step_clicked', {}, { ...step, index: 0, total_steps: steps.length, is_accessible: accessible })
       }
     }
   }
@@ -8202,7 +8238,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/steps_wizard/steps_wizard.js")
-},{"DOCS":4,"STATE":1,"net_helper":17}],23:[function(require,module,exports){
+},{"DOCS":5,"STATE":3,"net_helper":18}],24:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -8330,22 +8366,22 @@ async function tab_group (opts, invite) {
     function update_quick_actions_for_app (msg) {
       console.error('tab_group: forwarding to action_bar', msg.type)
       const refs = msg.head ? { cause: msg.head } : {}
-      _.action_bar?.(msg.type, msg.data, refs)
+      _.action_bar?.(msg.type, refs, msg.data)
     }
     function update_steps_wizard_for_app (msg) {
       console.error('tab_group: forwarding to action_executor', msg.type)
       const refs = msg.head ? { cause: msg.head } : {}
-      _.action_executor?.(msg.type, msg.data, refs)
+      _.action_executor?.(msg.type, refs, msg.data)
     }
     function forward_to_program_container (msg) {
       console.error('tab_group: forwarding to program_container', msg.type)
       const refs = msg.head ? { cause: msg.head } : {}
-      _.program_container?.(msg.type, msg.data, refs)
+      _.program_container?.(msg.type, refs, msg.data)
     }
     function create_default_tab (msg) {
       console.error('tab_group: creating default tab', msg.data)
       const refs = msg.head ? { cause: msg.head } : {}
-      _.tabs?.('add_default_tab', msg.data, refs)
+      _.tabs?.('add_default_tab', refs, msg.data)
     }
     function onfail (msg) { console.error('tab_group: unknown root message', msg) }
   }
@@ -8358,7 +8394,7 @@ async function tab_group (opts, invite) {
     return function onmessage (msg) {
       console.error('tab_group: tabs_protocol', msg.type, msg.data)
       const refs = msg.head ? { cause: msg.head } : {}
-      _.up(msg.type, msg.data, refs)
+      _.up(msg.type, refs, msg.data)
     }
   }
 
@@ -8374,7 +8410,7 @@ async function tab_group (opts, invite) {
     }
     function forward (msg) {
       const refs = msg.head ? { cause: msg.head } : {}
-      _.up(msg.type, msg.data, refs)
+      _.up(msg.type, refs, msg.data)
     }
     function onfail (msg) { console.error('tab_group: unhandled program_container msg', msg) }
   }
@@ -8400,11 +8436,11 @@ async function tab_group (opts, invite) {
     }
     function to_executor (msg) {
       const refs = msg.head ? { cause: msg.head } : {}
-      _.action_executor?.(msg.type, msg.data, refs)
+      _.action_executor?.(msg.type, refs, msg.data)
     }
     function to_up (msg) {
       const refs = msg.head ? { cause: msg.head } : {}
-      _.up(msg.type, msg.data, refs)
+      _.up(msg.type, refs, msg.data)
     }
     function onfail (msg) { console.error('tab_group: unhandled action_bar msg', msg) }
   }
@@ -8429,16 +8465,16 @@ async function tab_group (opts, invite) {
     }
     function to_action_bar (msg) {
       const refs = msg.head ? { cause: msg.head } : {}
-      _.action_bar?.(msg.type, msg.data, refs)
+      _.action_bar?.(msg.type, refs, msg.data)
     }
     function to_up (msg) {
       const refs = msg.head ? { cause: msg.head } : {}
-      _.up(msg.type, msg.data, refs)
+      _.up(msg.type, refs, msg.data)
     }
     function to_up_and_bar (msg) {
       const refs = msg.head ? { cause: msg.head } : {}
-      _.action_bar?.('action_submitted', msg.data, refs)
-      _.up(msg.type, msg.data, refs)
+      _.action_bar?.('action_submitted', refs, msg.data)
+      _.up(msg.type, refs, msg.data)
     }
     function onfail (msg) { console.error('tab_group: unhandled action_executor msg', msg) }
   }
@@ -8533,7 +8569,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tab_group/tab_group.js")
-},{"STATE":1,"action_bar":5,"action_executor":6,"net_helper":17,"program_container":19,"tabs":25}],24:[function(require,module,exports){
+},{"STATE":3,"action_bar":6,"action_executor":7,"net_helper":18,"program_container":20,"tabs":26}],25:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -8603,7 +8639,7 @@ async function tabbed_editor (opts, invite) {
 
     active_tab = tab_data.id
     create_editor(tab_data)
-    _.up('tab_switched', tab_data, msg?.head ? { cause: msg.head } : {})
+    _.up('tab_switched', msg?.head ? { cause: msg.head } : {}, tab_data)
   }
 
   function toggle_tab (tab_data, msg) {
@@ -8621,7 +8657,7 @@ async function tabbed_editor (opts, invite) {
       active_tab = null
     }
 
-    _.up('tab_closed', tab_data, msg.head ? { cause: msg.head } : {})
+    _.up('tab_closed', msg.head ? { cause: msg.head } : {}, tab_data)
   }
 
   function create_editor (tab_data) {
@@ -8677,10 +8713,10 @@ async function tabbed_editor (opts, invite) {
 
     const { code_area, tab_data } = current_editor
     files[tab_data.id] = code_area.value
-    _.up('file_changed', {
+    _.up('file_changed', {}, {
       id: tab_data.id,
       content: code_area.value
-    }, {})
+    })
   }
 
   async function onbatch (batch) {
@@ -8944,7 +8980,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabbed_editor/tabbed_editor.js")
-},{"STATE":1,"net_helper":17}],25:[function(require,module,exports){
+},{"STATE":3,"net_helper":18}],26:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -9095,7 +9131,7 @@ async function component (opts, invite) {
       el.classList.add('active')
       active = el
       const data = { id: tab_id, name, program }
-      _.up('tab_name_clicked', data, {})
+      _.up('tab_name_clicked', {}, data)
     }
     function close_tab (e) {
       e.stopPropagation()
@@ -9103,9 +9139,9 @@ async function component (opts, invite) {
       el.remove()
       delete default_tabs[tab_id]
       if (active === el) active = null
-      _.up('tab_close_clicked', { id: tab_id, name }, {})
+      _.up('tab_close_clicked', {}, { id: tab_id, name })
       if (Object.keys(default_tabs).length === 0) {
-        _.up('all_tabs_closed', null, {})
+        _.up('all_tabs_closed', {}, null)
       }
     }
   }
@@ -9129,7 +9165,7 @@ async function component (opts, invite) {
 
     function on_link_tab_click () {
       console.error('tabs: link tab clicked', link_tab_id)
-      _.up('link_tab_clicked', { tile_id, link_tab_id }, {})
+      _.up('link_tab_clicked', {}, { tile_id, link_tab_id })
     }
   }
 
@@ -9162,14 +9198,14 @@ async function component (opts, invite) {
 
     async function on_tab_name_click () {
       const data = { type: 'tab', sid: opts.sid }
-      _.up('ui_focus', data, {})
-      _.up('tab_name_clicked', { id, name }, {})
+      _.up('ui_focus', {}, data)
+      _.up('tab_name_clicked', {}, { id, name })
     }
     async function on_tab_close_click (e) {
       e.stopPropagation()
       const data = { type: 'tab', sid: opts.sid }
-      _.up('ui_focus', data, {})
-      _.up('tab_close_clicked', { id, name }, {})
+      _.up('ui_focus', {}, data)
+      _.up('tab_close_clicked', {}, { id, name })
     }
     async function get_doc_content () {
       const doc_file = await drive.get('docs/README.md')
@@ -9323,7 +9359,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabs/tabs.js")
-},{"DOCS":4,"STATE":1,"net_helper":17}],26:[function(require,module,exports){
+},{"DOCS":5,"STATE":3,"net_helper":18}],27:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const state_db = STATE(__filename)
@@ -9374,7 +9410,7 @@ async function tabsbar (opts, invite) {
       type: 'wizard_hat',
       sid: opts.sid
     }
-    _.up('ui_focus', data, {})
+    _.up('ui_focus', {}, data)
   }
 
   shadow.innerHTML = `
@@ -9411,11 +9447,11 @@ async function tabsbar (opts, invite) {
     function on_bar_btn_click () {
       docs_toggle_active = !docs_toggle_active
       // Send message to root module to set docs mode
-      _.up('set_docs_mode', { active: docs_toggle_active }, {})
+      _.up('set_docs_mode', {}, { active: docs_toggle_active })
       // Also send docs_toggle notification for UI updates
-      _.up('docs_toggle', { active: docs_toggle_active }, {})
+      _.up('docs_toggle', {}, { active: docs_toggle_active })
       bar_btn.classList.toggle('active', docs_toggle_active)
-      _.task_manager('docs_toggle', { active: docs_toggle_active }, {})
+      _.task_manager('docs_toggle', {}, { active: docs_toggle_active })
     }
   }
   const tabs = await tabs_component({ ...subs[0] }, io.invite('tabs', { up: id }))
@@ -9438,23 +9474,23 @@ async function tabsbar (opts, invite) {
       type: 'wizard_hat',
       sid: opts.sid
     }
-    _.up('ui_focus', data, {})
+    _.up('ui_focus', {}, data)
   }
   function onmessage (msg) {
     const handler = on_message[msg.type] || onmessage_fail
     handler(msg)
   }
 
-  function handle_docs_toggle (msg) { _.tabs(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
-  function handle_forward_tabs (msg) { _.tabs(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
+  function handle_docs_toggle (msg) { _.tabs(msg.type, msg.head ? { cause: msg.head } : {}, msg.data) }
+  function handle_forward_tabs (msg) { _.tabs(msg.type, msg.head ? { cause: msg.head } : {}, msg.data) }
 
   function onmessage_fail () {
     // Handle other message types
   }
 
-  function tabs_protocol (msg) { _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
+  function tabs_protocol (msg) { _.up(msg.type, msg.head ? { cause: msg.head } : {}, msg.data) }
 
-  function task_manager_protocol (msg) { _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
+  function task_manager_protocol (msg) { _.up(msg.type, msg.head ? { cause: msg.head } : {}, msg.data) }
 
   async function onbatch (batch) {
     for (const { type, paths } of batch) {
@@ -9736,7 +9772,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabsbar/tabsbar.js")
-},{"DOCS":4,"STATE":1,"net_helper":17,"tabs":25,"task_manager":27}],27:[function(require,module,exports){
+},{"DOCS":5,"STATE":3,"net_helper":18,"tabs":26,"task_manager":28}],28:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -9790,7 +9826,7 @@ async function task_manager (opts, invite) {
         type: 'task_manager',
         sid: opts.sid
       }
-      _.up('ui_focus', data, {})
+      _.up('ui_focus', {}, data)
     }
   }
 
@@ -9924,7 +9960,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/task_manager/task_manager.js")
-},{"DOCS":4,"STATE":1,"net_helper":17}],28:[function(require,module,exports){
+},{"DOCS":5,"STATE":3,"net_helper":18}],29:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -10030,8 +10066,8 @@ async function taskbar (opts, invite) {
     const handler = action_handlers[msg.type] || action_bar_forward_up
     handler(msg)
 
-    function action_bar_forward_action_executor (msg) { _.action_executor(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
-    function action_bar_forward_up (msg) { _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
+    function action_bar_forward_action_executor (msg) { _.action_executor(msg.type, msg.head ? { cause: msg.head } : {}, msg.data) }
+    function action_bar_forward_up (msg) { _.up(msg.type, msg.head ? { cause: msg.head } : {}, msg.data) }
   }
 
   function action_executor_protocol (msg) {
@@ -10045,12 +10081,12 @@ async function taskbar (opts, invite) {
     }
     const handler = action_handlers[msg.type] || action_executor__noop
     handler(msg)
-    _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {})
+    _.up(msg.type, msg.head ? { cause: msg.head } : {}, msg.data)
 
-    function action_executor__forward_action_bar (msg) { _.action_bar(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
+    function action_executor__forward_action_bar (msg) { _.action_bar(msg.type, msg.head ? { cause: msg.head } : {}, msg.data) }
     function action_executor__noop () {}
 
-    function action_executor__auto_completed (msg) { _.action_bar('action_submitted', msg.data, msg.head ? { cause: msg.head } : {}) }
+    function action_executor__auto_completed (msg) { _.action_bar('action_submitted', msg.head ? { cause: msg.head } : {}, msg.data) }
   }
 
   function tabsbar_protocol (msg) {
@@ -10061,14 +10097,14 @@ async function taskbar (opts, invite) {
     }
     const handler = action_handlers[msg.type] || tabsbar__noop
     handler(msg)
-    _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {})
+    _.up(msg.type, msg.head ? { cause: msg.head } : {}, msg.data)
 
     function tabsbar_docs_toggle (msg) {
-      _.action_bar(msg.type, msg.data, msg.head ? { cause: msg.head } : {})
-      _.action_executor(msg.type, msg.data, msg.head ? { cause: msg.head } : {})
+      _.action_bar(msg.type, msg.head ? { cause: msg.head } : {}, msg.data)
+      _.action_executor(msg.type, msg.head ? { cause: msg.head } : {}, msg.data)
     }
 
-    function tabsbar_forward_up (msg) { _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
+    function tabsbar_forward_up (msg) { _.up(msg.type, msg.head ? { cause: msg.head } : {}, msg.data) }
     function tabsbar__noop () {}
   }
 
@@ -10077,15 +10113,15 @@ async function taskbar (opts, invite) {
     handler(msg)
   }
 
-  function handle_update_steps_wizard_for_app (msg) { _.action_executor(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
-  function handle_docs_toggle (msg) { _.action_bar(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
-  function handle_load_actions (msg) { _.action_bar(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
-  function handle_step_clicked (msg) { _.action_bar(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
-  function handle_update_quick_actions_for_app (msg) { _.action_bar(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
-  function handle_update_quick_actions_input (msg) { _.action_bar(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
-  function handle_submit_btn_toggle (msg) { _.action_bar(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
-  function handle_forward_tabsbar (msg) { _.tabsbar(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
-  function onmessage_forward_action_bar (msg) { _.action_bar(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
+  function handle_update_steps_wizard_for_app (msg) { _.action_executor(msg.type, msg.head ? { cause: msg.head } : {}, msg.data) }
+  function handle_docs_toggle (msg) { _.action_bar(msg.type, msg.head ? { cause: msg.head } : {}, msg.data) }
+  function handle_load_actions (msg) { _.action_bar(msg.type, msg.head ? { cause: msg.head } : {}, msg.data) }
+  function handle_step_clicked (msg) { _.action_bar(msg.type, msg.head ? { cause: msg.head } : {}, msg.data) }
+  function handle_update_quick_actions_for_app (msg) { _.action_bar(msg.type, msg.head ? { cause: msg.head } : {}, msg.data) }
+  function handle_update_quick_actions_input (msg) { _.action_bar(msg.type, msg.head ? { cause: msg.head } : {}, msg.data) }
+  function handle_submit_btn_toggle (msg) { _.action_bar(msg.type, msg.head ? { cause: msg.head } : {}, msg.data) }
+  function handle_forward_tabsbar (msg) { _.tabsbar(msg.type, msg.head ? { cause: msg.head } : {}, msg.data) }
+  function onmessage_forward_action_bar (msg) { _.action_bar(msg.type, msg.head ? { cause: msg.head } : {}, msg.data) }
 }
 
 function fallback_module () {
@@ -10202,7 +10238,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/taskbar/taskbar.js")
-},{"STATE":1,"action_bar":5,"action_executor":6,"net_helper":17,"tabsbar":26}],29:[function(require,module,exports){
+},{"STATE":3,"action_bar":6,"action_executor":7,"net_helper":18,"tabsbar":27}],30:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -10294,18 +10330,18 @@ async function theme_widget (opts, invite) {
     handler(msg)
 
     function root_update_actions_for_app (msg) {
-      if (_.program_container) _.program_container(msg.type, msg.data, msg.head ? { cause: msg.head } : {})
+      if (_.program_container) _.program_container(msg.type, msg.head ? { cause: msg.head } : {}, msg.data)
       else setTimeout(root_retry_send_program_container, 500, msg)
     }
 
-    function root_retry_send_program_container (msg) { _.program_container(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
-    function root_forward_taskbar (msg) { _.taskbar(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
+    function root_retry_send_program_container (msg) { _.program_container(msg.type, msg.head ? { cause: msg.head } : {}, msg.data) }
+    function root_forward_taskbar (msg) { _.taskbar(msg.type, msg.head ? { cause: msg.head } : {}, msg.data) }
   }
 
   // Inline focus tracker: handles ui_focus messages from children
   function handle_ui_focus (msg) {
     if (last_focused !== msg.data.type) {
-      _.up('focused_app_changed', msg.data, {})
+      _.up('focused_app_changed', {}, msg.data)
     }
     drive.put('focused/current.json', { value: msg.data.type })
   }
@@ -10324,8 +10360,8 @@ async function theme_widget (opts, invite) {
     handler(msg)
 
     function program_container_forward_ui_focus (msg) { handle_ui_focus(msg) }
-    function program_container_forward_up (msg) { _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
-    function program_container_forward_taskbar (msg) { _.taskbar(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
+    function program_container_forward_up (msg) { _.up(msg.type, msg.head ? { cause: msg.head } : {}, msg.data) }
+    function program_container_forward_taskbar (msg) { _.taskbar(msg.type, msg.head ? { cause: msg.head } : {}, msg.data) }
   }
 
   function taskbar_protocol (msg) {
@@ -10342,9 +10378,9 @@ async function theme_widget (opts, invite) {
     handler(msg)
 
     function taskbar_forward_ui_focus (msg) { handle_ui_focus(msg) }
-    function taskbar_forward_up (msg) { _.up(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
-    function taskbar_forward_program_container (msg) { _.program_container(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
-    function taskbar_docs_toggle (msg) { _.program_container(msg.type, msg.data, msg.head ? { cause: msg.head } : {}) }
+    function taskbar_forward_up (msg) { _.up(msg.type, msg.head ? { cause: msg.head } : {}, msg.data) }
+    function taskbar_forward_program_container (msg) { _.program_container(msg.type, msg.head ? { cause: msg.head } : {}, msg.data) }
+    function taskbar_docs_toggle (msg) { _.program_container(msg.type, msg.head ? { cause: msg.head } : {}, msg.data) }
   }
 }
 
@@ -10475,7 +10511,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/theme_widget/theme_widget.js")
-},{"STATE":1,"net_helper":17,"program_container":19,"taskbar":28}],30:[function(require,module,exports){
+},{"STATE":3,"net_helper":18,"program_container":20,"taskbar":29}],31:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -10682,7 +10718,7 @@ async function tile_manager (opts, invite) {
       }
 
       const refs = msg.head ? { cause: msg.head } : {}
-      _.up?.(type, data, refs)
+      _.up?.(type, refs, data)
     }
   }
 
@@ -10717,16 +10753,16 @@ async function tile_manager (opts, invite) {
 
     const new_tile_send = _[`tile_${new_tile_id}`]
     if (new_tile_send) {
-      new_tile_send('create_default_tab', {
+      new_tile_send('create_default_tab', {}, {
         name: 'New Tab',
         program: 'text_editor'
-      }, {})
+      })
     }
 
     const root_tile_send = _.tile_0
     if (root_tile_send) {
       console.error('tile_manager: sending add_link_tab to root tile')
-      root_tile_send('add_link_tab', { tile_id: new_tile_id, direction, name: 'Split ' + direction }, {})
+      root_tile_send('add_link_tab', {}, { tile_id: new_tile_id, direction, name: 'Split ' + direction })
     }
 
     console.error('tile_manager: split complete', layout.direction, layout.tiles.length, 'tiles')
@@ -10755,7 +10791,7 @@ async function tile_manager (opts, invite) {
     const root_tile_send = _.tile_0
     if (root_tile_send) {
       console.error('tile_manager: sending remove_link_tab to root tile')
-      root_tile_send('remove_link_tab', { tile_id: tile_id_to_remove }, {})
+      root_tile_send('remove_link_tab', {}, { tile_id: tile_id_to_remove })
     }
 
     console.error('tile_manager: merge complete, tiles remaining:', layout.tiles.length)
@@ -10793,7 +10829,7 @@ async function tile_manager (opts, invite) {
     for (const [type, data] of Object.entries(cached_actions)) {
       if (data !== null) {
         console.error('tile_manager: sending cached', type, 'to tile_' + tile_id)
-        send(type, data, {})
+        send(type, {}, data)
       }
     }
   }
@@ -10818,7 +10854,7 @@ async function tile_manager (opts, invite) {
       const refs = msg.head ? { cause: msg.head } : {}
       for (const tile of layout.tiles) {
         const send = _[`tile_${tile.id}`]
-        if (send) send(type, data, refs)
+        if (send) send(type, refs, data)
       }
     }
   }
@@ -10918,7 +10954,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tile_manager/tile_manager.js")
-},{"STATE":1,"net_helper":17,"tab_group":23,"theme_widget":29}],31:[function(require,module,exports){
+},{"STATE":3,"net_helper":18,"tab_group":24,"theme_widget":30}],32:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -11118,35 +11154,16 @@ async function ui_gallery (opts = {}) {
       }
 
       const refs = msg.head ? { cause: msg.head } : {}
-      send.theme_widget('update_actions_for_app', actions_data, refs)
-      send.theme_widget('update_quick_actions_for_app', quick_actions_data, refs)
-      send.theme_widget('update_steps_wizard_for_app', steps_wizard_data, refs)
+      send.theme_widget('update_actions_for_app', refs, actions_data)
+      send.theme_widget('update_quick_actions_for_app', refs, quick_actions_data)
+      send.theme_widget('update_steps_wizard_for_app', refs, steps_wizard_data)
     }
 
     async function get_component_actions (data) {
-      const result_actions = []
-      const result_quick_actions = []
-
-      data.forEach(add_action_entry)
-
       return {
-        actions: result_actions,
-        quick_actions: result_quick_actions,
+        actions: data,
+        quick_actions: data,
         steps_wizard: data
-      }
-
-      function add_action_entry (entry) {
-        result_actions.push({
-          action: entry.name,
-          icon: entry.icon,
-          pinned: entry.status.pinned,
-          default: entry.status.default
-        })
-        result_quick_actions.push({
-          name: entry.name,
-          icon: entry.icon,
-          total_steps: entry.steps.length
-        })
       }
     }
   }
@@ -11782,7 +11799,7 @@ function handle_admin_message (msg) {
 }
 
 }).call(this)}).call(this,"/src/node_modules/ui_gallery/index.js")
-},{"DOCS":4,"STATE":1,"action_bar":5,"action_executor":6,"actions":7,"console_history":8,"graph_explorer_wrapper":12,"helpers":14,"menu":16,"net_helper":17,"program_container":19,"quick_actions":20,"quick_editor":21,"steps_wizard":22,"tabbed_editor":24,"tabs":25,"tabsbar":26,"task_manager":27,"taskbar":28,"theme_widget":29,"tile_manager":30}],32:[function(require,module,exports){
+},{"DOCS":5,"STATE":3,"action_bar":6,"action_executor":7,"actions":8,"console_history":9,"graph_explorer_wrapper":13,"helpers":15,"menu":17,"net_helper":18,"program_container":20,"quick_actions":21,"quick_editor":22,"steps_wizard":23,"tabbed_editor":25,"tabs":26,"tabsbar":27,"task_manager":28,"taskbar":29,"theme_widget":30,"tile_manager":31}],33:[function(require,module,exports){
 const ui_gallery = require('../src/index')
 config().then(boot_default_page)
 
@@ -11802,4 +11819,4 @@ async function config () {
 async function boot_default_page () {
   document.body.append(await ui_gallery())
 }
-},{"../src/index":3}]},{},[32]);
+},{"../src/index":4}]},{},[33]);
