@@ -1,4 +1,6 @@
 (function(){function r(e,n,t){function o(i,f){if(!n[i]){if(!e[i]){var c="function"==typeof require&&require;if(!f&&c)return c(i,!0);if(u)return u(i,!0);var a=new Error("Cannot find module '"+i+"'");throw a.code="MODULE_NOT_FOUND",a}var p=n[i]={exports:{}};e[i][0].call(p.exports,function(r){var n=e[i][1][r];return o(n||r)},p,p.exports,r,e,n,t)}return n[i].exports}for(var u="function"==typeof require&&require,i=0;i<t.length;i++)o(t[i]);return o}return r})()({1:[function(require,module,exports){
+
+},{}],2:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -3132,7 +3134,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/node_modules/graph-explorer/lib/graph_explorer.js")
-},{"./net_helper":2,"STATE":3}],2:[function(require,module,exports){
+},{"./net_helper":3,"STATE":1}],3:[function(require,module,exports){
 (function (__filename){(function (){
 module.exports = net
 
@@ -3190,9 +3192,7 @@ function net (id) {
   }
 }
 
-}).call(this)}).call(this,"/graph-explorer/lib/net_helper/net_helper.js")
-},{}],3:[function(require,module,exports){
-
+}).call(this)}).call(this,"/node_modules/graph-explorer/lib/net_helper/net_helper.js")
 },{}],4:[function(require,module,exports){
 module.exports = require('ui_gallery')
 
@@ -3348,7 +3348,13 @@ function create_context (filename, sid) {
     on_docs_mode_change,
     register_actions: register_component_actions
   }
-  const context = admin ? (admin = false, Object.assign({ admin: { set_docs_mode, set_doc_display_handler, get_actions, list_registered } }, api)) : api
+  const admin_api = {
+    set_docs_mode,
+    set_doc_display_handler,
+    get_actions,
+    list_registered
+  }
+  const context = admin ? (admin = false, Object.assign({ admin: admin_api }, api)) : api
   return context
 
   function wrap_with_component (handler, doc) { return wrap(handler, { doc, sid, component: filename }) }
@@ -3651,7 +3657,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/action_bar/action_bar.js")
-},{"DOCS":5,"STATE":3,"net_helper":18,"quick_actions":21}],7:[function(require,module,exports){
+},{"DOCS":5,"STATE":1,"net_helper":18,"quick_actions":21}],7:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4081,7 +4087,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/action_executor/action_executor.js")
-},{"STATE":3,"net_helper":18,"program":19,"steps_wizard":23}],8:[function(require,module,exports){
+},{"STATE":1,"net_helper":18,"program":19,"steps_wizard":23}],8:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4419,7 +4425,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/actions/actions.js")
-},{"DOCS":5,"STATE":3,"net_helper":18}],9:[function(require,module,exports){
+},{"DOCS":5,"STATE":1,"net_helper":18}],9:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4838,7 +4844,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/console_history/console_history.js")
-},{"DOCS":5,"STATE":3,"net_helper":18}],10:[function(require,module,exports){
+},{"DOCS":5,"STATE":1,"net_helper":18}],10:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4985,7 +4991,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/docs_window/docs_window.js")
-},{"STATE":3,"net_helper":18}],11:[function(require,module,exports){
+},{"STATE":1,"net_helper":18}],11:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5189,7 +5195,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/form_input/form_input.js")
-},{"STATE":3,"net_helper":18}],12:[function(require,module,exports){
+},{"STATE":1,"net_helper":18}],12:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5360,7 +5366,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/form_tile_split_choice/form_tile_split_choice.js")
-},{"STATE":3,"net_helper":18}],13:[function(require,module,exports){
+},{"STATE":1,"net_helper":18}],13:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5690,7 +5696,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/graph_explorer_wrapper/graph_explorer_wrapper.js")
-},{"./graphdb":14,"STATE":3,"graph-explorer":1,"net_helper":18}],14:[function(require,module,exports){
+},{"./graphdb":14,"STATE":1,"graph-explorer":2,"net_helper":18}],14:[function(require,module,exports){
 module.exports = graphdb
 
 function graphdb (entries) {
@@ -5958,7 +5964,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/input_test/input_test.js")
-},{"STATE":3,"net_helper":18}],17:[function(require,module,exports){
+},{"STATE":1,"net_helper":18}],17:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -6240,7 +6246,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/menu/menu.js")
-},{"STATE":3}],18:[function(require,module,exports){
+},{"STATE":1}],18:[function(require,module,exports){
 (function (__filename){(function (){
 module.exports = net
 
@@ -6415,7 +6421,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/program/program.js")
-},{"STATE":3,"form_input":11,"form_tile_split_choice":12,"input_test":16,"net_helper":18}],20:[function(require,module,exports){
+},{"STATE":1,"form_input":11,"form_tile_split_choice":12,"input_test":16,"net_helper":18}],20:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -6925,7 +6931,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/program_container/program_container.js")
-},{"STATE":3,"actions":8,"console_history":9,"docs_window":10,"graph_explorer_wrapper":13,"net_helper":18,"tabbed_editor":25}],21:[function(require,module,exports){
+},{"STATE":1,"actions":8,"console_history":9,"docs_window":10,"graph_explorer_wrapper":13,"net_helper":18,"tabbed_editor":25}],21:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -7603,7 +7609,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/quick_actions/quick_actions.js")
-},{"DOCS":5,"STATE":3,"net_helper":18}],22:[function(require,module,exports){
+},{"DOCS":5,"STATE":1,"net_helper":18}],22:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -8047,7 +8053,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/quick_editor/quick_editor.js")
-},{"STATE":3,"helpers":15}],23:[function(require,module,exports){
+},{"STATE":1,"helpers":15}],23:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -8238,7 +8244,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/steps_wizard/steps_wizard.js")
-},{"DOCS":5,"STATE":3,"net_helper":18}],24:[function(require,module,exports){
+},{"DOCS":5,"STATE":1,"net_helper":18}],24:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -8276,6 +8282,7 @@ async function tab_group (opts, invite) {
   const sheet = new CSSStyleSheet()
   shadow.adoptedStyleSheets = [sheet]
 
+  const tab_group_container = shadow.querySelector('.tab-group')
   const program_container_slot = shadow.querySelector('.program-container-slot')
   const action_executor_slot = shadow.querySelector('.action-executor-slot')
   const action_bar_slot = shadow.querySelector('.action-bar-slot')
@@ -8357,7 +8364,10 @@ async function tab_group (opts, invite) {
       update_steps_wizard_for_app,
       update_actions_for_app: forward_to_program_container,
       load_actions: forward_to_program_container,
-      create_default_tab
+      create_default_tab,
+      show_collapsed_tab_group,
+      hide_collapsed_tab_group,
+      tile_focus_changed
     }
     return function onmessage (msg) {
       console.error('tab_group: message from root', msg.type)
@@ -8382,6 +8392,24 @@ async function tab_group (opts, invite) {
       console.error('tab_group: creating default tab', msg.data)
       const refs = msg.head ? { cause: msg.head } : {}
       _.tabs?.('add_default_tab', refs, msg.data)
+    }
+    function show_collapsed_tab_group (msg) {
+      console.error('tab_group: showing collapsed tab group', msg.data)
+      const refs = msg.head ? { cause: msg.head } : {}
+      _.tabs?.('show_collapsed_tab_group', refs, msg.data)
+    }
+    function hide_collapsed_tab_group (msg) {
+      console.error('tab_group: hiding collapsed tab group', msg.data)
+      const refs = msg.head ? { cause: msg.head } : {}
+      _.tabs?.('hide_collapsed_tab_group', refs, msg.data)
+    }
+    function tile_focus_changed (msg) {
+      console.error('tab_group: tile focus changed', msg.data)
+      const { is_focused } = msg.data
+      tab_group_container.classList.toggle('tile-focused', is_focused)
+      // Forward to tabs so active tab styling can update
+      const refs = msg.head ? { cause: msg.head } : {}
+      _.tabs?.('tile_focus_changed', refs, msg.data)
     }
     function onfail (msg) { console.error('tab_group: unknown root message', msg) }
   }
@@ -8569,7 +8597,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tab_group/tab_group.js")
-},{"STATE":3,"action_bar":6,"action_executor":7,"net_helper":18,"program_container":20,"tabs":26}],25:[function(require,module,exports){
+},{"STATE":1,"action_bar":6,"action_executor":7,"net_helper":18,"program_container":20,"tabs":26}],25:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -8980,7 +9008,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabbed_editor/tabbed_editor.js")
-},{"STATE":3,"net_helper":18}],26:[function(require,module,exports){
+},{"STATE":1,"net_helper":18}],26:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -9006,14 +9034,73 @@ async function component (opts, invite) {
   <div class="tab-entries main"></div>`
   const entries = shadow.querySelector('.tab-entries')
   const sheet = new CSSStyleSheet()
-  shadow.adoptedStyleSheets = [sheet]
+  const focus_sheet = new CSSStyleSheet()
+  focus_sheet.replaceSync(`
+    /* Focus highlighting for tabs */
+    .tab-entries.tile-focused .tabsbtn.active {
+      background: rgba(103, 195, 255, 0.25);
+      border-color: transparent;
+    }
+    .tab-entries.tile-inactive .tabsbtn.active {
+      background: transparent;
+      border: 1px solid rgba(103, 195, 255, 0.5);
+    }
+    /* Tab group inline styles */
+    .tab-group-inline {
+      display: inline-flex;
+      align-items: stretch;
+      height: 100%;
+    }
+    /* Group tab and child tabs share underline when expanded */
+    .tab-group-inline.expanded {
+      border-bottom: 2px solid rgba(103, 195, 255, 0.8);
+    }
+    .tab-group-inline .tab-group-tab {
+      cursor: pointer;
+    }
+    .tab-group-inline .tab-group-tab .icon {
+      display: inline-flex;
+      align-items: center;
+      color: rgba(103, 195, 255, 0.8);
+    }
+    .tab-group-inline .tab-group-tab .icon svg {
+      width: 12px;
+      height: 12px;
+    }
+    /* Child tabs hidden by default, shown inline when expanded */
+    .tab-group-children {
+      display: none;
+      align-items: stretch;
+    }
+    .tab-group-inline.expanded .tab-group-children {
+      display: inline-flex;
+    }
+    .tab-group-child {
+      cursor: pointer;
+    }
+    .tab-group-child .icon {
+      display: inline-flex;
+      align-items: center;
+      color: rgba(103, 195, 255, 0.6);
+    }
+    .tab-group-child .icon svg {
+      width: 12px;
+      height: 12px;
+    }
+  `)
+  shadow.adoptedStyleSheets = [sheet, focus_sheet]
 
   let init = false
   let variables = []
   let dricons = []
   let active = null
+  let tab_group_el = null
+  let tab_group_expanded = false
+  let tile_is_focused = false
   const default_tabs = {}
   const link_tabs = {}
+  const ARROW_LEFT_SVG = `<svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10.875 6C10.875 6.09946 10.8355 6.19484 10.7652 6.26517C10.6948 6.33549 10.5995 6.375 10.5 6.375H4.28016L7.01531 9.10969C7.05015 9.14453 7.07779 9.18589 7.09665 9.23141C7.1155 9.27694 7.12521 9.32573 7.12521 9.375C7.12521 9.42427 7.1155 9.47306 7.09665 9.51859C7.07779 9.56411 7.05015 9.60547 7.01531 9.64031C6.98047 9.67515 6.93911 9.70279 6.89359 9.72165C6.84806 9.7405 6.79927 9.75021 6.75 9.75021C6.70073 9.75021 6.65194 9.7405 6.60641 9.72165C6.56089 9.70279 6.51953 9.67515 6.48469 9.64031L3.10969 6.26531C3.07482 6.23049 3.04716 6.18913 3.02829 6.1436C3.00942 6.09808 2.9997 6.04928 2.9997 6C2.9997 5.95072 3.00942 5.90192 3.02829 5.8564C3.04716 5.81087 3.07482 5.76951 3.10969 5.73469L6.48469 2.35969C6.51953 2.32485 6.56089 2.29721 6.60641 2.27835C6.65194 2.2595 6.70073 2.24979 6.75 2.24979C6.79927 2.24979 6.84806 2.2595 6.89359 2.27835C6.93911 2.29721 6.98047 2.32485 7.01531 2.35969C7.05015 2.39453 7.07779 2.43589 7.09665 2.48141C7.1155 2.52694 7.12521 2.57573 7.12521 2.625C7.12521 2.67427 7.1155 2.72306 7.09665 2.76859C7.07779 2.81411 7.05015 2.85547 7.01531 2.89031L4.28016 5.625H10.5C10.5995 5.625 10.6948 5.66451 10.7652 5.73484C10.8355 5.80516 10.875 5.90054 10.875 6ZM1.875 1.5C1.77554 1.5 1.68016 1.53951 1.60984 1.60984C1.53951 1.68016 1.5 1.77554 1.5 1.875V10.125C1.5 10.2245 1.53951 10.3198 1.60984 10.3902C1.68016 10.4605 1.77554 10.5 1.875 10.5C1.97446 10.5 2.06984 10.4605 2.14016 10.3902C2.21049 10.3198 2.25 10.2245 2.25 10.125V1.875C2.25 1.77554 2.21049 1.68016 2.14016 1.60984C2.06984 1.53951 1.97446 1.5 1.875 1.5Z" fill="currentColor"/></svg>`
+  const ARROW_RIGHT_SVG = `<svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8.89031 5.73469C8.92518 5.76951 8.95284 5.81087 8.97171 5.8564C8.99058 5.90192 9.00029 5.95072 9.00029 6C9.00029 6.04928 8.99058 6.09808 8.97171 6.1436C8.95284 6.18913 8.92518 6.23049 8.89031 6.26531L5.51531 9.64031C5.48047 9.67515 5.43911 9.70279 5.39359 9.72165C5.34806 9.7405 5.29927 9.75021 5.25 9.75021C5.20073 9.75021 5.15194 9.7405 5.10641 9.72165C5.06089 9.70279 5.01953 9.67515 4.98469 9.64031C4.94985 9.60547 4.92221 9.56411 4.90335 9.51859C4.8845 9.47306 4.87479 9.42427 4.87479 9.375C4.87479 9.32573 4.8845 9.27694 4.90335 9.23141C4.92221 9.18589 4.94985 9.14453 4.98469 9.10969L7.71984 6.375H1.5C1.40054 6.375 1.30516 6.33549 1.23483 6.26517C1.16451 6.19484 1.125 6.09946 1.125 6C1.125 5.90054 1.16451 5.80516 1.23483 5.73484C1.30516 5.66451 1.40054 5.625 1.5 5.625H7.71984L4.98469 2.89031C4.91432 2.81995 4.87479 2.72451 4.87479 2.625C4.87479 2.52549 4.91432 2.43005 4.98469 2.35969C5.05505 2.28932 5.15049 2.24979 5.25 2.24979C5.34951 2.24979 5.44495 2.28932 5.51531 2.35969L8.89031 5.73469ZM10.125 1.5C10.0255 1.5 9.93016 1.53951 9.85983 1.60984C9.78951 1.68016 9.75 1.77554 9.75 1.875V10.125C9.75 10.2245 9.78951 10.3198 9.85983 10.3902C9.93016 10.4605 10.0255 10.5 10.125 10.5C10.2245 10.5 10.3198 10.4605 10.3902 10.3902C10.4605 10.3198 10.5 10.2245 10.5 10.125V1.875C10.5 1.77554 10.4605 1.68016 10.3902 1.60984C10.3198 1.53951 10.2245 1.5 10.125 1.5Z" fill="currentColor"/></svg>`
   const docs = DOCS(__filename)(opts.sid)
   const { io, _ } = net(id)
 
@@ -9094,7 +9181,10 @@ async function component (opts, invite) {
     const on = {
       add_link_tab: handle_add_link_tab,
       remove_link_tab: handle_remove_link_tab,
-      add_default_tab: handle_add_default_tab
+      add_default_tab: handle_add_default_tab,
+      show_collapsed_tab_group: handle_show_collapsed_tab_group,
+      hide_collapsed_tab_group: handle_hide_collapsed_tab_group,
+      tile_focus_changed: handle_tile_focus_changed
     }
     return function onmessage (msg) {
       console.error('tabs: message from up', msg)
@@ -9103,6 +9193,9 @@ async function component (opts, invite) {
     function handle_add_link_tab ({ data }) { add_link_tab(data) }
     function handle_remove_link_tab ({ data }) { remove_link_tab(data) }
     function handle_add_default_tab ({ data }) { add_default_tab(data) }
+    function handle_show_collapsed_tab_group ({ data }) { show_collapsed_tab_group(data) }
+    function handle_hide_collapsed_tab_group () { hide_collapsed_tab_group() }
+    function handle_tile_focus_changed ({ data }) { update_tab_focus_state(data) }
     function onfail (msg) { console.error('tabs: unknown message', msg) }
   }
 
@@ -9131,6 +9224,7 @@ async function component (opts, invite) {
       el.classList.add('active')
       active = el
       const data = { id: tab_id, name, program }
+      _.up('ui_focus', {}, { type: 'tab', sid: opts.sid })
       _.up('tab_name_clicked', {}, data)
     }
     function close_tab (e) {
@@ -9177,6 +9271,89 @@ async function component (opts, invite) {
       delete link_tabs[link_tab_id]
       console.error('tabs: link tab removed', link_tab_id)
     }
+  }
+
+  // ---------------------------
+  // COLLAPSED TAB GROUP
+  // Shows collapsed tile's tabs inline (like Chrome tab groups)
+  // ---------------------------
+
+  function show_collapsed_tab_group ({ tiles }) {
+    if (tab_group_el) hide_collapsed_tab_group()
+
+    // Container holds the group tab + inline child tabs
+    tab_group_el = document.createElement('div')
+    tab_group_el.className = 'tab-group-inline'
+
+    // Group tab — styled same as default tabs
+    const group_tab = document.createElement('div')
+    group_tab.className = 'tabsbtn tab-group-tab'
+    const direction = (tiles[0] && tiles[0].direction) || 'right'
+    const icon_svg = (direction === 'left' || direction === 'up') ? ARROW_LEFT_SVG : ARROW_RIGHT_SVG
+    group_tab.innerHTML = `<span class="icon">${icon_svg}</span><span class="name">Split</span>`
+    group_tab.onclick = toggle_tab_group_expand
+    tab_group_el.appendChild(group_tab)
+
+    // Child tabs — the actual tabs from the collapsed tile, shown inline
+    const children_container = document.createElement('div')
+    children_container.className = 'tab-group-children'
+
+    for (const tile of tiles) {
+      const tile_tabs = tile.tabs || []
+      for (const tab of tile_tabs) {
+        const tab_el = document.createElement('div')
+        tab_el.className = 'tabsbtn tab-group-child'
+        tab_el.innerHTML = `<span class="icon">${dricons[1] || '📄'}</span><span class="name">${tab.name || 'Tab'}</span>`
+        tab_el.onclick = on_child_tab_click(tile.tile_id)
+        children_container.appendChild(tab_el)
+      }
+      // If no tabs tracked, show at least one entry
+      if (tile_tabs.length === 0) {
+        const tab_el = document.createElement('div')
+        tab_el.className = 'tabsbtn tab-group-child'
+        tab_el.innerHTML = `<span class="icon">${dricons[1] || '📄'}</span><span class="name">New Tab</span>`
+        tab_el.onclick = on_child_tab_click(tile.tile_id)
+        children_container.appendChild(tab_el)
+      }
+    }
+
+    tab_group_el.appendChild(children_container)
+    entries.insertBefore(tab_group_el, entries.firstChild)
+    console.error('tabs: collapsed tab group shown')
+
+    function toggle_tab_group_expand () {
+      tab_group_expanded = !tab_group_expanded
+      tab_group_el.classList.toggle('expanded', tab_group_expanded)
+    }
+
+    function on_child_tab_click (tile_id) {
+      return function () {
+        console.error('tabs: tab group child clicked, requesting expand', tile_id)
+        _.up('tab_group_tile_clicked', {}, { tile_id })
+      }
+    }
+  }
+
+  function hide_collapsed_tab_group () {
+    if (tab_group_el) {
+      tab_group_el.remove()
+      tab_group_el = null
+      tab_group_expanded = false
+      console.error('tabs: collapsed tab group hidden')
+    }
+  }
+
+  // ---------------------------
+  // FOCUS STATE
+  // Updates active tab styling based on tile focus:
+  // - Tile in focus: active tab gets highlight background
+  // - Tile NOT in focus: active tab gets highlight border only
+  // ---------------------------
+
+  function update_tab_focus_state ({ is_focused }) {
+    tile_is_focused = is_focused
+    entries.classList.toggle('tile-focused', is_focused)
+    entries.classList.toggle('tile-inactive', !is_focused)
   }
 
   async function create_btn ({ name, id }, index) {
@@ -9359,7 +9536,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabs/tabs.js")
-},{"DOCS":5,"STATE":3,"net_helper":18}],27:[function(require,module,exports){
+},{"DOCS":5,"STATE":1,"net_helper":18}],27:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const state_db = STATE(__filename)
@@ -9386,7 +9563,10 @@ async function tabsbar (opts, invite) {
   const on_message = {
     docs_toggle: handle_docs_toggle,
     add_link_tab: handle_forward_tabs,
-    remove_link_tab: handle_forward_tabs
+    remove_link_tab: handle_forward_tabs,
+    show_collapsed_tab_group: handle_forward_tabs,
+    hide_collapsed_tab_group: handle_forward_tabs,
+    tile_focus_changed: handle_forward_tabs
   }
   const { io, _ } = net(id)
   const el = document.createElement('div')
@@ -9772,7 +9952,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabsbar/tabsbar.js")
-},{"DOCS":5,"STATE":3,"net_helper":18,"tabs":26,"task_manager":28}],28:[function(require,module,exports){
+},{"DOCS":5,"STATE":1,"net_helper":18,"tabs":26,"task_manager":28}],28:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -9960,7 +10140,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/task_manager/task_manager.js")
-},{"DOCS":5,"STATE":3,"net_helper":18}],29:[function(require,module,exports){
+},{"DOCS":5,"STATE":1,"net_helper":18}],29:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -9989,7 +10169,10 @@ async function taskbar (opts, invite) {
     show_submit_btn: handle_submit_btn_toggle,
     hide_submit_btn: handle_submit_btn_toggle,
     add_link_tab: handle_forward_tabsbar,
-    remove_link_tab: handle_forward_tabsbar
+    remove_link_tab: handle_forward_tabsbar,
+    show_collapsed_tab_group: handle_forward_tabsbar,
+    hide_collapsed_tab_group: handle_forward_tabsbar,
+    tile_focus_changed: handle_forward_tabsbar
   }
   const { io, _ } = net(id)
 
@@ -10093,7 +10276,8 @@ async function taskbar (opts, invite) {
     const action_handlers = {
       docs_toggle: tabsbar_docs_toggle,
       link_tab_close_clicked: tabsbar_forward_up,
-      link_tab_clicked: tabsbar_forward_up
+      link_tab_clicked: tabsbar_forward_up,
+      tab_group_tile_clicked: tabsbar_forward_up
     }
     const handler = action_handlers[msg.type] || tabsbar__noop
     handler(msg)
@@ -10238,7 +10422,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/taskbar/taskbar.js")
-},{"STATE":3,"action_bar":6,"action_executor":7,"net_helper":18,"tabsbar":27}],30:[function(require,module,exports){
+},{"STATE":1,"action_bar":6,"action_executor":7,"net_helper":18,"tabsbar":27}],30:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -10323,8 +10507,9 @@ async function theme_widget (opts, invite) {
       update_actions_for_app: root_update_actions_for_app,
       update_quick_actions_for_app: root_forward_taskbar,
       update_steps_wizard_for_app: root_forward_taskbar,
-      add_link_tab: root_forward_taskbar,
-      remove_link_tab: root_forward_taskbar
+      tile_focus_changed: root_forward_taskbar,
+      show_collapsed_tab_group: root_forward_taskbar,
+      hide_collapsed_tab_group: root_forward_taskbar
     }
     const handler = action_handlers[msg.type] || fail
     handler(msg)
@@ -10372,7 +10557,8 @@ async function theme_widget (opts, invite) {
       action_auto_completed: taskbar_forward_up,
       action_complete: taskbar_forward_up,
       link_tab_close_clicked: taskbar_forward_up,
-      link_tab_clicked: taskbar_forward_up
+      link_tab_clicked: taskbar_forward_up,
+      tab_group_tile_clicked: taskbar_forward_up
     }
     const handler = action_handlers[msg.type] || taskbar_forward_program_container
     handler(msg)
@@ -10511,7 +10697,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/theme_widget/theme_widget.js")
-},{"STATE":3,"net_helper":18,"program_container":20,"taskbar":29}],31:[function(require,module,exports){
+},{"STATE":1,"net_helper":18,"program_container":20,"taskbar":29}],31:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -10534,7 +10720,8 @@ async function tile_manager (opts, invite) {
   const layout = {
     direction: null,
     tiles: [], // array of { id, element, sid }
-    collapsed: false // responsive collapse state
+    collapsed: false, // responsive collapse state
+    focused_tile: 0 // currently focused tile id
   }
 
   const cached_actions = {
@@ -10542,6 +10729,9 @@ async function tile_manager (opts, invite) {
     update_quick_actions_for_app: null,
     update_steps_wizard_for_app: null
   }
+
+  // Track tabs per tile so we can show them in tab groups on collapse
+  const tile_tabs = {} // tile_id -> [{ id, name, program }]
 
   let tile_counter = 0
   const COLLAPSE_THRESHOLD = 600
@@ -10567,6 +10757,16 @@ async function tile_manager (opts, invite) {
 
   const resize_observer = new ResizeObserver(on_resize_observed)
   resize_observer.observe(el)
+
+  // Click-based focus: detect clicks on tile slots to set focus
+  container.addEventListener('pointerdown', function (e) {
+    const slot = e.target.closest ? e.target.closest('.tile-slot') : null
+    if (!slot) return
+    const tile_id = parseInt(slot.getAttribute('data-tile-id'), 10)
+    if (!isNaN(tile_id) && tile_id !== layout.focused_tile) {
+      set_focused_tile(tile_id)
+    }
+  }, true)
 
   function on_resize_observed (entries) {
     for (const entry of entries) {
@@ -10595,9 +10795,10 @@ async function tile_manager (opts, invite) {
   }
 
   function collapse_split () {
-    console.error('tile_manager: collapsing split')
+    console.error('tile_manager: collapsing split into tab group')
     layout.collapsed = true
 
+    // Hide all non-primary tiles
     for (const tile of layout.tiles) {
       if (tile.id !== 0 && tile.element) {
         tile.element.parentNode.style.display = 'none'
@@ -10606,12 +10807,32 @@ async function tile_manager (opts, invite) {
 
     container.classList.add('collapsed')
     container.classList.remove('horizontal', 'vertical')
+
+    // Notify tile_0 to show collapsed tiles as a tab group
+    const root_tile_send = _.tile_0
+    if (root_tile_send) {
+      const collapsed_tiles = layout.tiles
+        .filter(t => t.id !== 0)
+        .map(t => ({
+          tile_id: t.id,
+          direction: layout.split_direction,
+          tabs: tile_tabs[t.id] || []
+        }))
+      root_tile_send('show_collapsed_tab_group', {}, { tiles: collapsed_tiles })
+    }
   }
 
   function expand_split () {
-    console.error('tile_manager: expanding split')
+    console.error('tile_manager: expanding tab group back to split')
     layout.collapsed = false
 
+    // Notify tile_0 to remove the collapsed tab group
+    const root_tile_send = _.tile_0
+    if (root_tile_send) {
+      root_tile_send('hide_collapsed_tab_group', {}, {})
+    }
+
+    // Show all tiles again
     for (const tile of layout.tiles) {
       if (tile.id !== 0 && tile.element) {
         tile.element.parentNode.style.display = ''
@@ -10671,10 +10892,31 @@ async function tile_manager (opts, invite) {
       const { type, data } = msg
       console.error(`tile_manager: message from tile_${tile_id}`, type, data)
 
-      if (tile_id === 0 && type === 'link_tab_clicked') {
-        console.error('tile_manager: link tab clicked, focusing tile', data.tile_id)
-        focus_tile(data.tile_id)
+      if (tile_id === 0 && type === 'tab_group_tile_clicked') {
+        console.error('tile_manager: tab group tile clicked, expanding split')
+        expand_split()
         return
+      }
+
+      // Track focus: when any tile sends ui_focus, update focus state
+      if (type === 'ui_focus') {
+        set_focused_tile(tile_id)
+      }
+
+      // Track tabs in each tile
+      if (type === 'tab_name_clicked' && tile_id !== 0) {
+        // A tab was activated - ensure it's in our list
+        if (data && data.id && tile_tabs[tile_id]) {
+          const exists = tile_tabs[tile_id].find(t => t.id === data.id)
+          if (!exists) {
+            tile_tabs[tile_id].push({ id: data.id, name: data.name, program: data.program })
+          }
+        }
+      }
+      if (type === 'tab_close_clicked' && tile_id !== 0) {
+        if (data && data.id && tile_tabs[tile_id]) {
+          tile_tabs[tile_id] = tile_tabs[tile_id].filter(t => t.id !== data.id)
+        }
       }
 
       if (tile_id !== 0 && type === 'all_tabs_closed') {
@@ -10753,16 +10995,11 @@ async function tile_manager (opts, invite) {
 
     const new_tile_send = _[`tile_${new_tile_id}`]
     if (new_tile_send) {
-      new_tile_send('create_default_tab', {}, {
-        name: 'New Tab',
-        program: 'text_editor'
-      })
-    }
-
-    const root_tile_send = _.tile_0
-    if (root_tile_send) {
-      console.error('tile_manager: sending add_link_tab to root tile')
-      root_tile_send('add_link_tab', {}, { tile_id: new_tile_id, direction, name: 'Split ' + direction })
+      const tab_data = { name: 'New Tab', program: 'text_editor' }
+      new_tile_send('create_default_tab', {}, tab_data)
+      // Track this tab
+      if (!tile_tabs[new_tile_id]) tile_tabs[new_tile_id] = []
+      tile_tabs[new_tile_id].push({ id: `tab_initial_${new_tile_id}`, name: tab_data.name, program: tab_data.program })
     }
 
     console.error('tile_manager: split complete', layout.direction, layout.tiles.length, 'tiles')
@@ -10788,13 +11025,28 @@ async function tile_manager (opts, invite) {
 
     container.classList.remove('horizontal', 'vertical', 'collapsed')
 
-    const root_tile_send = _.tile_0
-    if (root_tile_send) {
-      console.error('tile_manager: sending remove_link_tab to root tile')
-      root_tile_send('remove_link_tab', {}, { tile_id: tile_id_to_remove })
+    console.error('tile_manager: merge complete, tiles remaining:', layout.tiles.length)
+  }
+
+  function set_focused_tile (tile_id) {
+    console.error('tile_manager: set_focused_tile', tile_id)
+    layout.focused_tile = tile_id
+
+    // Update tile slot CSS classes for focus highlighting
+    for (const tile of layout.tiles) {
+      const slot = tile.element?.parentNode
+      if (slot) {
+        slot.classList.toggle('focused', tile.id === tile_id)
+      }
     }
 
-    console.error('tile_manager: merge complete, tiles remaining:', layout.tiles.length)
+    // Notify each tile about the focus state so tabs can update
+    for (const tile of layout.tiles) {
+      const send = _[`tile_${tile.id}`]
+      if (send) {
+        send('tile_focus_changed', {}, { focused_tile: tile_id, is_focused: tile.id === tile_id })
+      }
+    }
   }
 
   function focus_tile (tile_id) {
@@ -10954,7 +11206,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tile_manager/tile_manager.js")
-},{"STATE":3,"net_helper":18,"tab_group":24,"theme_widget":30}],32:[function(require,module,exports){
+},{"STATE":1,"net_helper":18,"tab_group":24,"theme_widget":30}],32:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -11136,7 +11388,6 @@ async function ui_gallery (opts = {}) {
 
     function handle_focused_app_changed (msg) {
       const actions = docs_admin.get_actions(msg.data.sid)
-      // console.error("Test Focused app changed:", msg.data.sid, actions)
       update_actions_for_app(actions, msg)
     }
 
@@ -11799,7 +12050,7 @@ function handle_admin_message (msg) {
 }
 
 }).call(this)}).call(this,"/src/node_modules/ui_gallery/index.js")
-},{"DOCS":5,"STATE":3,"action_bar":6,"action_executor":7,"actions":8,"console_history":9,"graph_explorer_wrapper":13,"helpers":15,"menu":17,"net_helper":18,"program_container":20,"quick_actions":21,"quick_editor":22,"steps_wizard":23,"tabbed_editor":25,"tabs":26,"tabsbar":27,"task_manager":28,"taskbar":29,"theme_widget":30,"tile_manager":31}],33:[function(require,module,exports){
+},{"DOCS":5,"STATE":1,"action_bar":6,"action_executor":7,"actions":8,"console_history":9,"graph_explorer_wrapper":13,"helpers":15,"menu":17,"net_helper":18,"program_container":20,"quick_actions":21,"quick_editor":22,"steps_wizard":23,"tabbed_editor":25,"tabs":26,"tabsbar":27,"task_manager":28,"taskbar":29,"theme_widget":30,"tile_manager":31}],33:[function(require,module,exports){
 const ui_gallery = require('../src/index')
 config().then(boot_default_page)
 
