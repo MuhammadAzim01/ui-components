@@ -65,7 +65,7 @@ async function app () {
   }
 
   io.on = {
-    component: component_protocol
+    component: io_component()
   }
 
   const subs = await sdb.watch(onbatch)
@@ -83,9 +83,11 @@ async function app () {
     }
   }
 
-  function component_protocol (msg) {
-    const handler = action_handlers[msg.type] || fail
-    handler(msg)
+  function io_component () {
+    return function component_protocol (msg) {
+      const handler = action_handlers[msg.type] || fail
+      handler(msg)
+    }
   }
 
   function handle_ready (msg) {

@@ -26,8 +26,8 @@ async function parent_component (opts, invite) {
   }
 
   io.on = {
-    up: onmessage,
-    child: child_protocol
+    up: io_up(),
+    child: io_child()
   }
   if (invite) io.accept(invite)
 
@@ -45,14 +45,18 @@ async function parent_component (opts, invite) {
 
   return el
 
-  function onmessage (msg) {
-    const handler = parent_messages[msg.type] || onmessage_fail
-    handler(msg)
+  function io_up () {
+    return function onmessage (msg) {
+      const handler = parent_messages[msg.type] || onmessage_fail
+      handler(msg)
+    }
   }
 
-  function child_protocol (msg) {
-    const handler = child_messages[msg.type] || onmessage_fail
-    handler(msg)
+  function io_child () {
+    return function child_protocol (msg) {
+      const handler = child_messages[msg.type] || onmessage_fail
+      handler(msg)
+    }
   }
 
   function handle_child_ready (msg) {

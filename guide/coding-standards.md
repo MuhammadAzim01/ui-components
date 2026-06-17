@@ -52,7 +52,7 @@ Use this as the strict rule set for component code and guide examples.
 ## Protocol rules
 
 - Use `const { io, _ } = net(id)` for `net_helper`.
-- Register handlers on `io.on`.
+- Register handlers on `io.on` using instantiating functions named `io_...` (e.g., `io_up()`) that return the handler.
 - Accept parent wiring with `if (invite) io.accept(invite)`.
 - Send messages with channel helpers on `_`.
 - Use `_.channel(type, refs, data)`.

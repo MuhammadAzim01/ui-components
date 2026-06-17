@@ -12,8 +12,8 @@ const net = require('net_helper')
 const { io, _ } = net(id)
 
 io.on = {
-  up: onmessage,
-  child: child_protocol
+  up: io_up(),
+  child: io_child()
 }
 ```
 
@@ -40,7 +40,7 @@ async function child_component (opts, invite) {
   const { io, _ } = net(id)
 
   io.on = {
-    up: onmessage
+    up: io_up()
   }
   if (invite) io.accept(invite)
 }

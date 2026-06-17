@@ -19,7 +19,7 @@ async function app () {
   }
 
   io.on = {
-    status_button: status_button_protocol
+    status_button: io_status_button()
   }
 
   const subs = await sdb.watch(onbatch)
@@ -37,9 +37,11 @@ async function app () {
     }
   }
 
-  function status_button_protocol (msg) {
-    const handler = action_handlers[msg.type] || fail
-    handler(msg)
+  function io_status_button () {
+    return function status_button_protocol (msg) {
+      const handler = action_handlers[msg.type] || fail
+      handler(msg)
+    }
   }
 
   function handle_status_clicked (msg) {

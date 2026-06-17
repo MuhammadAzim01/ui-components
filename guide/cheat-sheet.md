@@ -90,7 +90,7 @@ const net = require('net_helper')
 const { io, _ } = net(id)
 
 io.on = {
-  up: onmessage
+  up: io_up()
 }
 if (invite) io.accept(invite)
 

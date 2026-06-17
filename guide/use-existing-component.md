@@ -55,14 +55,16 @@ If the child uses `net_helper`, pass an invite.
 const { io, _ } = net(id)
 
 io.on = {
-  child: child_protocol
+  child: io_child()
 }
 
 const child = await child_component({ ...subs[0] }, io.invite('child', { up: id }))
 
-function child_protocol (msg) {
-  const handler = child_messages[msg.type] || fail
-  handler(msg)
+function io_child () {
+  return function child_protocol (msg) {
+    const handler = child_messages[msg.type] || fail
+    handler(msg)
+  }
 }
 ```
 

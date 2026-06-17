@@ -16,15 +16,17 @@ async function component (opts, invite) {
   const { io, _ } = net(id)
 
   io.on = {
-    up: onmessage
+    up: io_up()
   }
   if (invite) io.accept(invite)
 
   return el
 
-  function onmessage (msg) {
-    const handler = on_message[msg.type] || onmessage_fail
-    handler(msg)
+  function io_up () {
+    return function onmessage (msg) {
+      const handler = on_message[msg.type] || onmessage_fail
+      handler(msg)
+    }
   }
 
   function onmessage_fail (msg) {
@@ -65,14 +67,16 @@ Do not manually build `head`, `refs`, `type`, `data`, or `meta`.
 const { io, _ } = net(id)
 
 io.on = {
-  child: child_protocol
+  child: io_child()
 }
 
 const child = await child_component({ ...subs[0] }, io.invite('child', { up: id }))
 
-function child_protocol (msg) {
-  const handler = child_messages[msg.type] || fail
-  handler(msg)
+function io_child () {
+  return function child_protocol (msg) {
+    const handler = child_messages[msg.type] || fail
+    handler(msg)
+  }
 }
 
 function render_child (msg) {
@@ -119,4 +123,3 @@ Forward only when a wrapper intentionally:
 - No manual channel helper assignment onto `_`.
 - No manual message object construction.
 - No `_.channel(type, data, refs)` argument order.
-

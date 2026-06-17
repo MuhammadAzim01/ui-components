@@ -30,7 +30,7 @@ async function component (opts, invite) {
   }
 
   io.on = {
-    up: onmessage
+    up: io_up()
   }
   if (invite) io.accept(invite)
 
@@ -53,9 +53,11 @@ async function component (opts, invite) {
     if (_.up) _.up('rendered', { cause: msg.head }, { ok: true })
   }
 
-  function onmessage (msg) {
-    const handler = on_message[msg.type] || onmessage_fail
-    handler(msg)
+  function io_up () {
+    return function onmessage (msg) {
+      const handler = on_message[msg.type] || onmessage_fail
+      handler(msg)
+    }
   }
 
   function onmessage_fail (msg) {
