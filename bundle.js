@@ -3622,7 +3622,7 @@ function fallback_module () {
               .hide {
                 display: none;
               }
-              
+
               .icon-btn {
                 display: flex;
                 min-width: 32px;
@@ -4363,11 +4363,11 @@ function fallback_module () {
                 border: 2px solid transparent;
                 background-clip: content-box;
               }
-              
+
               .actions-menu {
                 padding: 8px 0;
               }
-              
+
               .action-item {
                 display: flex;
                 align-items: center;
@@ -4377,15 +4377,15 @@ function fallback_module () {
                 border-bottom: 1px solid #3c3c3c;
                 transition: background-color 0.2s ease;
               }
-              
+
               .action-item:hover {
                 background-color: #2d2f31;
               }
-              
+
               .action-item:last-child {
                 border-bottom: none;
               }
-              
+
               .action-icon {
                 display: flex;
                 align-items: center;
@@ -4394,13 +4394,13 @@ function fallback_module () {
                 height: 20px;
                 color: #a6a6a6;
               }
-              
+
               .action-name {
                 flex: 1;
                 font-size: 14px;
                 color: #e8eaed;
               }
-              
+
               .action-pin .action-default{
                 display: flex;
                 align-items: center;
@@ -4411,7 +4411,7 @@ function fallback_module () {
                 opacity: 0.7;
                 color: #a6a6a6;
               }
-              
+
               svg {
                 width: 16px;
                 height: 16px;
@@ -4768,7 +4768,7 @@ function fallback_module () {
                 overflow: hidden;
                 text-overflow: ellipsis;
               }
-              
+
               .command-separator {
                 color: #969ba1;
                 margin: 0 4px;
@@ -4789,7 +4789,7 @@ function fallback_module () {
                 justify-content: center;
                 width: 16px;
                 height: 16px;
-                color: #fbbc04; 
+                color: #fbbc04;
               }
 
               .linked-icon svg {
@@ -5375,9 +5375,9 @@ const net = require('net_helper')
 const graph_explorer = require('graph-explorer')
 const graphdb = require('./graphdb')
 
-module.exports = graph_explorer_wrapper
+module.exports = graph_viewer
 
-async function graph_explorer_wrapper (opts, invite) {
+async function graph_viewer (opts, invite) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
 
@@ -5558,7 +5558,7 @@ async function graph_explorer_wrapper (opts, invite) {
   function handle_db_request (request_msg) {
     const { head: request_head, type: operation, data: params } = request_msg
     if (!db) {
-      console.error('[graph_explorer_wrapper] Database not initialized yet')
+      console.error('[graph_viewer] Database not initialized yet')
       send_response(request_head, null)
       return
     }
@@ -5579,7 +5579,7 @@ async function graph_explorer_wrapper (opts, invite) {
     send_response(request_head, result)
 
     function db_fail () {
-      console.warn('[graph_explorer_wrapper] Unknown db operation:', operation)
+      console.warn('[graph_viewer] Unknown db operation:', operation)
       send_response(request_head, null)
     }
   }
@@ -5695,7 +5695,7 @@ function fallback_module () {
   }
 }
 
-}).call(this)}).call(this,"/src/node_modules/graph_explorer_wrapper/graph_explorer_wrapper.js")
+}).call(this)}).call(this,"/src/node_modules/graph_viewer/graph_viewer.js")
 },{"./graphdb":14,"STATE":1,"graph-explorer":2,"net_helper":18}],14:[function(require,module,exports){
 module.exports = graphdb
 
@@ -6433,7 +6433,7 @@ const net = require('net_helper')
 const console_history = require('console_history')
 const actions = require('actions')
 const tabbed_editor = require('tabbed_editor')
-const graph_explorer_wrapper = require('graph_explorer_wrapper')
+const graph_viewer = require('graph_viewer')
 const docs_window = require('docs_window')
 
 module.exports = program_container
@@ -6498,7 +6498,7 @@ async function program_container (opts, invite) {
   docs_window_el.classList.add('hide')
   docs_window_placeholder.replaceWith(docs_window_el)
 
-  graph_explorer_el = await graph_explorer_wrapper({ ...subs[3] }, io.invite('graph_explorer', { up: id }))
+  graph_explorer_el = await graph_viewer({ ...subs[3] }, io.invite('graph_explorer', { up: id }))
   graph_explorer_el.classList.add('graph-explorer')
   graph_explorer_placeholder.replaceWith(graph_explorer_el)
 
@@ -6735,7 +6735,7 @@ function fallback_module () {
       tabbed_editor: {
         $: ''
       },
-      graph_explorer_wrapper: {
+      graph_viewer: {
         $: ''
       },
       docs_window: {
@@ -6784,7 +6784,7 @@ function fallback_module () {
             docs: 'docs'
           }
         },
-        graph_explorer_wrapper: {
+        graph_viewer: {
           0: '',
           mapping: {
             theme: 'style',
@@ -6931,7 +6931,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/program_container/program_container.js")
-},{"STATE":1,"actions":8,"console_history":9,"docs_window":10,"graph_explorer_wrapper":13,"net_helper":18,"tabbed_editor":25}],21:[function(require,module,exports){
+},{"STATE":1,"actions":8,"console_history":9,"docs_window":10,"graph_viewer":13,"net_helper":18,"tabbed_editor":25}],21:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -7930,7 +7930,7 @@ function fallback_module () {
             .hidden {
               display: none;
             }
-            
+
             .btns::before {
               display: none;
               content: var(--before-content);
@@ -11235,7 +11235,7 @@ const actions = require('actions')
 const tabbed_editor = require('tabbed_editor')
 const task_manager = require('task_manager')
 const quick_actions = require('quick_actions')
-const graph_explorer_wrapper = require('graph_explorer_wrapper')
+const graph_viewer = require('graph_viewer')
 const editor = require('quick_editor')
 const action_executor = require('action_executor')
 const steps_wizard = require('steps_wizard')
@@ -11254,7 +11254,7 @@ const imports = {
   tabbed_editor,
   task_manager,
   quick_actions,
-  graph_explorer_wrapper,
+  graph_viewer,
   action_executor,
   steps_wizard
 }
@@ -11422,7 +11422,7 @@ async function ui_gallery (opts = {}) {
   async function create_component (entries_obj) {
     let index = 0
     const component_counters = {}
-    
+
     for (const [name, factory] of entries_obj) {
       const is_initially_checked = initial_checked_indices.length === 0 || initial_checked_indices.includes(index + 1)
       const outer = document.createElement('div')
@@ -11434,19 +11434,19 @@ async function ui_gallery (opts = {}) {
     `
       const inner = outer.querySelector('.component-wrapper')
       let component_content
-      
+
       // Match sub to factory by component name in type field
       component_counters[name] = (component_counters[name] || 0) + 1
       const matching_subs = subs.filter(s => s.type && s.type.endsWith(`>${name}`))
       const occurrence_index = component_counters[name] - 1
       const sub = matching_subs[occurrence_index]
-      
+
       if (!sub) {
         console.error(`No sub found for component: ${name} \n make sure that the imports variable property name is same as the required component name`)
         index++
         continue
       }
-      
+
       if (name === 'theme_widget'  || name === 'tile_manager') {
         component_content = await factory({ ...sub }, io.invite('theme_widget', { up: id }))
       } else {
@@ -11668,7 +11668,7 @@ function fallback_module () {
     'tabbed_editor',
     'task_manager',
     'quick_actions',
-    'graph_explorer_wrapper',
+    'graph_viewer',
     'action_executor',
     'steps_wizard'
   ]
@@ -11867,7 +11867,7 @@ function fallback_module () {
       docs: 'docs'
     }
   }
-  subs.graph_explorer_wrapper = {
+  subs.graph_viewer = {
     $: '',
     0: '',
     mapping: {
@@ -12050,7 +12050,7 @@ function handle_admin_message (msg) {
 }
 
 }).call(this)}).call(this,"/src/node_modules/ui_gallery/index.js")
-},{"DOCS":5,"STATE":1,"action_bar":6,"action_executor":7,"actions":8,"console_history":9,"graph_explorer_wrapper":13,"helpers":15,"menu":17,"net_helper":18,"program_container":20,"quick_actions":21,"quick_editor":22,"steps_wizard":23,"tabbed_editor":25,"tabs":26,"tabsbar":27,"task_manager":28,"taskbar":29,"theme_widget":30,"tile_manager":31}],33:[function(require,module,exports){
+},{"DOCS":5,"STATE":1,"action_bar":6,"action_executor":7,"actions":8,"console_history":9,"graph_viewer":13,"helpers":15,"menu":17,"net_helper":18,"program_container":20,"quick_actions":21,"quick_editor":22,"steps_wizard":23,"tabbed_editor":25,"tabs":26,"tabsbar":27,"task_manager":28,"taskbar":29,"theme_widget":30,"tile_manager":31}],33:[function(require,module,exports){
 const ui_gallery = require('../src/index')
 config().then(boot_default_page)
 

@@ -14,7 +14,7 @@ theme_widget
     console_history
     actions
     tabbed_editor
-    graph_explorer_wrapper
+    graph_viewer
     docs_window
   taskbar
     action_executor
@@ -45,7 +45,7 @@ theme_widget
 - [`console_history`](../src/node_modules/console_history/console_history.js)
 - [`actions`](../src/node_modules/actions/actions.js)
 - [`tabbed_editor`](../src/node_modules/tabbed_editor/tabbed_editor.js)
-- [`graph_explorer_wrapper`](../src/node_modules/graph_explorer_wrapper/graph_explorer_wrapper.js)
+- [`graph_viewer`](../src/node_modules/graph_viewer/graph_viewer.js)
 - [`docs_window`](../src/node_modules/docs_window/docs_window.js)
 - [`taskbar`](../src/node_modules/taskbar/taskbar.js)
 - [`action_executor`](../src/node_modules/action_executor/action_executor.js)
