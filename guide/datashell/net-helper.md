@@ -59,7 +59,7 @@ const head = _.child('render', { cause: msg.head }, msg.data)
 Signature:
 
 ```js
-_.channel(type, refs = {}, data = null)
+_[name](type, refs = {}, data = null)
 ```
 
 The helper creates:
@@ -81,7 +81,7 @@ Messages routed by `net_helper` have this shape:
 
 ```js
 {
-  head: [sender_id, receiver_id, message_id],
+  head: [by, to, mid],
   refs: { cause: parent_message_head },
   type: 'message_type',
   data: {},
@@ -92,7 +92,7 @@ Messages routed by `net_helper` have this shape:
 }
 ```
 
-`head` and `meta` are managed by `net_helper`.
+`head` (representing `[sender_id, receiver_id, message_id]`) and `meta` are managed by `net_helper`.
 
 Callers provide `type`, `refs`, and `data`.
 

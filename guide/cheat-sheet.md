@@ -104,7 +104,7 @@ function onbutton_click () {
 Channel helpers use this signature:
 
 ```js
-_.channel(type, refs, data)
+_[name](type, refs = {}, data = null)
 ```
 
 Use `{}` for root or UI events.
@@ -117,4 +117,5 @@ Use `{ cause: msg.head }` when a message is caused by another message.
 - Create a component: [create-component.md](./create-component.md)
 - STATE and datasets: [datashell/state.md](./datashell/state.md)
 - Protocol: [datashell/protocol.md](./datashell/protocol.md)
+- Actions & Docs: [actions-and-docs.md](./actions-and-docs.md)
 

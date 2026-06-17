@@ -10,6 +10,7 @@ Use this guide when you are building, reusing, or modifying components in this r
 - Using an existing component in another app: read [use-existing-component.md](./use-existing-component.md).
 - Building a browser preview or demo page: read [demo-pages.md](./demo-pages.md).
 - Working on theme widget data or styling: read [theme-widget.md](./theme-widget.md).
+- Working on actions and documentation: read [actions-and-docs.md](./actions-and-docs.md).
 
 ## Data Shell
 

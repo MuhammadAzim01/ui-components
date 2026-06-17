@@ -6,7 +6,7 @@ Read [coding-standards.md](./coding-standards.md) first.
 
 ## Default pattern
 
-Reusable components use instance-level STATE.
+Reusable components use instance-level STATE. The basic structure looks like:
 
 ```js
 const STATE = require('STATE')
@@ -21,70 +21,11 @@ async function component (opts, invite) {
   const { drive } = sdb
   const { io, _ } = net(id)
 
-  const on = {
-    style: inject
-  }
-
-  const on_message = {
-    render: handle_render
-  }
-
-  io.on = {
-    up: io_up()
-  }
-  if (invite) io.accept(invite)
-
-  const el = document.createElement('div')
-  const shadow = el.attachShadow({ mode: 'closed' })
-  shadow.innerHTML = '<button class="button"></button>'
-
-  const button = shadow.querySelector('.button')
-  button.onclick = onbutton_click
-
-  await sdb.watch(onbatch)
-
-  return el
-
-  function onbutton_click () {
-    if (_.up) _.up('button_clicked', {}, { value: true })
-  }
-
-  function handle_render (msg) {
-    if (_.up) _.up('rendered', { cause: msg.head }, { ok: true })
-  }
-
-  function io_up () {
-    return function onmessage (msg) {
-      const handler = on_message[msg.type] || onmessage_fail
-      handler(msg)
-    }
-  }
-
-  function onmessage_fail (msg) {
-    fail(msg.data, msg.type)
-  }
-
-  async function onbatch (batch) {
-    for (const { type, paths } of batch) {
-      const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
-      const handler = on[type] || fail
-      handler(data, type)
-    }
-  }
-
-  function inject (data) {
-    const sheet = new CSSStyleSheet()
-    sheet.replaceSync(data.join('\n'))
-    shadow.adoptedStyleSheets = [sheet]
-  }
-
-  function fail (data, type) {
-    console.warn(__filename + ' invalid message', { cause: { data, type } })
-  }
+  // ... setup DOM, protocols, watch drive state, return element ...
 }
 ```
 
-See the full example in [examples/component.js](./examples/component.js).
+See a fully working component implementation in [examples/component.js](./examples/component.js).
 
 ## Add datasets
 

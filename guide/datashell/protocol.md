@@ -8,40 +8,24 @@ For the exact helper API, read [net-helper.md](./net-helper.md).
 
 ## Component pattern
 
+Every component registers message handlers on `io.on` using instantiating functions (like `io_up()`) and accepts the parent invite if present:
+
 ```js
-const net = require('net_helper')
-
-async function component (opts, invite) {
-  const { id, sdb } = await get(opts.sid)
-  const { io, _ } = net(id)
-
-  io.on = {
-    up: io_up()
-  }
-  if (invite) io.accept(invite)
-
-  return el
-
-  function io_up () {
-    return function onmessage (msg) {
-      const handler = on_message[msg.type] || onmessage_fail
-      handler(msg)
-    }
-  }
-
-  function onmessage_fail (msg) {
-    fail(msg.data, msg.type)
-  }
+io.on = {
+  up: io_up()
 }
+if (invite) io.accept(invite)
 ```
 
-## Send messages
+See the full setup under `async function component` in [examples/component.js](../examples/component.js).
 
 Channel helpers use this signature:
 
 ```js
-_.channel(type, refs, data)
+_[name](type, refs = {}, data = null)
 ```
+
+Messages contain a `head` array of structure `[by, to, mid]` representing sender (`by`), receiver (`to`), and message identifier (`mid`).
 
 Use `{}` for root or UI-originated messages.
 
@@ -122,4 +106,4 @@ Forward only when a wrapper intentionally:
 - No old callback protocol style.
 - No manual channel helper assignment onto `_`.
 - No manual message object construction.
-- No `_.channel(type, data, refs)` argument order.
+- No incorrect `_[name](type, data, refs)` helper argument order.
