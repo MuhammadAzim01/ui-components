@@ -1,4 +1,6 @@
 (function(){function r(e,n,t){function o(i,f){if(!n[i]){if(!e[i]){var c="function"==typeof require&&require;if(!f&&c)return c(i,!0);if(u)return u(i,!0);var a=new Error("Cannot find module '"+i+"'");throw a.code="MODULE_NOT_FOUND",a}var p=n[i]={exports:{}};e[i][0].call(p.exports,function(r){var n=e[i][1][r];return o(n||r)},p,p.exports,r,e,n,t)}return n[i].exports}for(var u="function"==typeof require&&require,i=0;i<t.length;i++)o(t[i]);return o}return r})()({1:[function(require,module,exports){
+
+},{}],2:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -58,7 +60,7 @@ async function graph_explorer (opts, invite) {
 
   const { io, _ } = net(id)
   io.on = {
-    storage: onmessage
+    up: onmessage
   }
   if (!invite) throw new Error('graph_explorer requires a net_helper invite')
   io.accept(invite)
@@ -269,7 +271,7 @@ async function graph_explorer (opts, invite) {
     }
   }
   function send_message ({ type, refs = {}, data = {} }) {
-    return _.storage(type, refs, data)
+    return _.up(type, refs, data)
   }
 
   function create_db () {
@@ -3132,7 +3134,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/node_modules/graph-explorer/lib/graph_explorer.js")
-},{"./net_helper":2,"STATE":3}],2:[function(require,module,exports){
+},{"./net_helper":3,"STATE":1}],3:[function(require,module,exports){
 (function (__filename){(function (){
 module.exports = net
 
@@ -3190,9 +3192,7 @@ function net (id) {
   }
 }
 
-}).call(this)}).call(this,"/../graph-explorer/lib/net_helper/net_helper.js")
-},{}],3:[function(require,module,exports){
-
+}).call(this)}).call(this,"/node_modules/graph-explorer/lib/net_helper/net_helper.js")
 },{}],4:[function(require,module,exports){
 module.exports = require('ui_gallery')
 
@@ -3661,7 +3661,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/action_bar/action_bar.js")
-},{"DOCS":5,"STATE":3,"net_helper":18,"quick_actions":21}],7:[function(require,module,exports){
+},{"DOCS":5,"STATE":1,"net_helper":18,"quick_actions":21}],7:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4095,7 +4095,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/action_executor/action_executor.js")
-},{"STATE":3,"net_helper":18,"program":19,"steps_wizard":23}],8:[function(require,module,exports){
+},{"STATE":1,"net_helper":18,"program":19,"steps_wizard":23}],8:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4433,7 +4433,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/actions/actions.js")
-},{"DOCS":5,"STATE":3,"net_helper":18}],9:[function(require,module,exports){
+},{"DOCS":5,"STATE":1,"net_helper":18}],9:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4854,7 +4854,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/console_history/console_history.js")
-},{"DOCS":5,"STATE":3,"net_helper":18}],10:[function(require,module,exports){
+},{"DOCS":5,"STATE":1,"net_helper":18}],10:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5003,7 +5003,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/docs_window/docs_window.js")
-},{"STATE":3,"net_helper":18}],11:[function(require,module,exports){
+},{"STATE":1,"net_helper":18}],11:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5209,7 +5209,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/form_input/form_input.js")
-},{"STATE":3,"net_helper":18}],12:[function(require,module,exports){
+},{"STATE":1,"net_helper":18}],12:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5382,7 +5382,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/form_tile_split_choice/form_tile_split_choice.js")
-},{"STATE":3,"net_helper":18}],13:[function(require,module,exports){
+},{"STATE":1,"net_helper":18}],13:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5429,7 +5429,7 @@ async function graph_viewer (opts, invite) {
 
   const subs = await sdb.watch(onbatch)
 
-  const explorer_el = await graph_explorer(subs[0], io.invite('graph_explorer', { storage: id }))
+  const explorer_el = await graph_explorer(subs[0], io.invite('graph_explorer', { up: id }))
   graph_explorer_connected = true
   if (latest_entries) _.graph_explorer('db_initialized', {}, { entries: latest_entries })
   shadow.append(explorer_el)
@@ -5662,7 +5662,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/graph_viewer/graph_viewer.js")
-},{"./graphdb":14,"STATE":3,"graph-explorer":1,"net_helper":18}],14:[function(require,module,exports){
+},{"./graphdb":14,"STATE":1,"graph-explorer":2,"net_helper":18}],14:[function(require,module,exports){
 module.exports = graphdb
 
 function graphdb (entries) {
@@ -5932,7 +5932,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/input_test/input_test.js")
-},{"STATE":3,"net_helper":18}],17:[function(require,module,exports){
+},{"STATE":1,"net_helper":18}],17:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -6214,7 +6214,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/menu/menu.js")
-},{"STATE":3}],18:[function(require,module,exports){
+},{"STATE":1}],18:[function(require,module,exports){
 (function (__filename){(function (){
 module.exports = net
 
@@ -6391,7 +6391,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/program/program.js")
-},{"STATE":3,"form_input":11,"form_tile_split_choice":12,"input_test":16,"net_helper":18}],20:[function(require,module,exports){
+},{"STATE":1,"form_input":11,"form_tile_split_choice":12,"input_test":16,"net_helper":18}],20:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -6913,7 +6913,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/program_container/program_container.js")
-},{"STATE":3,"actions":8,"console_history":9,"docs_window":10,"graph_viewer":13,"net_helper":18,"tabbed_editor":25}],21:[function(require,module,exports){
+},{"STATE":1,"actions":8,"console_history":9,"docs_window":10,"graph_viewer":13,"net_helper":18,"tabbed_editor":25}],21:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -7593,7 +7593,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/quick_actions/quick_actions.js")
-},{"DOCS":5,"STATE":3,"net_helper":18}],22:[function(require,module,exports){
+},{"DOCS":5,"STATE":1,"net_helper":18}],22:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -8037,7 +8037,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/quick_editor/quick_editor.js")
-},{"STATE":3,"helpers":15}],23:[function(require,module,exports){
+},{"STATE":1,"helpers":15}],23:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -8230,7 +8230,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/steps_wizard/steps_wizard.js")
-},{"DOCS":5,"STATE":3,"net_helper":18}],24:[function(require,module,exports){
+},{"DOCS":5,"STATE":1,"net_helper":18}],24:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -8583,7 +8583,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tab_group/tab_group.js")
-},{"STATE":3,"action_bar":6,"action_executor":7,"net_helper":18,"program_container":20,"tabs":26}],25:[function(require,module,exports){
+},{"STATE":1,"action_bar":6,"action_executor":7,"net_helper":18,"program_container":20,"tabs":26}],25:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -8994,7 +8994,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabbed_editor/tabbed_editor.js")
-},{"STATE":3,"net_helper":18}],26:[function(require,module,exports){
+},{"STATE":1,"net_helper":18}],26:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -9478,7 +9478,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabs/tabs.js")
-},{"DOCS":5,"STATE":3,"net_helper":18}],27:[function(require,module,exports){
+},{"DOCS":5,"STATE":1,"net_helper":18}],27:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const state_db = STATE(__filename)
@@ -9900,7 +9900,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabsbar/tabsbar.js")
-},{"DOCS":5,"STATE":3,"net_helper":18,"tabs":26,"task_manager":28}],28:[function(require,module,exports){
+},{"DOCS":5,"STATE":1,"net_helper":18,"tabs":26,"task_manager":28}],28:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -10090,7 +10090,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/task_manager/task_manager.js")
-},{"DOCS":5,"STATE":3,"net_helper":18}],29:[function(require,module,exports){
+},{"DOCS":5,"STATE":1,"net_helper":18}],29:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -10382,7 +10382,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/taskbar/taskbar.js")
-},{"STATE":3,"action_bar":6,"action_executor":7,"net_helper":18,"tabsbar":27}],30:[function(require,module,exports){
+},{"STATE":1,"action_bar":6,"action_executor":7,"net_helper":18,"tabsbar":27}],30:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -10663,7 +10663,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/theme_widget/theme_widget.js")
-},{"STATE":3,"net_helper":18,"program_container":20,"taskbar":29}],31:[function(require,module,exports){
+},{"STATE":1,"net_helper":18,"program_container":20,"taskbar":29}],31:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -11172,7 +11172,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tile_manager/tile_manager.js")
-},{"STATE":3,"net_helper":18,"tab_group":24,"theme_widget":30}],32:[function(require,module,exports){
+},{"STATE":1,"net_helper":18,"tab_group":24,"theme_widget":30}],32:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -12007,7 +12007,7 @@ function handle_admin_message (msg) {
 }
 
 }).call(this)}).call(this,"/src/node_modules/ui_gallery/index.js")
-},{"DOCS":5,"STATE":3,"action_bar":6,"action_executor":7,"actions":8,"console_history":9,"graph_viewer":13,"helpers":15,"menu":17,"net_helper":18,"program_container":20,"quick_actions":21,"quick_editor":22,"steps_wizard":23,"tabbed_editor":25,"tabs":26,"tabsbar":27,"task_manager":28,"taskbar":29,"theme_widget":30,"tile_manager":31}],33:[function(require,module,exports){
+},{"DOCS":5,"STATE":1,"action_bar":6,"action_executor":7,"actions":8,"console_history":9,"graph_viewer":13,"helpers":15,"menu":17,"net_helper":18,"program_container":20,"quick_actions":21,"quick_editor":22,"steps_wizard":23,"tabbed_editor":25,"tabs":26,"tabsbar":27,"task_manager":28,"taskbar":29,"theme_widget":30,"tile_manager":31}],33:[function(require,module,exports){
 const ui_gallery = require('../src/index')
 config().then(boot_default_page)
 
