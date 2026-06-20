@@ -5413,14 +5413,7 @@ async function graph_viewer (opts, invite) {
     theme: inject,
     entries: on_entries
   }
-  const db_handler = {
-    db_get: params => db.get(params.path),
-    db_has: params => db.has(params.path),
-    db_is_empty: () => db.is_empty(),
-    db_root: () => db.root(),
-    db_keys: () => db.keys(),
-    db_raw: () => db.raw()
-  }
+
   const el = document.createElement('div')
   const shadow = el.attachShadow({ mode: 'closed' })
 
@@ -5532,25 +5525,33 @@ async function graph_viewer (opts, invite) {
   // ---------------------------------------------------------
 
   function io_graph_explorer () {
-    return function graph_explorer_protocol (msg) {
+    return function graph_explorer_protocol(msg) {
       const { type } = msg
+      const db_handler = {
+        db_get: params => db.get(params.path),
+        db_has: params => db.has(params.path),
+        db_is_empty: () => db.is_empty(),
+        db_root: () => db.root(),
+        db_keys: () => db.keys(),
+        db_raw: () => db.raw()
+      }
 
       if (type.startsWith('db_')) {
         handle_db_request(msg)
       } else {
         _.up(msg.type, msg.head ? { cause: msg.head } : {}, msg.data)
       }
-    }
-  }
 
-  function handle_db_request ({ head, type, data }) {
-    const handler = db ? db_handler[type] || db_fail : db_fail
-    _.graph_explorer('db_response', { cause: head }, { result: handler(data) })
+      function handle_db_request ({ head, type, data }) {
+        const handler = db ? db_handler[type] || db_fail : db_fail
+        _.graph_explorer('db_response', { cause: head }, { result: handler(data) })
 
-    function db_fail () {
-      const msg = db ? '[graph_viewer] Unknown db operation:' : '[graph_viewer] Database not initialized yet'
-      console.warn(msg, type)
-      return null
+        function db_fail () {
+          const msg = db ? '[graph_viewer] Unknown db operation:' : '[graph_viewer] Database not initialized yet'
+          console.warn(msg, type)
+          return null
+        }
+      }
     }
   }
 }
@@ -10243,9 +10244,7 @@ async function taskbar (opts, invite) {
         _.action_executor(msg.type, msg.head ? { cause: msg.head } : {}, msg.data)
       }
 
-      // eslint-disable-next-line camelcase
       function tabsbar_forward_up (msg) { _.up(msg.type, msg.head ? { cause: msg.head } : {}, msg.data) }
-      // eslint-disable-next-line camelcase
       function tabsbar__noop () {}
     }
   }
@@ -11350,7 +11349,6 @@ async function ui_gallery (opts = {}) {
       handler(msg)
 
       function handle_set_docs_mode (msg) { docs_admin.set_docs_mode(msg.data.active) }
-      // eslint-disable-next-line camelcase
       function handle_set_doc_display_handler (msg) { docs_admin.set_doc_display_handler(msg.data.callback) }
       function handle_fail (msg) { console.warn('page: unhandled message from theme_widget', msg) }
 
