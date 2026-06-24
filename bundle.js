@@ -3196,7 +3196,59 @@ function net (id) {
 },{}],4:[function(require,module,exports){
 module.exports = require('ui_gallery')
 
-},{"ui_gallery":32}],5:[function(require,module,exports){
+},{"ui_gallery":33}],5:[function(require,module,exports){
+(function (global){(function (){
+module.exports = function DEBUG (filename) {
+  return function (sid) { return create_context(filename, sid) }
+}
+
+const DEFAULT_FLAGS = {
+  show_default_entries: true
+}
+
+const scope = typeof window !== 'undefined' ? window : global
+
+if (!scope.__DEBUG_GLOBAL_STATE__) {
+  scope.__DEBUG_GLOBAL_STATE__ = {
+    flags: { ...DEFAULT_FLAGS },
+    listeners: []
+  }
+}
+
+const state = scope.__DEBUG_GLOBAL_STATE__
+
+function set_flag (name, value) {
+  if (state.flags[name] === value) return
+  state.flags[name] = value
+  state.listeners.forEach(notify)
+
+  function notify (listener) { listener(name, value) }
+}
+
+function get_flag (name) { return state.flags[name] }
+
+function get_flags () { return { ...state.flags } }
+
+function on_change (listener) {
+  state.listeners.push(listener)
+  return unsubscribe
+
+  function unsubscribe () { state.listeners = state.listeners.filter(keep) }
+  function keep (l) { return l !== listener }
+}
+
+function create_context (filename, sid) {
+  return {
+    get_flag,
+    get_flags,
+    set_flag,
+    on_change,
+    meta: { component: filename, sid }
+  }
+}
+
+}).call(this)}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+},{}],6:[function(require,module,exports){
 (function (global){(function (){
 // --- Main Export ---
 // Usage: const docs = DOCS(__filename)(opts.sid)
@@ -3364,7 +3416,7 @@ function create_context (filename, sid) {
 }
 
 }).call(this)}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],6:[function(require,module,exports){
+},{}],7:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -3661,7 +3713,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/action_bar/action_bar.js")
-},{"DOCS":5,"STATE":1,"net_helper":18,"quick_actions":21}],7:[function(require,module,exports){
+},{"DOCS":6,"STATE":1,"net_helper":19,"quick_actions":22}],8:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4095,7 +4147,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/action_executor/action_executor.js")
-},{"STATE":1,"net_helper":18,"program":19,"steps_wizard":23}],8:[function(require,module,exports){
+},{"STATE":1,"net_helper":19,"program":20,"steps_wizard":24}],9:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4433,12 +4485,13 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/actions/actions.js")
-},{"DOCS":5,"STATE":1,"net_helper":18}],9:[function(require,module,exports){
+},{"DOCS":6,"STATE":1,"net_helper":19}],10:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { get } = statedb(fallback_module)
 const DOCS = require('DOCS')
+const DEBUG = require('DEBUG')
 const net = require('net_helper')
 
 module.exports = console_history
@@ -4458,18 +4511,33 @@ async function console_history (opts, invite) {
   shadow.innerHTML = `
   <div class="console-history-container main">
     <div class="console-menu">
-      <console-commands></console-commands>
+      <div class="commands-list"></div>
+    </div>
+    <div class="console-search">
+      <span class="console-search-icon"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.5"/><path d="M11 11L14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span>
+      <input class="console-search-input" type="text" placeholder="search input" />
+      <button class="console-search-btn console-search-clear" title="Clear search"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 4L12 12M12 4L4 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+      <button class="console-search-btn console-search-filter" title="Toggle default (demo) entries"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 3H14L9.5 8.5V13L6.5 11.5V8.5L2 3Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></button>
     </div>
   </div>`
   const sheet = new CSSStyleSheet()
   shadow.adoptedStyleSheets = [sheet]
-  const commands_placeholder = shadow.querySelector('console-commands')
+  const commands_list = shadow.querySelector('.commands-list')
+  const search_input = shadow.querySelector('.console-search-input')
+  const clear_btn = shadow.querySelector('.console-search-clear')
+  const filter_btn = shadow.querySelector('.console-search-filter')
+  search_input.oninput = on_search_input
+  clear_btn.onclick = on_clear_search
+  filter_btn.onclick = on_toggle_default_entries
 
-  let init = false
-  let commands = []
+  let default_commands = []
+  const live_commands = []
+  let search_term = ''
   let dricons = []
   const docs = DOCS(__filename)(opts.sid)
+  const debug = DEBUG(__filename)(opts.sid)
   const { io, _ } = net(id)
+  debug.on_change(on_debug_change)
 
   // Register actions with DOCS system
   const actions_file = await drive.get('actions/commands.json')
@@ -4488,45 +4556,105 @@ async function console_history (opts, invite) {
   return el
 
   function io_up () {
-    return function onmessage (msg) {
-      // Temp placeholder
+    const on_message = {
+      record_closed_tab: handle_record_closed_tab
     }
+    return function onmessage (msg) {
+      const handler = on_message[msg.type] || onmessage_fail
+      handler(msg)
+    }
+    function handle_record_closed_tab (msg) { record_closed_tab(msg.data) }
+    function onmessage_fail (msg) { console.warn('console_history: unknown message', { cause: msg && msg.type }) }
   }
+
+  function record_closed_tab (data) {
+    const tab = data || {}
+    const entry = {
+      icon_type: 'file',
+      name_path: tab.name || tab.id || 'Tab',
+      label: 'closed',
+      pending: true,
+      status: null,
+      restore_data: { id: tab.id, name: tab.name }
+    }
+    live_commands.unshift(entry)
+    render_commands()
+  }
+
+  function resolve_closed_tab (entry, status, do_restore) {
+    entry.pending = false
+    entry.status = status
+    entry.label = status
+    if (do_restore) _.up('restore_tab', {}, entry.restore_data || { name: entry.name_path })
+    render_commands()
+  }
+
+  function on_search_input (e) {
+    search_term = e.target.value
+    render_commands()
+  }
+
+  function on_clear_search () {
+    search_term = ''
+    search_input.value = ''
+    render_commands()
+  }
+
+  function on_toggle_default_entries () {
+    debug.set_flag('show_default_entries', !debug.get_flag('show_default_entries'))
+  }
+
+  function on_debug_change () { render_commands() }
 
   function create_command_item (command_data) {
     const command_el = document.createElement('div')
     command_el.className = 'command-item'
 
-    const icon_html = dricons[command_data.icon_type] || ''
-    const linked_icon_html = command_data.linked.is ? (dricons[command_data.linked.icon_type] || '') : ''
+    const icon_html = dricons[command_data.icon_type] || dricons.file || ''
+    const is_pending = !!command_data.pending
+    const status = command_data.status
 
-    let action_html = ''
-    action_html += command_data.can_restore ? '<div class="action-icon">' + (dricons.restore || '') + '</div>' : ''
-    action_html += command_data.can_delete ? '<div class="action-icon">' + (dricons.delete || '') + '</div>' : ''
-    action_html += command_data.action ? '<div class="action-text">' + command_data.action + '</div>' : ''
+    let right_html = ''
+    if (is_pending) {
+      right_html =
+        '<div class="action-icon restore-action" title="Restore">' + (dricons.restore || '') + '</div>' +
+        '<div class="action-icon delete-action" title="Delete">' + (dricons.delete || '') + '</div>'
+    } else if (status) {
+      const status_class = String(status).toLowerCase().indexOf('delet') === 0 ? 'deleted' : 'restored'
+      right_html = '<span class="status-text status-' + status_class + '">' + status + '</span>'
+    }
 
     command_el.innerHTML = `
     <div class="command-content">
-    <div class="command-icon">${icon_html}</div>
-    <div class="command-info">
-      <div class="command-path">${command_data.name_path}</div>
-    </div>
-    ${command_data.linked.is
-    ? `<div class="linked-info">
-          <span class="command-separator">---&gt;</span>
-          <div class="linked-icon">${linked_icon_html}</div>
-          <div class="linked-name">${command_data.linked.name}</div>
-        </div>`
-    : ''}
-      ${action_html
-    ? `<div class="command-actions">${action_html}</div>`
-    : ''}
-        <div class="command-name">${command_data.command}</div>
-      </div>`
+      <div class="command-icon">${icon_html}</div>
+      <div class="command-info">
+        <div class="command-name">${command_data.name_path}</div>
+        <div class="command-label">${command_data.label || ''}</div>
+      </div>
+      ${right_html ? `<div class="command-actions">${right_html}</div>` : ''}
+    </div>`
 
     command_el.onclick = docs.wrap(on_command_click, get_doc_content)
 
+    const restore_el = command_el.querySelector('.restore-action')
+    const delete_el = command_el.querySelector('.delete-action')
+    if (restore_el) restore_el.onclick = on_restore_click
+    if (delete_el) delete_el.onclick = on_delete_click
+
+    function on_restore_click (e) {
+      e.stopPropagation()
+      resolve_closed_tab(command_data, 'Restored', true)
+    }
+
+    function on_delete_click (e) {
+      e.stopPropagation()
+      resolve_closed_tab(command_data, 'Deleted', false)
+    }
+
     async function on_command_click () {
+      const previous = commands_list.querySelector('.command-item.selected')
+      if (previous) previous.classList.remove('selected')
+      command_el.classList.add('selected')
       const data = {
         type: 'command_history',
         sid: opts.sid
@@ -4543,18 +4671,25 @@ async function console_history (opts, invite) {
     return command_el
   }
   function render_commands () {
-    const commands_container = document.createElement('div')
-    commands_container.className = 'commands-list'
+    commands_list.replaceChildren()
+    const show_defaults = debug.get_flag('show_default_entries')
+    const base = show_defaults ? live_commands.concat(default_commands) : live_commands.slice()
+    const term = search_term.trim().toLowerCase()
+    const visible = term ? base.filter(matches_search) : base
+    visible.forEach(append_command_item)
 
-    commands.forEach(append_command_item)
+    function matches_search (command) {
+      const haystack = [command.name_path, command.label, command.status]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+      return haystack.includes(term)
+    }
 
     function append_command_item (command, index) {
       const command_item = create_command_item(command, index)
-      commands_container.appendChild(command_item)
+      commands_list.appendChild(command_item)
     }
-
-    commands_placeholder.replaceWith(commands_container)
-    init = true
   }
   async function onbatch (batch) {
     for (const { type, paths } of batch) {
@@ -4562,9 +4697,7 @@ async function console_history (opts, invite) {
       const func = on[type] || fail
       func(data, type)
     }
-    if (!init && commands.length > 0) {
-      render_commands()
-    }
+    render_commands()
 
     function load_path_raw (path) { return drive.get(path).then(read_drive_file_raw) }
     function read_drive_file_raw (file) { return file.raw }
@@ -4575,7 +4708,18 @@ async function console_history (opts, invite) {
   function inject (data) { sheet.replaceSync(data[0]) }
   function oncommands (data) {
     const commands_data = typeof data[0] === 'string' ? JSON.parse(data[0]) : data[0]
-    commands = commands_data
+    default_commands = Array.isArray(commands_data) ? commands_data.map(normalize_default) : []
+  }
+
+  function normalize_default (entry) {
+    return {
+      icon_type: entry.icon_type || 'file',
+      name_path: entry.name_path || entry.name || 'entry',
+      label: entry.label || entry.status || entry.command || '',
+      pending: !!entry.pending,
+      status: entry.pending ? null : (entry.status || null),
+      restore_data: entry.restore_data || { name: entry.name_path }
+    }
   }
 
   function iconject (data) {
@@ -4595,6 +4739,9 @@ function fallback_module () {
       DOCS: {
         $: ''
       },
+      DEBUG: {
+        $: ''
+      },
       net_helper: {
         $: ''
       }
@@ -4605,6 +4752,9 @@ function fallback_module () {
     return {
       _: {
         DOCS: {
+          0: ''
+        },
+        DEBUG: {
           0: ''
         },
         net_helper: {
@@ -4691,23 +4841,78 @@ function fallback_module () {
           'theme.css': {
             raw: `
               .console-history-container {
-                position: relative;
-                width: 100%; /* Or a specific width based on images */
+                display: flex;
+                flex-direction: column;
+                flex: 1 1 auto;
+                width: 100%;
+                height: 100%;
                 background: #202124;
                 border: 1px solid #3c3c3c;
-                Set box-sizing property to border-box:
                 box-sizing: border-box;
-                -moz-box-sizing: border-box;
-                -webkit-box-sizing: border-box;
                 box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
                 z-index: 1;
-                max-height: 400px;
-                overflow-y: auto;
+                overflow: hidden;
                 color: #e8eaed;
               }
 
               .console-menu {
+                flex: 1 1 auto;
+                min-height: 0;
+                overflow-y: auto;
                 padding: 0px;
+              }
+
+              /* Sticky search bar pinned to the bottom; scrolling the list above
+                 it does not move it. */
+              .console-search {
+                flex: 0 0 auto;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding: 8px 12px;
+                background: #18191b;
+                border-top: 1px solid #3c3c3c;
+              }
+
+              .console-search-icon {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: #969ba1;
+                flex: 0 0 auto;
+              }
+
+              .console-search-input {
+                flex: 1 1 auto;
+                min-width: 0;
+                box-sizing: border-box;
+                padding: 6px 8px;
+                background: transparent;
+                color: #e8eaed;
+                border: none;
+                outline: none;
+                font-size: 13px;
+              }
+
+              .console-search-input::placeholder { color: #6b7077; }
+
+              .console-search-btn {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 26px;
+                height: 26px;
+                padding: 0;
+                background: transparent;
+                border: none;
+                color: #969ba1;
+                cursor: pointer;
+                border-radius: 4px;
+              }
+
+              .console-search-btn:hover {
+                color: #e8eaed;
+                background: rgba(255, 255, 255, 0.08);
               }
 
               .commands-list {
@@ -4719,11 +4924,11 @@ function fallback_module () {
               .command-item {
                 display: flex;
                 align-items: center;
-                padding: 10px 16px;
+                padding: 8px 14px;
                 background: transparent;
                 border-bottom: 1px solid #3c3c3c;
                 cursor: pointer;
-                transition: background-color 0.2s ease;
+                transition: background-color 0.15s ease;
               }
 
               .command-item:last-child {
@@ -4734,20 +4939,39 @@ function fallback_module () {
                 background: #282a2d;
               }
 
+              .command-item.selected {
+                background: #f56300;
+              }
+
+              .command-item.selected .command-name,
+              .command-item.selected .command-label,
+              .command-item.selected .status-text,
+              .command-item.selected .action-icon {
+                color: #fff;
+              }
+
               .command-content {
                 display: flex;
                 align-items: center;
                 width: 100%;
-                gap: 10px; /* Adjusted gap */
+                gap: 12px;
               }
 
               .command-icon {
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                width: 20px;
-                height: 20px;
-                color: #969ba1;
+                width: 28px;
+                height: 28px;
+                border-radius: 6px;
+                background: #2b2c2f;
+                color: #c8ccd2;
+                flex: 0 0 auto;
+              }
+
+              .command-item.selected .command-icon {
+                background: rgba(255, 255, 255, 0.18);
+                color: #fff;
               }
 
               .command-icon svg {
@@ -4756,12 +4980,48 @@ function fallback_module () {
               }
 
               .command-info {
-                display: flex; /* Use flex to align name and path */
-                align-items: center; /* Vertically align items if they wrap */
-                gap: 8px; /* Gap between name and path */
-                min-width: 0; /* Prevent overflow issues with flex items */
+                display: flex;
+                flex-direction: column;
+                gap: 2px;
+                min-width: 0;
+                flex: 1 1 auto;
               }
 
+              .command-label {
+                font-size: 11px;
+                color: #969ba1;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+              }
+
+              .status-text {
+                font-size: 12px;
+                white-space: nowrap;
+              }
+
+              .status-text.status-restored { color: #46c95d; }
+              .status-text.status-deleted { color: #ff6b6b; }
+
+              .console-menu::-webkit-scrollbar {
+                width: 10px;
+              }
+              .console-menu::-webkit-scrollbar-track {
+                background: transparent;
+              }
+              .console-menu::-webkit-scrollbar-thumb {
+                background: #30363d;
+                border-radius: 999px;
+                background-clip: content-box;
+                border: 2px solid transparent;
+              }
+              .console-menu::-webkit-scrollbar-thumb:hover {
+                background: #484f58;
+              }
+              .console-menu {
+                scrollbar-width: thin;
+                scrollbar-color: #30363d transparent;
+              }
               .command-name {
                 font-size: 13px;
                 font-weight: 400;
@@ -4854,7 +5114,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/console_history/console_history.js")
-},{"DOCS":5,"STATE":1,"net_helper":18}],10:[function(require,module,exports){
+},{"DEBUG":5,"DOCS":6,"STATE":1,"net_helper":19}],11:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5003,7 +5263,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/docs_window/docs_window.js")
-},{"STATE":1,"net_helper":18}],11:[function(require,module,exports){
+},{"STATE":1,"net_helper":19}],12:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5209,7 +5469,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/form_input/form_input.js")
-},{"STATE":1,"net_helper":18}],12:[function(require,module,exports){
+},{"STATE":1,"net_helper":19}],13:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5382,7 +5642,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/form_tile_split_choice/form_tile_split_choice.js")
-},{"STATE":1,"net_helper":18}],13:[function(require,module,exports){
+},{"STATE":1,"net_helper":19}],14:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5663,7 +5923,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/graph_viewer/graph_viewer.js")
-},{"./graphdb":14,"STATE":1,"graph-explorer":2,"net_helper":18}],14:[function(require,module,exports){
+},{"./graphdb":15,"STATE":1,"graph-explorer":2,"net_helper":19}],15:[function(require,module,exports){
 module.exports = graphdb
 
 function graphdb (entries) {
@@ -5692,7 +5952,7 @@ function graphdb (entries) {
   function raw () { return entries }
 }
 
-},{}],15:[function(require,module,exports){
+},{}],16:[function(require,module,exports){
 module.exports = { resource }
 
 function resource (timeout = 1000) {
@@ -5718,7 +5978,7 @@ function resource (timeout = 1000) {
   }
 }
 
-},{}],16:[function(require,module,exports){
+},{}],17:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5933,7 +6193,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/input_test/input_test.js")
-},{"STATE":1,"net_helper":18}],17:[function(require,module,exports){
+},{"STATE":1,"net_helper":19}],18:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -6215,7 +6475,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/menu/menu.js")
-},{"STATE":1}],18:[function(require,module,exports){
+},{"STATE":1}],19:[function(require,module,exports){
 (function (__filename){(function (){
 module.exports = net
 
@@ -6274,7 +6534,7 @@ function net (id) {
 }
 
 }).call(this)}).call(this,"/src/node_modules/net_helper/net_helper.js")
-},{}],19:[function(require,module,exports){
+},{}],20:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -6392,7 +6652,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/program/program.js")
-},{"STATE":1,"form_input":11,"form_tile_split_choice":12,"input_test":16,"net_helper":18}],20:[function(require,module,exports){
+},{"STATE":1,"form_input":12,"form_tile_split_choice":13,"input_test":17,"net_helper":19}],21:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -6679,7 +6939,10 @@ async function program_container (opts, invite) {
       function onmessage_graph_explorer_toggle () { graph_explorer_toggle_view() }
       function onmessage_display_actions (msg) { actions_toggle_view(msg.data) }
       function onmessage_filter_actions (msg) { _.actions(msg.type, msg.head ? { cause: msg.head } : {}, msg.data) }
-      function onmessage_tab_close_clicked (msg) { _.tabbed_editor('close_tab', msg.head ? { cause: msg.head } : {}, msg.data) }
+      function onmessage_tab_close_clicked (msg) {
+        _.tabbed_editor('close_tab', msg.head ? { cause: msg.head } : {}, msg.data)
+        _.console_history('record_closed_tab', msg.head ? { cause: msg.head } : {}, msg.data)
+      }
       function onmessage_entry_toggled (msg) { _.graph_explorer(msg.type, msg.head ? { cause: msg.head } : {}, msg.data) }
       function onmessage_execute_step (msg) {
         if (!msg.data || !Array.isArray(msg.data.commands) || msg.data.commands.length === 0) return
@@ -6833,38 +7096,22 @@ function fallback_module () {
               .console-history {
                 grid-row: 4;
                 grid-column: 1;
+                display: flex;
+                flex-direction: column;
                 position: relative;
                 width: 100%;
-                height: auto;
-                max-height: 100%;
+                height: 100%; 
+                max-height: min(400px, 100%);       
                 min-height: 0;
                 min-width: 0;
                 background-color: #161b22;
                 border: 1px solid #21262d;
                 border-radius: 6px;
                 box-sizing: border-box;
-                overflow: auto;
+                overflow: hidden;
                 scrollbar-gutter: stable;
                 scrollbar-width: thin;
                 scrollbar-color: #30363d transparent;
-              }
-              .console-history::-webkit-scrollbar {
-                width: 10px;
-                height: 10px;
-              }
-              .console-history::-webkit-scrollbar-track {
-                background: transparent;
-              }
-              .console-history::-webkit-scrollbar-thumb {
-                background: #30363d;
-                border: 2px solid transparent;
-                border-radius: 999px;
-                background-clip: content-box;
-              }
-              .console-history::-webkit-scrollbar-thumb:hover {
-                background: #484f58;
-                border: 2px solid transparent;
-                background-clip: content-box;
               }
               .actions {
                 grid-row: 3;
@@ -6914,7 +7161,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/program_container/program_container.js")
-},{"STATE":1,"actions":8,"console_history":9,"docs_window":10,"graph_viewer":13,"net_helper":18,"tabbed_editor":25}],21:[function(require,module,exports){
+},{"STATE":1,"actions":9,"console_history":10,"docs_window":11,"graph_viewer":14,"net_helper":19,"tabbed_editor":26}],22:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -7594,7 +7841,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/quick_actions/quick_actions.js")
-},{"DOCS":5,"STATE":1,"net_helper":18}],22:[function(require,module,exports){
+},{"DOCS":6,"STATE":1,"net_helper":19}],23:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -8038,7 +8285,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/quick_editor/quick_editor.js")
-},{"STATE":1,"helpers":15}],23:[function(require,module,exports){
+},{"STATE":1,"helpers":16}],24:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -8231,7 +8478,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/steps_wizard/steps_wizard.js")
-},{"DOCS":5,"STATE":1,"net_helper":18}],24:[function(require,module,exports){
+},{"DOCS":6,"STATE":1,"net_helper":19}],25:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -8584,7 +8831,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tab_group/tab_group.js")
-},{"STATE":1,"action_bar":6,"action_executor":7,"net_helper":18,"program_container":20,"tabs":26}],25:[function(require,module,exports){
+},{"STATE":1,"action_bar":7,"action_executor":8,"net_helper":19,"program_container":21,"tabs":27}],26:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -8995,7 +9242,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabbed_editor/tabbed_editor.js")
-},{"STATE":1,"net_helper":18}],26:[function(require,module,exports){
+},{"STATE":1,"net_helper":19}],27:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -9032,6 +9279,7 @@ async function component (opts, invite) {
   let tile_is_focused = false
   const default_tabs = {}
   const link_tabs = {}
+  const variable_tabs = {}
   let ARROW_LEFT_SVG = ''
   let ARROW_RIGHT_SVG = ''
   const docs = DOCS(__filename)(opts.sid)
@@ -9115,6 +9363,7 @@ async function component (opts, invite) {
       add_link_tab: handle_add_link_tab,
       remove_link_tab: handle_remove_link_tab,
       add_default_tab: handle_add_default_tab,
+      restore_tab: handle_restore_tab,
       show_collapsed_tab_group: handle_show_collapsed_tab_group,
       hide_collapsed_tab_group: handle_hide_collapsed_tab_group,
       tile_focus_changed: handle_tile_focus_changed
@@ -9126,14 +9375,19 @@ async function component (opts, invite) {
     function handle_add_link_tab ({ data }) { add_link_tab(data) }
     function handle_remove_link_tab ({ data }) { remove_link_tab(data) }
     function handle_add_default_tab ({ data }) { add_default_tab(data) }
+    function handle_restore_tab ({ data }) { create_btn({ name: data.name, id: data.id }) }
     function handle_show_collapsed_tab_group ({ data }) { show_collapsed_tab_group(data) }
     function handle_hide_collapsed_tab_group () { hide_collapsed_tab_group() }
     function handle_tile_focus_changed ({ data }) { update_tab_focus_state(data) }
     function onfail (msg) { console.error('tabs: unknown message', msg) }
   }
 
-  function add_default_tab ({ name, program, tile_id }) {
-    const tab_id = `tab_${Date.now()}`
+  function add_default_tab ({ name, program, tile_id, id }) {
+    const tab_id = id || `tab_${Date.now()}`
+    if (default_tabs[tab_id]) {
+      console.error('tabs: default tab already exists', tab_id)
+      return
+    }
     const el = document.createElement('div')
     el.innerHTML = `
     <span class="icon">${dricons[1] || '📄'}</span>
@@ -9289,13 +9543,17 @@ async function component (opts, invite) {
     entries.classList.toggle('tile-inactive', !is_focused)
   }
 
-  async function create_btn ({ name, id }, index) {
+  async function create_btn ({ name, id }, index = 0) {
+    if (variable_tabs[id]) {
+      console.error('tabs: variable tab already exists', id)
+      return
+    }
     const el = document.createElement('div')
     el.innerHTML = `
-    <span class="icon">${dricons[index + 1]}</span>
+    <span class="icon">${dricons[index + 1] || dricons[1] || '📄'}</span>
     <span class='name'>${id}</span>
     <span class="name">${name}</span>
-    <button class="btn">${dricons[0]}</button>`
+    <button class="btn">${dricons[0] || '×'}</button>`
 
     el.className = 'tabsbtn'
     const name_el = el.querySelector('.name')
@@ -9305,6 +9563,7 @@ async function component (opts, invite) {
 
     name_el.onclick = docs.wrap(on_tab_name_click, get_doc_content)
     close_btn.onclick = docs.wrap(on_tab_close_click, get_doc_content)
+    variable_tabs[id] = { el, name }
 
     async function on_tab_name_click () {
       const data = { type: 'tab', sid: opts.sid }
@@ -9313,6 +9572,8 @@ async function component (opts, invite) {
     }
     async function on_tab_close_click (e) {
       e.stopPropagation()
+      el.remove()
+      delete variable_tabs[id]
       const data = { type: 'tab', sid: opts.sid }
       _.up('ui_focus', {}, data)
       _.up('tab_close_clicked', {}, { id, name })
@@ -9479,7 +9740,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabs/tabs.js")
-},{"DOCS":5,"STATE":1,"net_helper":18}],27:[function(require,module,exports){
+},{"DOCS":6,"STATE":1,"net_helper":19}],28:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const state_db = STATE(__filename)
@@ -9509,7 +9770,8 @@ async function tabsbar (opts, invite) {
     remove_link_tab: handle_forward_tabs,
     show_collapsed_tab_group: handle_forward_tabs,
     hide_collapsed_tab_group: handle_forward_tabs,
-    tile_focus_changed: handle_forward_tabs
+    tile_focus_changed: handle_forward_tabs,
+    restore_tab: handle_forward_tabs
   }
   const { io, _ } = net(id)
   const el = document.createElement('div')
@@ -9901,7 +10163,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabsbar/tabsbar.js")
-},{"DOCS":5,"STATE":1,"net_helper":18,"tabs":26,"task_manager":28}],28:[function(require,module,exports){
+},{"DOCS":6,"STATE":1,"net_helper":19,"tabs":27,"task_manager":29}],29:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -10091,7 +10353,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/task_manager/task_manager.js")
-},{"DOCS":5,"STATE":1,"net_helper":18}],29:[function(require,module,exports){
+},{"DOCS":6,"STATE":1,"net_helper":19}],30:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -10123,7 +10385,8 @@ async function taskbar (opts, invite) {
     remove_link_tab: handle_forward_tabsbar,
     show_collapsed_tab_group: handle_forward_tabsbar,
     hide_collapsed_tab_group: handle_forward_tabsbar,
-    tile_focus_changed: handle_forward_tabsbar
+    tile_focus_changed: handle_forward_tabsbar,
+    restore_tab: handle_forward_tabsbar
   }
   const { io, _ } = net(id)
 
@@ -10381,7 +10644,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/taskbar/taskbar.js")
-},{"STATE":1,"action_bar":6,"action_executor":7,"net_helper":18,"tabsbar":27}],30:[function(require,module,exports){
+},{"STATE":1,"action_bar":7,"action_executor":8,"net_helper":19,"tabsbar":28}],31:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -10662,7 +10925,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/theme_widget/theme_widget.js")
-},{"STATE":1,"net_helper":18,"program_container":20,"taskbar":29}],31:[function(require,module,exports){
+},{"STATE":1,"net_helper":19,"program_container":21,"taskbar":30}],32:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -11171,7 +11434,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tile_manager/tile_manager.js")
-},{"STATE":1,"net_helper":18,"tab_group":24,"theme_widget":30}],32:[function(require,module,exports){
+},{"STATE":1,"net_helper":19,"tab_group":25,"theme_widget":31}],33:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -12005,7 +12268,7 @@ function handle_admin_message (msg) {
 }
 
 }).call(this)}).call(this,"/src/node_modules/ui_gallery/index.js")
-},{"DOCS":5,"STATE":1,"action_bar":6,"action_executor":7,"actions":8,"console_history":9,"graph_viewer":13,"helpers":15,"menu":17,"net_helper":18,"program_container":20,"quick_actions":21,"quick_editor":22,"steps_wizard":23,"tabbed_editor":25,"tabs":26,"tabsbar":27,"task_manager":28,"taskbar":29,"theme_widget":30,"tile_manager":31}],33:[function(require,module,exports){
+},{"DOCS":6,"STATE":1,"action_bar":7,"action_executor":8,"actions":9,"console_history":10,"graph_viewer":14,"helpers":16,"menu":18,"net_helper":19,"program_container":21,"quick_actions":22,"quick_editor":23,"steps_wizard":24,"tabbed_editor":26,"tabs":27,"tabsbar":28,"task_manager":29,"taskbar":30,"theme_widget":31,"tile_manager":32}],34:[function(require,module,exports){
 const ui_gallery = require('../src/index')
 config().then(boot_default_page)
 
@@ -12026,4 +12289,4 @@ async function boot_default_page () {
   document.body.append(await ui_gallery())
 }
 
-},{"../src/index":4}]},{},[33]);
+},{"../src/index":4}]},{},[34]);
