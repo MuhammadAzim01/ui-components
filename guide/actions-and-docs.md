@@ -65,7 +65,8 @@ The details window leverages a global docs mode state:
 
 1. Docs mode is activated globally (e.g. by toggling the `docs_toggle` action).
 2. When the user clicks an element with a hooked or wrapped event handler, `DOCS` prevents the default action, stops propagation, and triggers the doc display handler.
-3. The display handler receives `{ content, sid }` and renders the markdown in the details window.
+3. When the user triggers a registered action, the action `info` text is shown instead of executing the action.
+4. The display handler receives `{ content, sid }` and renders the markdown in the details window.
 
 ### Admin Setup (Root Module)
 
@@ -96,6 +97,7 @@ Each action must follow this shape:
 ```json
 {
   "name": "Action Name",
+  "info": "Explain what this action does when it is triggered.",
   "icon": "icon_identifier",
   "status": {
     "pinned": true,
@@ -114,6 +116,8 @@ Each action must follow this shape:
 }
 ```
 
+`info` is required. Keep it short and useful because docs mode displays this text in the details window when the action would normally run.
+
 ### Registering actions
 
 Load the actions array from the component drive and register:
@@ -123,6 +127,15 @@ const actions_file = await drive.get('actions/commands.json')
 if (actions_file.raw) {
   const actions = JSON.parse(actions_file.raw)
   docs.register_actions(actions)
+}
+```
+
+When a component is about to run a registered action, call `docs.show_action_info(action)` first. It returns `true` in docs mode after displaying `action.info`, so the component should stop there.
+
+```js
+function on_action_click () {
+  if (docs.show_action_info(action)) return
+  run_action(action)
 }
 ```
 
