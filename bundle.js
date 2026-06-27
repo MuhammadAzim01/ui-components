@@ -3196,7 +3196,7 @@ function net (id) {
 },{}],4:[function(require,module,exports){
 module.exports = require('ui_gallery')
 
-},{"ui_gallery":33}],5:[function(require,module,exports){
+},{"ui_gallery":34}],5:[function(require,module,exports){
 (function (global){(function (){
 module.exports = function DEBUG (filename) {
   return function (sid) { return create_context(filename, sid) }
@@ -3306,6 +3306,7 @@ function verify_actions (actions) {
 
   function validate_action (action, i) {
     if (!action.name || typeof action.name !== 'string') throw new Error(`DOCS: Action[${i}] Invalid 'name'`)
+    if (!action.info || typeof action.info !== 'string') throw new Error(`DOCS: Action[${i}] Invalid 'info'`)
     if (!action.icon || typeof action.icon !== 'string') throw new Error(`DOCS: Action[${i}] Invalid 'icon'`)
     if (!action.status || typeof action.status !== 'object') throw new Error(`DOCS: Action[${i}] Invalid 'status'`)
     if (!action.steps || !Array.isArray(action.steps)) throw new Error(`DOCS: Action[${i}] Invalid 'steps'`)
@@ -3337,6 +3338,7 @@ function create_sys_api (meta) {
 // --- Instance Methods (called as docs.method()) ---
 
 function wrap (handler, meta = {}, make_sys = create_sys_api) {
+  meta = { ...meta, doc: get_handler_doc(handler, meta.doc) }
   const sys = make_sys(meta)
 
   return async function wrapped_handler (event) {
@@ -3349,6 +3351,13 @@ function wrap (handler, meta = {}, make_sys = create_sys_api) {
       return
     }
     return handler.call(this, event, sys)
+  }
+
+  function get_handler_doc (handler, doc) {
+    if (doc !== undefined) return doc
+    if (handler.docs !== undefined) return handler.docs
+    if (handler.info !== undefined) return handler.info
+    return doc
   }
 }
 
@@ -3390,6 +3399,13 @@ function register_actions (sid, actions) {
   state.action_registry.set(sid, actions)
 }
 
+function show_action_info (sid, action) {
+  if (!state.docs_mode_active) return false
+  if (!action || typeof action.info !== 'string') return false
+  display_doc(action.info, sid)
+  return true
+}
+
 let admin = true
 function create_context (filename, sid) {
   const api = {
@@ -3398,7 +3414,8 @@ function create_context (filename, sid) {
     hook: hook_with_component,
     get_docs_mode,
     on_docs_mode_change,
-    register_actions: register_component_actions
+    register_actions: register_component_actions,
+    show_action_info: show_component_action_info
   }
   const admin_api = {
     set_docs_mode,
@@ -3413,6 +3430,7 @@ function create_context (filename, sid) {
   function wrap_isolated_with_component (handler_string, doc) { return wrap_isolated(handler_string, { doc, sid, component: filename }) }
   function hook_with_component (dom, doc) { return hook(dom, { doc, sid, component: filename }) }
   function register_component_actions (actions) { return register_actions(sid, actions) }
+  function show_component_action_info (action) { return show_action_info(sid, action) }
 }
 
 }).call(this)}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
@@ -3548,6 +3566,7 @@ async function action_bar (opts, invite) {
   }
 
   function quick_actions_action_submitted (msg) {
+    if (docs.show_action_info(selected_action)) return
     _.quick_actions('deactivate_input_field', msg.head ? { cause: msg.head } : {}, { reason: 'completed' })
     _.up('action_submitted', msg.head ? { cause: msg.head } : {}, { selected_action })
   }
@@ -3580,11 +3599,15 @@ async function action_bar (opts, invite) {
 
   function update_quick_actions_input (msg) {
     const { data } = msg
+    if (docs.show_action_info(data)) return
     selected_action = data || null
     _.quick_actions('update_input_command', msg.head ? { cause: msg.head } : {}, data)
   }
 
-  function quick_actions_activate_steps_wizard (msg) { _.up('activate_steps_wizard', msg.head ? { cause: msg.head } : {}, msg.data) }
+  function quick_actions_activate_steps_wizard (msg) {
+    if (docs.show_action_info(msg.data)) return
+    _.up('activate_steps_wizard', msg.head ? { cause: msg.head } : {}, msg.data)
+  }
 
   function parent_step_clicked (msg) {
     const { data } = msg
@@ -3593,6 +3616,7 @@ async function action_bar (opts, invite) {
   }
 
   function parent__action_submitted (msg) {
+    if (docs.show_action_info(msg.data && msg.data.selected_action)) return
     _.quick_actions('deactivate_input_field', msg.head ? { cause: msg.head } : {}, { reason: 'completed' })
     _.up('action_submitted', msg.head ? { cause: msg.head } : {}, msg.data)
   }
@@ -3713,7 +3737,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/action_bar/action_bar.js")
-},{"DOCS":6,"STATE":1,"net_helper":19,"quick_actions":22}],8:[function(require,module,exports){
+},{"DOCS":6,"STATE":1,"net_helper":20,"quick_actions":23}],8:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -3723,12 +3747,13 @@ const net = require('net_helper')
 const program = require('program')
 const steps_wizard = require('steps_wizard')
 
-const { form_input, input_test, form_tile_split_choice } = program
+const { form_input, input_test, form_tile_split_choice, form_click_rate_test } = program
 
 const component_modules = {
   form_input,
   input_test,
-  form_tile_split_choice
+  form_tile_split_choice,
+  form_click_rate_test
   // Add more form input components here if needed
 }
 
@@ -4105,9 +4130,14 @@ function fallback_module () {
             style: 'style',
             data: 'data',
             docs: 'docs'
-          },
-          DOCS: {
-            0: ''
+          }
+        },
+        'program>form_click_rate_test': {
+          0: '',
+          mapping: {
+            style: 'style',
+            data: 'data',
+            docs: 'docs'
           }
         },
         net_helper: {
@@ -4147,7 +4177,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/action_executor/action_executor.js")
-},{"STATE":1,"net_helper":19,"program":20,"steps_wizard":24}],9:[function(require,module,exports){
+},{"STATE":1,"net_helper":20,"program":21,"steps_wizard":25}],9:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4223,6 +4253,7 @@ async function actions (opts, invite) {
     function convert_action_key (action_key) {
       return {
         name: action_key,
+        info: 'Run the ' + action_key + ' action.',
         icon: 'file',
         status: { pinned: false, default: true },
         steps: []
@@ -4282,13 +4313,12 @@ async function actions (opts, invite) {
     <div class="action-name">${action_data.name}</div>
     <div class="action-pin">${action_data.status && action_data.status.pinned ? hardcons.pin : hardcons.unpin}</div>
     <div class="action-default">${action_data.status && action_data.status.default ? hardcons.default : hardcons.undefault}</div>`
-    action_item.onclick = docs.wrap(on_action_item_click, get_doc_content)
+    action_item.onclick = docs.wrap(on_action_item_click, action_data.info)
     actions_menu.appendChild(action_item)
 
-    function on_action_item_click () { _.up('selected_action', {}, action_data) }
-    async function get_doc_content () {
-      const doc_file = await drive.get('docs/README.md')
-      return doc_file.raw || 'No documentation available'
+    function on_action_item_click () {
+      if (docs.show_action_info(action_data)) return
+      _.up('selected_action', {}, action_data)
     }
   }
 
@@ -4485,7 +4515,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/actions/actions.js")
-},{"DOCS":6,"STATE":1,"net_helper":19}],10:[function(require,module,exports){
+},{"DOCS":6,"STATE":1,"net_helper":20}],10:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4772,6 +4802,7 @@ function fallback_module () {
             raw: JSON.stringify([
               {
                 name: 'Clear History',
+                info: 'Clear the stored console history after confirmation.',
                 icon: 'trash',
                 status: {
                   pinned: false,
@@ -4783,6 +4814,7 @@ function fallback_module () {
               },
               {
                 name: 'Export History',
+                info: 'Export console history to the selected format and location.',
                 icon: 'download',
                 status: {
                   pinned: true,
@@ -4795,6 +4827,7 @@ function fallback_module () {
               },
               {
                 name: 'Search History',
+                info: 'Search through recorded console history entries.',
                 icon: 'search',
                 status: {
                   pinned: false,
@@ -5114,7 +5147,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/console_history/console_history.js")
-},{"DEBUG":5,"DOCS":6,"STATE":1,"net_helper":19}],11:[function(require,module,exports){
+},{"DEBUG":5,"DOCS":6,"STATE":1,"net_helper":20}],11:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5263,7 +5296,209 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/docs_window/docs_window.js")
-},{"STATE":1,"net_helper":19}],12:[function(require,module,exports){
+},{"STATE":1,"net_helper":20}],12:[function(require,module,exports){
+(function (__filename){(function (){
+const STATE = require('STATE')
+const statedb = STATE(__filename)
+const { get } = statedb(fallback_module)
+const DOCS = require('DOCS')
+const net = require('net_helper')
+
+module.exports = form_click_rate_test
+
+async function form_click_rate_test (opts, invite) {
+  const { id, sdb } = await get(opts.sid)
+  const { drive } = sdb
+
+  const on = {
+    style: inject,
+    data: ondata
+  }
+
+  let current_step = null
+  let click_count = 0
+  let start_time = 0
+  let input_accessible = true
+  const docs = DOCS(__filename)(opts.sid)
+  const { io, _ } = net(id)
+  const milliseconds_action = {
+    name: 'Click Rate Result',
+    info: 'Calculate and submit the milliseconds taken to complete 10 clicks.',
+    icon: 'timer',
+    status: {
+      pinned: false,
+      default: false
+    },
+    steps: []
+  }
+
+  const el = document.createElement('div')
+  const shadow = el.attachShadow({ mode: 'closed' })
+  shadow.innerHTML = `
+  <div class="click-rate-test">
+    <div class="title">Click Rate Test</div>
+    <button class="click-btn" type="button">
+      <span class="count">0</span>
+      <span class="label">clicks</span>
+    </button>
+    <div class="hint">Click as fast as you can. The 10th click completes the action.</div>
+    <div class="result"></div>
+  </div>
+  <style></style>
+  `
+  const style = shadow.querySelector('style')
+  const button = shadow.querySelector('.click-btn')
+  const count_el = shadow.querySelector('.count')
+  const result_el = shadow.querySelector('.result')
+
+  on_click_event_doc.info = 'Record one click in the 10-click sequence. This event is not an action until the 10th click.'
+  const show_click_event_doc = docs.wrap(on_click_event_doc)
+  button.onclick = on_click
+  docs.register_actions([milliseconds_action])
+
+  await sdb.watch(onbatch)
+
+  const parent_handler = {
+    step_data,
+    reset_data
+  }
+
+  io.on = {
+    up: io_up()
+  }
+  if (invite) io.accept(invite)
+
+  return el
+
+  function io_up () {
+    return function onmessage ({ type, data }) {
+      const handler = parent_handler[type] || fail
+      handler(data, type)
+    }
+  }
+
+  async function onbatch (batch) {
+    for (const { type, paths } of batch) {
+      const data = await Promise.all(paths.map(load_path_raw))
+      const func = on[type] || fail
+      func(data, type)
+    }
+
+    function load_path_raw (path) { return drive.get(path).then(read_drive_file_raw) }
+    function read_drive_file_raw (file) { return file.raw }
+  }
+
+  function fail (data, type) { console.warn('invalid message', { cause: { data, type } }) }
+
+  function inject (data) {
+    style.replaceChildren(create_style_element())
+
+    function create_style_element () {
+      const style_el = document.createElement('style')
+      style_el.textContent = data[0]
+      return style_el
+    }
+  }
+
+  function ondata (data) {
+    if (data.length === 0 || !data[0]) return
+    click_count = data[0].click_count || 0
+    update_count()
+    if (data[0].result) show_result(data[0].result)
+  }
+
+  function step_data (data) {
+    current_step = data
+    input_accessible = data.is_accessible !== false
+    button.disabled = !input_accessible
+    reset_clicks()
+  }
+
+  function reset_data () {
+    reset_clicks()
+    drive.put('data/form_click_rate_test.json', {
+      click_count: 0,
+      result: ''
+    })
+  }
+
+  function on_click_event_doc () {}
+
+  async function on_click (event) {
+    if (!input_accessible) return
+    if (click_count === 0) start_time = Date.now()
+
+    click_count += 1
+    update_count()
+
+    if (click_count < 10) {
+      await show_click_event_doc(event)
+      await drive.put('data/form_click_rate_test.json', { click_count, result: '' })
+      _.up('action_incomplete', {}, { value: click_count, index: get_step_index() })
+      return
+    }
+
+    await run_milliseconds_action()
+  }
+
+  async function run_milliseconds_action () {
+    if (docs.show_action_info(milliseconds_action)) return
+
+    const result = '10 clicks in ' + get_elapsed_time() + ' ms'
+    show_result(result)
+    await drive.put('data/form_click_rate_test.json', { click_count, result })
+    _.up('action_submitted', {}, { value: result, index: get_step_index() })
+    _.up('action_complete', {}, { value: result })
+  }
+
+  function get_elapsed_time () { return Date.now() - start_time }
+
+  function get_step_index () {
+    if (current_step && current_step.index !== undefined) return current_step.index
+    return 0
+  }
+
+  function reset_clicks () {
+    click_count = 0
+    start_time = 0
+    result_el.textContent = ''
+    update_count()
+  }
+
+  function update_count () { count_el.textContent = click_count }
+  function show_result (result) { result_el.textContent = result }
+}
+
+function fallback_module () {
+  return {
+    api: fallback_instance,
+    _: {
+      DOCS: { $: '' },
+      net_helper: { $: '' }
+    }
+  }
+
+  function fallback_instance () {
+    return {
+      _: {
+        DOCS: { 0: '' },
+        net_helper: { 0: '' }
+      },
+      drive: {
+        'style/': {
+          'form_click_rate_test.css': { $ref: 'form_click_rate_test.css' }
+        },
+        'data/': {
+          'form_click_rate_test.json': { raw: { click_count: 0, result: '' } }
+        },
+        'docs/': { 'README.md': { raw: '# Click Rate Test\nClick 10 times as fast as possible.' } }
+      }
+    }
+  }
+}
+
+}).call(this)}).call(this,"/src/node_modules/form_click_rate_test/form_click_rate_test.js")
+},{"DOCS":6,"STATE":1,"net_helper":20}],13:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5469,7 +5704,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/form_input/form_input.js")
-},{"STATE":1,"net_helper":19}],13:[function(require,module,exports){
+},{"STATE":1,"net_helper":20}],14:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5642,7 +5877,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/form_tile_split_choice/form_tile_split_choice.js")
-},{"STATE":1,"net_helper":19}],14:[function(require,module,exports){
+},{"STATE":1,"net_helper":20}],15:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5923,7 +6158,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/graph_viewer/graph_viewer.js")
-},{"./graphdb":15,"STATE":1,"graph-explorer":2,"net_helper":19}],15:[function(require,module,exports){
+},{"./graphdb":16,"STATE":1,"graph-explorer":2,"net_helper":20}],16:[function(require,module,exports){
 module.exports = graphdb
 
 function graphdb (entries) {
@@ -5952,7 +6187,7 @@ function graphdb (entries) {
   function raw () { return entries }
 }
 
-},{}],16:[function(require,module,exports){
+},{}],17:[function(require,module,exports){
 module.exports = { resource }
 
 function resource (timeout = 1000) {
@@ -5978,7 +6213,7 @@ function resource (timeout = 1000) {
   }
 }
 
-},{}],17:[function(require,module,exports){
+},{}],18:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -6193,7 +6428,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/input_test/input_test.js")
-},{"STATE":1,"net_helper":19}],18:[function(require,module,exports){
+},{"STATE":1,"net_helper":20}],19:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -6475,7 +6710,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/menu/menu.js")
-},{"STATE":1}],19:[function(require,module,exports){
+},{"STATE":1}],20:[function(require,module,exports){
 (function (__filename){(function (){
 module.exports = net
 
@@ -6534,7 +6769,7 @@ function net (id) {
 }
 
 }).call(this)}).call(this,"/src/node_modules/net_helper/net_helper.js")
-},{}],20:[function(require,module,exports){
+},{}],21:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -6544,10 +6779,12 @@ const net = require('net_helper')
 const form_input = require('form_input')
 const input_test = require('input_test')
 const form_tile_split_choice = require('form_tile_split_choice')
+const form_click_rate_test = require('form_click_rate_test')
 
 program.form_input = form_input
 program.input_test = input_test
 program.form_tile_split_choice = form_tile_split_choice
+program.form_click_rate_test = form_click_rate_test
 
 module.exports = program
 
@@ -6618,10 +6855,10 @@ function fallback_module () {
   return {
     api: fallback_instance,
     _: {
-
       form_input: { $: '' },
       input_test: { $: '' },
       form_tile_split_choice: { $: '' },
+      form_click_rate_test: { $: '' },
       net_helper: { $: '' }
     }
   }
@@ -6652,7 +6889,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/program/program.js")
-},{"STATE":1,"form_input":12,"form_tile_split_choice":13,"input_test":17,"net_helper":19}],21:[function(require,module,exports){
+},{"STATE":1,"form_click_rate_test":12,"form_input":13,"form_tile_split_choice":14,"input_test":18,"net_helper":20}],22:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -7161,7 +7398,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/program_container/program_container.js")
-},{"STATE":1,"actions":9,"console_history":10,"docs_window":11,"graph_viewer":14,"net_helper":19,"tabbed_editor":26}],22:[function(require,module,exports){
+},{"STATE":1,"actions":9,"console_history":10,"docs_window":11,"graph_viewer":15,"net_helper":20,"tabbed_editor":27}],23:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -7418,12 +7655,13 @@ async function quick_actions (opts, invite) {
       btn.onmouseenter = on_action_btn_mouseenter
       btn.onmouseleave = hide_tooltip
     }
-    btn.onclick = docs.wrap(onclick, get_doc_content)
+    btn.onclick = docs.wrap(onclick, action.info)
     default_actions.appendChild(btn)
 
     function on_action_btn_mouseenter () { show_tooltip(btn, action.name) }
 
     function onclick () {
+      if (docs.show_action_info(action)) return
       _.up('update_quick_actions_input', {}, action)
     }
   }
@@ -7498,6 +7736,7 @@ async function quick_actions (opts, invite) {
     const matching_action = defaults.find(matches_selected_command)
 
     if (matching_action) {
+      if (docs.show_action_info(matching_action)) return
       const pass_data = {
         name: matching_action.name,
         current_step: 1,
@@ -7841,7 +8080,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/quick_actions/quick_actions.js")
-},{"DOCS":6,"STATE":1,"net_helper":19}],23:[function(require,module,exports){
+},{"DOCS":6,"STATE":1,"net_helper":20}],24:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -8285,7 +8524,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/quick_editor/quick_editor.js")
-},{"STATE":1,"helpers":16}],24:[function(require,module,exports){
+},{"STATE":1,"helpers":17}],25:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -8478,7 +8717,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/steps_wizard/steps_wizard.js")
-},{"DOCS":6,"STATE":1,"net_helper":19}],25:[function(require,module,exports){
+},{"DOCS":6,"STATE":1,"net_helper":20}],26:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -8831,7 +9070,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tab_group/tab_group.js")
-},{"STATE":1,"action_bar":7,"action_executor":8,"net_helper":19,"program_container":21,"tabs":27}],26:[function(require,module,exports){
+},{"STATE":1,"action_bar":7,"action_executor":8,"net_helper":20,"program_container":22,"tabs":28}],27:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -9242,7 +9481,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabbed_editor/tabbed_editor.js")
-},{"STATE":1,"net_helper":19}],27:[function(require,module,exports){
+},{"STATE":1,"net_helper":20}],28:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -9678,6 +9917,7 @@ function fallback_module () {
             raw: JSON.stringify([
               {
                 name: 'New Tab',
+                info: 'Create a new tab in the current tab strip.',
                 icon: 'plus',
                 status: {
                   pinned: true,
@@ -9689,6 +9929,7 @@ function fallback_module () {
               },
               {
                 name: 'Duplicate Tab',
+                info: 'Copy an existing tab and open the duplicate as a new tab.',
                 icon: 'copy',
                 status: {
                   pinned: false,
@@ -9701,6 +9942,7 @@ function fallback_module () {
               },
               {
                 name: 'Close Tab',
+                info: 'Close the selected tab after confirmation.',
                 icon: 'close',
                 status: {
                   pinned: false,
@@ -9740,7 +9982,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabs/tabs.js")
-},{"DOCS":6,"STATE":1,"net_helper":19}],28:[function(require,module,exports){
+},{"DOCS":6,"STATE":1,"net_helper":20}],29:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const state_db = STATE(__filename)
@@ -9999,6 +10241,7 @@ function fallback_module () {
             raw: JSON.stringify([
               {
                 name: 'New File',
+                info: 'Create a new file after choosing its name and location.',
                 icon: 'file',
                 status: {
                   pinned: true,
@@ -10022,6 +10265,7 @@ function fallback_module () {
               },
               {
                 name: 'Open File',
+                info: 'Open an existing file from the selected location.',
                 icon: 'folder',
                 status: {
                   pinned: false,
@@ -10044,6 +10288,7 @@ function fallback_module () {
               },
               {
                 name: 'Save File',
+                info: 'Save the current file to the chosen location and filename.',
                 icon: 'save',
                 status: {
                   pinned: true,
@@ -10056,6 +10301,7 @@ function fallback_module () {
               },
               {
                 name: 'Settings',
+                info: 'Open configuration controls for the current workspace.',
                 icon: 'gear',
                 status: {
                   pinned: false,
@@ -10077,6 +10323,7 @@ function fallback_module () {
               },
               {
                 name: 'Help',
+                info: 'Open documentation for the current workspace.',
                 icon: 'help',
                 status: {
                   pinned: false,
@@ -10088,6 +10335,7 @@ function fallback_module () {
               },
               {
                 name: 'Terminal',
+                info: 'Open a terminal for the current workspace.',
                 icon: 'terminal',
                 status: {
                   pinned: true,
@@ -10099,6 +10347,7 @@ function fallback_module () {
               },
               {
                 name: 'Search',
+                info: 'Search actions or workspace content using the command UI.',
                 icon: 'search',
                 status: {
                   pinned: false,
@@ -10132,7 +10381,27 @@ function fallback_module () {
                 ]
               },
               {
+                name: 'Click Rate Test',
+                info: 'Start a 10-click gesture. Regular clicks are documented as events; the 10th click triggers the result action.',
+                icon: 'timer',
+                status: {
+                  pinned: false,
+                  default: true
+                },
+                steps: [
+                  {
+                    name: 'Click 10 Times',
+                    type: 'mandatory',
+                    is_completed: false,
+                    component: 'form_click_rate_test',
+                    status: 'default',
+                    data: ''
+                  }
+                ]
+              },
+              {
                 name: 'Split Tile',
+                info: 'Split the active tile in the selected direction.',
                 icon: 'split',
                 status: {
                   pinned: false,
@@ -10163,7 +10432,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabsbar/tabsbar.js")
-},{"DOCS":6,"STATE":1,"net_helper":19,"tabs":27,"task_manager":29}],29:[function(require,module,exports){
+},{"DOCS":6,"STATE":1,"net_helper":20,"tabs":28,"task_manager":30}],30:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -10300,6 +10569,7 @@ function fallback_module () {
             raw: JSON.stringify([
               {
                 name: 'Kill Process',
+                info: 'Stop the selected running process after confirmation.',
                 icon: 'stop',
                 status: {
                   pinned: false,
@@ -10312,6 +10582,7 @@ function fallback_module () {
               },
               {
                 name: 'Restart Task',
+                info: 'Restart the selected task after confirmation.',
                 icon: 'refresh',
                 status: {
                   pinned: true,
@@ -10324,6 +10595,7 @@ function fallback_module () {
               },
               {
                 name: 'Task Details',
+                info: 'Open details for the selected task.',
                 icon: 'info',
                 status: {
                   pinned: false,
@@ -10353,7 +10625,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/task_manager/task_manager.js")
-},{"DOCS":6,"STATE":1,"net_helper":19}],30:[function(require,module,exports){
+},{"DOCS":6,"STATE":1,"net_helper":20}],31:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -10644,7 +10916,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/taskbar/taskbar.js")
-},{"STATE":1,"action_bar":7,"action_executor":8,"net_helper":19,"tabsbar":28}],31:[function(require,module,exports){
+},{"STATE":1,"action_bar":7,"action_executor":8,"net_helper":20,"tabsbar":29}],32:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -10925,7 +11197,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/theme_widget/theme_widget.js")
-},{"STATE":1,"net_helper":19,"program_container":21,"taskbar":30}],32:[function(require,module,exports){
+},{"STATE":1,"net_helper":20,"program_container":22,"taskbar":31}],33:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -11434,7 +11706,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tile_manager/tile_manager.js")
-},{"STATE":1,"net_helper":19,"tab_group":25,"theme_widget":31}],33:[function(require,module,exports){
+},{"STATE":1,"net_helper":20,"tab_group":26,"theme_widget":32}],34:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -12268,7 +12540,7 @@ function handle_admin_message (msg) {
 }
 
 }).call(this)}).call(this,"/src/node_modules/ui_gallery/index.js")
-},{"DOCS":6,"STATE":1,"action_bar":7,"action_executor":8,"actions":9,"console_history":10,"graph_viewer":14,"helpers":16,"menu":18,"net_helper":19,"program_container":21,"quick_actions":22,"quick_editor":23,"steps_wizard":24,"tabbed_editor":26,"tabs":27,"tabsbar":28,"task_manager":29,"taskbar":30,"theme_widget":31,"tile_manager":32}],34:[function(require,module,exports){
+},{"DOCS":6,"STATE":1,"action_bar":7,"action_executor":8,"actions":9,"console_history":10,"graph_viewer":15,"helpers":17,"menu":19,"net_helper":20,"program_container":22,"quick_actions":23,"quick_editor":24,"steps_wizard":25,"tabbed_editor":27,"tabs":28,"tabsbar":29,"task_manager":30,"taskbar":31,"theme_widget":32,"tile_manager":33}],35:[function(require,module,exports){
 const ui_gallery = require('../src/index')
 config().then(boot_default_page)
 
@@ -12289,4 +12561,4 @@ async function boot_default_page () {
   document.body.append(await ui_gallery())
 }
 
-},{"../src/index":4}]},{},[34]);
+},{"../src/index":4}]},{},[35]);
