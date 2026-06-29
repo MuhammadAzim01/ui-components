@@ -3138,28 +3138,25 @@ function fallback_module () {
 (function (__filename){(function (){
 module.exports = net
 
-function net (id) {
-  const [label, io, _, sub, hub] = [`[${id}@${__filename}]`, { invite, accept, on: {} }, {}, {}, {}]
+function net(id) {
+  const [label, _, sub, hub] = [`[${id}@${__filename}]`, {}, {}, {}]
+  const io = { invite, accept, on: {} }
   return { io, _ }
-  function forward (to, M) {
-    if (to.startsWith(id)) {
-      const ups = [...new Set(Object.keys(hub).map(id => hub[id].tx))]
-      for (const tx of ups) tx(M)
-      return
-    }
+  function forward(to, M) {
     for (const id of Object.keys(sub)) if (to.startsWith(id)) return sub[id].tx(M)
-    throw new Error(`${label} unknown recipient "${to}"`)
+    for (const id of Object.keys(hub)) if (to.startsWith(id)) hub[id].tx(M)
+    console.error(`[id] ${label} - cant forward to unknown recipient "${to}"`)
   }
-  function invite (name, ids) {
+  function invite(name, ids) {
     if (!io.on[name]) throw new Error(`${label} no protocol handler for "${name}"`)
     return Object.assign(invite, { ids })
-    function invite (tx) {
+    function invite(tx) {
       const rx = router(sub)
       add(name, tx, tx.id, rx, sub)
       return rx
     }
   }
-  function accept (invite) {
+  function accept(invite) {
     const rx = router(hub)
     const tx = invite(Object.assign(rx, { id }))
     for (const [name, to] of Object.entries(invite.ids)) {
@@ -3168,10 +3165,10 @@ function net (id) {
       add(name, tx, to, rx, hub)
     }
   }
-  function router ($) {
-    return function rx (M) {
-      const { head: [by, to] } = M
-      console.log(`[M]\n${by} \n to: \n ${to}`, M)
+  function router($) {
+    return function rx(M) {
+      const { head: [by, to, mid] } = M
+      console.log(`[by] ${by}\n[to] ${to}\n[id]`, M)
       if (to !== id) return forward(to, M)
       if (!$[by]) throw new Error(`${label} unknown sender "${by}"`)
       const { name } = $[by].state
@@ -3179,11 +3176,12 @@ function net (id) {
       io.on[name](M)
     }
   }
-  function add (name, tx, to, rx, $) {
+  function add(name, tx, to, rx, $) {
+    if (_[name]) throw new Error(`${label} petname "${name}" is already in use`)
     const state = { name, to, mid: 0 }
     _[name] = send
     $[to] = { rx, tx, state }
-    function send (type, refs = {}, data = null) {
+    function send(type, refs = {}, data = null) {
       const head = [id, to, state.mid++]
       const meta = { time: Date.now(), stack: (new Error().stack) }
       tx({ head, refs, type, data, meta })
@@ -3266,11 +3264,13 @@ if (!scope.__DOCS_GLOBAL_STATE__) {
     docs_mode_active: false,
     docs_mode_listeners: [],
     doc_display_callback: null,
-    action_registry: new Map()
+    action_registry: new Map(),
+    missing_resource_warnings: new Set()
   }
 }
 
 const state = scope.__DOCS_GLOBAL_STATE__
+state.missing_resource_warnings = state.missing_resource_warnings || new Set()
 
 // --- Static Methods (called as DOCS.method()) ---
 // Exported via DOCS admin API (only available to first caller)
@@ -3317,7 +3317,7 @@ async function display_doc (content, sid) {
   let resolved_content = content
   if (typeof content === 'function') {
     resolved_content = await content()
-  } else if (typeof content.then === 'function') {
+  } else if (content && typeof content.then === 'function') {
     resolved_content = await content
   }
 
@@ -3327,23 +3327,146 @@ async function display_doc (content, sid) {
 }
 
 function create_sys_api (meta) {
+  const messages = create_message_api(meta)
+  const drive = create_drive_api(meta)
+  const sdb = create_sdb_api(meta, drive)
+
   return {
     is_docs_mode: () => state.docs_mode_active,
     get_doc: () => meta.doc || 'No documentation available',
     get_meta: () => ({ ...meta }),
-    show_doc: () => display_doc(meta.doc || 'No documentation available', meta.sid)
+    show_doc: () => display_doc(meta.doc || 'No documentation available', meta.sid),
+    show_action_info: action => show_action_info(meta.sid, resolve_action(meta.sid, action)),
+    get_actions: () => state.action_registry.get(meta.sid) || [],
+    get_action: name => get_action(meta.sid, name),
+    trigger_action: (action, options) => trigger_action(meta, action, options),
+    action: (action, options) => trigger_action(meta, action, options),
+    send: (channel, type, refs, data) => send_message(meta, channel, type, refs, data),
+    _: messages,
+    drive,
+    sdb,
+    get_drive: () => drive,
+    get_sdb: () => sdb
   }
+}
+
+function get_action (sid, name) {
+  const actions = state.action_registry.get(sid) || []
+  return actions.find(action => action.name === name) || null
+}
+
+function resolve_action (sid, action) {
+  if (typeof action === 'string') return get_action(sid, action)
+  return action || null
+}
+
+function trigger_action (meta, action, options = {}) {
+  const resolved_action = resolve_action(meta.sid, action)
+  if (state.docs_mode_active) return show_action_info(meta.sid, resolved_action)
+
+  if (typeof options.run === 'function') return options.run(resolved_action)
+  if (!options.channel || !options.type) {
+    warn_once('action:' + meta.sid, 'DOCS: sys.trigger_action requires options.channel and options.type in normal mode')
+    return false
+  }
+
+  const refs = options.refs || {}
+  const data = options.data === undefined ? resolved_action : options.data
+  return send_message(meta, options.channel, options.type, refs, data)
+}
+
+function get_sys_resources (meta) {
+  return meta.resources || {}
+}
+
+function create_message_api (meta) {
+  return new Proxy({}, {
+    get: function get_channel (_, channel) {
+      return function send_channel_message (type, refs, data) {
+        return send_message(meta, channel, type, refs, data)
+      }
+    }
+  })
+}
+
+function send_message (meta, channel, type, refs, data) {
+  if (state.docs_mode_active) return false
+
+  const sender = get_sys_resources(meta)._
+  if (!sender || typeof sender[channel] !== 'function') {
+    warn_once('_.' + channel + ':' + meta.sid, 'DOCS: sys._.' + channel + ' is unavailable; message suppressed')
+    return false
+  }
+
+  return sender[channel](type, refs, data)
+}
+
+function create_drive_api (meta) {
+  return {
+    get: path => get_drive_file(meta, path),
+    put: (path, data) => put_drive_file(meta, path, data)
+  }
+}
+
+function get_drive_file (meta, path) {
+  if (state.docs_mode_active) return Promise.resolve({ raw: null, path })
+
+  const drive = get_sys_resources(meta).drive
+  if (!drive || typeof drive.get !== 'function') {
+    warn_once('drive.get:' + meta.sid, 'DOCS: sys.drive.get is unavailable; returning empty file')
+    return Promise.resolve({ raw: null, path })
+  }
+
+  return drive.get(path)
+}
+
+function put_drive_file (meta, path, data) {
+  if (state.docs_mode_active) return Promise.resolve(false)
+
+  const drive = get_sys_resources(meta).drive
+  if (!drive || typeof drive.put !== 'function') {
+    warn_once('drive.put:' + meta.sid, 'DOCS: sys.drive.put is unavailable; write suppressed')
+    return Promise.resolve(false)
+  }
+
+  return drive.put(path, data)
+}
+
+function create_sdb_api (meta, drive) {
+  return {
+    watch: handler => watch_sdb(meta, handler),
+    drive
+  }
+}
+
+function watch_sdb (meta, handler) {
+  if (state.docs_mode_active) return Promise.resolve([])
+
+  const sdb = get_sys_resources(meta).sdb
+  if (!sdb || typeof sdb.watch !== 'function') {
+    warn_once('sdb.watch:' + meta.sid, 'DOCS: sys.sdb.watch is unavailable; returning empty subscriptions')
+    return Promise.resolve([])
+  }
+
+  return sdb.watch(handler)
+}
+
+function warn_once (key, message) {
+  if (state.missing_resource_warnings.has(key)) return
+  state.missing_resource_warnings.add(key)
+  console.warn(message)
 }
 
 // --- Instance Methods (called as docs.method()) ---
 
-function wrap (handler, meta = {}, make_sys = create_sys_api) {
+function wrap (handler, meta = {}, make_sys = create_sys_api, options = {}) {
   meta = { ...meta, doc: get_handler_doc(handler, meta.doc) }
+  const run_in_docs_mode = options.run_in_docs_mode === true
   const sys = make_sys(meta)
 
   return async function wrapped_handler (event) {
-    if (sys.is_docs_mode()) {
-      if (event.preventDefault) {
+    if (sys.is_docs_mode() && !run_in_docs_mode) {
+      if (event && event.preventDefault) {
         event.preventDefault()
         event.stopPropagation()
       }
@@ -3364,7 +3487,7 @@ function wrap (handler, meta = {}, make_sys = create_sys_api) {
 function wrap_isolated (handler_string, meta = {}) {
   try {
     const params = 'meta, make_sys'
-    const source = `(${wrap.toString()})(${handler_string}, ${params})`
+    const source = `return (${wrap.toString()})(${handler_string}, ${params}, { run_in_docs_mode: true })`
     // eslint-disable-next-line no-new-func
     const isolated_fn = new Function(params, source)(meta, create_sys_api)
     return isolated_fn
@@ -3408,6 +3531,7 @@ function show_action_info (sid, action) {
 
 let admin = true
 function create_context (filename, sid) {
+  const resources = {}
   const api = {
     wrap: wrap_with_component,
     wrap_isolated: wrap_isolated_with_component,
@@ -3415,7 +3539,8 @@ function create_context (filename, sid) {
     get_docs_mode,
     on_docs_mode_change,
     register_actions: register_component_actions,
-    show_action_info: show_component_action_info
+    show_action_info: show_component_action_info,
+    set_sys
   }
   const admin_api = {
     set_docs_mode,
@@ -3426,11 +3551,12 @@ function create_context (filename, sid) {
   const context = admin ? (admin = false, Object.assign({ admin: admin_api }, api)) : api
   return context
 
-  function wrap_with_component (handler, doc) { return wrap(handler, { doc, sid, component: filename }) }
-  function wrap_isolated_with_component (handler_string, doc) { return wrap_isolated(handler_string, { doc, sid, component: filename }) }
-  function hook_with_component (dom, doc) { return hook(dom, { doc, sid, component: filename }) }
+  function wrap_with_component (handler, doc) { return wrap(handler, { doc, sid, component: filename, resources }) }
+  function wrap_isolated_with_component (handler_string, doc) { return wrap_isolated(handler_string, { doc, sid, component: filename, resources }) }
+  function hook_with_component (dom, doc) { return hook(dom, { doc, sid, component: filename, resources }) }
   function register_component_actions (actions) { return register_actions(sid, actions) }
   function show_component_action_info (action) { return show_action_info(sid, action) }
+  function set_sys (api) { Object.assign(resources, api) }
 }
 
 }).call(this)}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
@@ -9777,7 +9903,6 @@ async function component (opts, invite) {
   // ---------------------------
 
   function update_tab_focus_state ({ is_focused }) {
-    tile_is_focused = is_focused
     entries.classList.toggle('tile-focused', is_focused)
     entries.classList.toggle('tile-inactive', !is_focused)
   }
