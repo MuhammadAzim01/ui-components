@@ -1,0 +1,158 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { createRequire } from 'module'
+
+const require = createRequire(import.meta.url)
+const docs_path = './src/node_modules/DOCS/index.js'
+
+describe('DOCS sys API', () => {
+  let DOCS
+
+  beforeEach(() => {
+    delete global.__DOCS_GLOBAL_STATE__
+    delete require.cache[require.resolve(docs_path)]
+    DOCS = require(docs_path)
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  function create_docs () {
+    return DOCS('test_component.js')('sid_1')
+  }
+
+  function create_action () {
+    return {
+      name: 'Open File',
+      info: 'Open the selected file.',
+      icon: 'file',
+      status: {},
+      steps: []
+    }
+  }
+
+  it('runs wrap_isolated handlers in docs mode', async () => {
+    const docs = create_docs()
+    docs.admin.set_docs_mode(true)
+
+    const handler = docs.wrap_isolated(
+      'function (event, sys) { event.ran = true; event.docs_mode = sys.is_docs_mode() }',
+      'Isolated docs'
+    )
+    const event = {
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn()
+    }
+
+    await handler(event)
+
+    expect(event.ran).toBe(true)
+    expect(event.docs_mode).toBe(true)
+    expect(event.preventDefault).not.toHaveBeenCalled()
+    expect(event.stopPropagation).not.toHaveBeenCalled()
+  })
+
+  it('keeps docs.wrap blocking behavior in docs mode', async () => {
+    const docs = create_docs()
+    const displays = []
+    let ran = false
+    docs.admin.set_doc_display_handler(display => displays.push(display))
+    docs.admin.set_docs_mode(true)
+
+    const handler = docs.wrap(function onclick () { ran = true }, 'Wrapped docs')
+    const event = {
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn()
+    }
+
+    await handler(event)
+
+    expect(ran).toBe(false)
+    expect(event.preventDefault).toHaveBeenCalled()
+    expect(event.stopPropagation).toHaveBeenCalled()
+    expect(displays).toEqual([{ content: 'Wrapped docs', sid: 'sid_1' }])
+  })
+
+  it('shows action info from sys.trigger_action in docs mode', async () => {
+    const docs = create_docs()
+    const displays = []
+    docs.register_actions([create_action()])
+    docs.admin.set_doc_display_handler(display => displays.push(display))
+    docs.admin.set_docs_mode(true)
+
+    const handler = docs.wrap_isolated(
+      'function (event, sys) { event.result = sys.trigger_action("Open File", { channel: "up", type: "selected_action" }) }',
+      'Trigger docs'
+    )
+    const event = {}
+
+    await handler(event)
+
+    expect(event.result).toBe(true)
+    expect(displays).toEqual([{ content: 'Open the selected file.', sid: 'sid_1' }])
+  })
+
+  it('sends action messages from sys.trigger_action in normal mode', async () => {
+    const docs = create_docs()
+    const sent = []
+    docs.set_sys({
+      _: {
+        up: function up (type, refs, data) {
+          sent.push({ type, refs, data })
+          return ['sid_1', 'parent', 0]
+        }
+      }
+    })
+
+    const handler = docs.wrap_isolated(
+      'function (event, sys) { event.head = sys.trigger_action({ name: "Open File", info: "Open the selected file.", icon: "file", status: {}, steps: [] }, { channel: "up", type: "selected_action", refs: { source: "test" } }) }',
+      'Trigger docs'
+    )
+    const event = {}
+
+    await handler(event)
+
+    expect(event.head).toEqual(['sid_1', 'parent', 0])
+    expect(sent).toEqual([
+      {
+        type: 'selected_action',
+        refs: { source: 'test' },
+        data: create_action()
+      }
+    ])
+  })
+
+  it('returns empty subscriptions from sys.sdb.watch in docs mode', async () => {
+    const docs = create_docs()
+    docs.admin.set_docs_mode(true)
+
+    const handler = docs.wrap_isolated(
+      'async function (event, sys) { event.subs = await sys.sdb.watch(function onbatch () {}) }',
+      'Watch docs'
+    )
+    const event = {}
+
+    await handler(event)
+
+    expect(event.subs).toEqual([])
+  })
+
+  it('suppresses missing sys resources instead of throwing', async () => {
+    const docs = create_docs()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const handler = docs.wrap_isolated(
+      'function (event, sys) { event.sent = sys._.up("selected_action", {}, {}); event.file = sys.drive.get("missing.json"); event.wrote = sys.drive.put("missing.json", {}); event.subs = sys.sdb.watch(function onbatch () {}) }',
+      'Missing resources docs'
+    )
+    const event = {}
+
+    await handler(event)
+
+    expect(event.sent).toBe(false)
+    await expect(event.file).resolves.toEqual({ raw: null, path: 'missing.json' })
+    await expect(event.wrote).resolves.toBe(false)
+    await expect(event.subs).resolves.toEqual([])
+    expect(warn).toHaveBeenCalled()
+  })
+})
