@@ -10,7 +10,6 @@ Import `DOCS` and initialize it with the module filename and instance `sid`:
 const DOCS = require('DOCS')
 
 async function component (opts, invite) {
-  const { id, sdb } = await get(opts.sid)
   const docs = DOCS(__filename)(opts.sid)
   // ...
 }
@@ -56,14 +55,25 @@ button.onclick = docs.wrap(onbutton_click)
 
 The wrapped handler receives `(event, sys)`. `sys` exposes docs helpers such as `sys.is_docs_mode()`, `sys.get_doc()`, `sys.get_meta()`, and `sys.show_doc()`.
 
+When an isolated handler needs real normal-mode side effects, the component can optionally call `docs.set_sys({ _, sdb, drive })`. Without configured resources, `sys` suppresses unavailable sends/writes and warns instead of throwing.
+
+Isolated handlers can use:
+
+- `sys._.up(type, refs, data)` or `sys.send('up', type, refs, data)` to send through `net_helper` in normal mode
+- `sys.drive.get(path)` to read drive files in normal mode; docs mode returns `{ raw: null, path }`
+- `sys.drive.put(path, data)` to write in normal mode; docs mode returns `Promise<false>`
+- `sys.sdb.watch(handler)` in normal mode; docs mode returns `Promise<[]>`
+- `sys.show_action_info(action)` before running an action; docs mode displays `action.info` and returns `true`
+- `sys.trigger_action(action_or_name, options)` to display action `info` in docs mode or perform the configured normal-mode send/run
+
 ### Wrapping isolated handlers
 
-Use `docs.wrap_isolated(handler_string, doc_content)` when the handler must be created from a function string and must not access local closure scope.
+Use `docs.wrap_isolated(handler_string, doc_content)` when the handler must be created from a function string and must not access local closure scope. In docs mode, isolated handlers still run with dummy/safe `sys` behavior, so multi-step gestures can progress until a registered action is triggered.
 
 ```js
 button.onclick = docs.wrap_isolated(
-  'function (event, sys) { console.log(sys.get_meta().sid) }',
-  '# Inspect Button\nLogs this component sid.'
+  'function (event, sys) { sys.trigger_action("Open File", { channel: "up", type: "selected_action" }) }',
+  '# Open File\nStarts the file-open action.'
 )
 ```
 
@@ -74,9 +84,10 @@ button.onclick = docs.wrap_isolated(
 The details window leverages a global docs mode state:
 
 1. Docs mode is activated globally (e.g. by toggling the `docs_toggle` action).
-2. When the user clicks an element with a hooked or wrapped event handler, `DOCS` prevents the default action, stops propagation, and triggers the doc display handler.
-3. When the user triggers a registered action, the action `info` text is shown instead of executing the action.
-4. The display handler receives `{ content, sid }` and renders the markdown in the details window.
+2. When the user clicks an element with a hooked or `docs.wrap()` handler, `DOCS` prevents the default action, stops propagation, and triggers the doc display handler.
+3. `docs.wrap_isolated()` handlers still run in docs mode with dummy/safe `sys` behavior.
+4. When the user triggers a registered action, the action `info` text is shown instead of executing the action.
+5. The display handler receives `{ content, sid }` and renders the markdown in the details window.
 
 ### Admin Setup (Root Module)
 
