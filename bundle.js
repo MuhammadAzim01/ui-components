@@ -3138,25 +3138,28 @@ function fallback_module () {
 (function (__filename){(function (){
 module.exports = net
 
-function net(id) {
-  const [label, _, sub, hub] = [`[${id}@${__filename}]`, {}, {}, {}]
-  const io = { invite, accept, on: {} }
+function net (id) {
+  const [label, io, _, sub, hub] = [`[${id}@${__filename}]`, { invite, accept, on: {} }, {}, {}, {}]
   return { io, _ }
-  function forward(to, M) {
+  function forward (to, M) {
+    if (to.startsWith(id)) {
+      const ups = [...new Set(Object.keys(hub).map(id => hub[id].tx))]
+      for (const tx of ups) tx(M)
+      return
+    }
     for (const id of Object.keys(sub)) if (to.startsWith(id)) return sub[id].tx(M)
-    for (const id of Object.keys(hub)) if (to.startsWith(id)) hub[id].tx(M)
-    console.error(`[id] ${label} - cant forward to unknown recipient "${to}"`)
+    throw new Error(`${label} unknown recipient "${to}"`)
   }
-  function invite(name, ids) {
+  function invite (name, ids) {
     if (!io.on[name]) throw new Error(`${label} no protocol handler for "${name}"`)
     return Object.assign(invite, { ids })
-    function invite(tx) {
+    function invite (tx) {
       const rx = router(sub)
       add(name, tx, tx.id, rx, sub)
       return rx
     }
   }
-  function accept(invite) {
+  function accept (invite) {
     const rx = router(hub)
     const tx = invite(Object.assign(rx, { id }))
     for (const [name, to] of Object.entries(invite.ids)) {
@@ -3165,10 +3168,10 @@ function net(id) {
       add(name, tx, to, rx, hub)
     }
   }
-  function router($) {
-    return function rx(M) {
-      const { head: [by, to, mid] } = M
-      console.log(`[by] ${by}\n[to] ${to}\n[id]`, M)
+  function router ($) {
+    return function rx (M) {
+      const { head: [by, to] } = M
+      console.log(`[M]\n${by} \n to: \n ${to}`, M)
       if (to !== id) return forward(to, M)
       if (!$[by]) throw new Error(`${label} unknown sender "${by}"`)
       const { name } = $[by].state
@@ -3176,12 +3179,11 @@ function net(id) {
       io.on[name](M)
     }
   }
-  function add(name, tx, to, rx, $) {
-    if (_[name]) throw new Error(`${label} petname "${name}" is already in use`)
+  function add (name, tx, to, rx, $) {
     const state = { name, to, mid: 0 }
     _[name] = send
     $[to] = { rx, tx, state }
-    function send(type, refs = {}, data = null) {
+    function send (type, refs = {}, data = null) {
       const head = [id, to, state.mid++]
       const meta = { time: Date.now(), stack: (new Error().stack) }
       tx({ head, refs, type, data, meta })
@@ -9731,7 +9733,8 @@ async function component (opts, invite) {
       restore_tab: handle_restore_tab,
       show_collapsed_tab_group: handle_show_collapsed_tab_group,
       hide_collapsed_tab_group: handle_hide_collapsed_tab_group,
-      tile_focus_changed: handle_tile_focus_changed
+      tile_focus_changed: handle_tile_focus_changed,
+      sync_tab_count: handle_sync_tab_count
     }
     return function onmessage (msg) {
       console.error('tabs: message from up', msg)
@@ -9744,6 +9747,7 @@ async function component (opts, invite) {
     function handle_show_collapsed_tab_group ({ data }) { show_collapsed_tab_group(data) }
     function handle_hide_collapsed_tab_group () { hide_collapsed_tab_group() }
     function handle_tile_focus_changed ({ data }) { update_tab_focus_state(data) }
+    function handle_sync_tab_count () { sync_tab_count() }
     function onfail (msg) { console.error('tabs: unknown message', msg) }
   }
 
@@ -9769,6 +9773,7 @@ async function component (opts, invite) {
     close_btn.onclick = close_tab
     entries.appendChild(el)
     console.error('tabs: default tab added', tab_id)
+    sync_tab_count()
 
     function switch_active () {
       console.error('tabs: default tab clicked', tab_id)
@@ -9786,6 +9791,7 @@ async function component (opts, invite) {
       delete default_tabs[tab_id]
       if (active === el) active = null
       _.up('tab_close_clicked', {}, { id: tab_id, name })
+      sync_tab_count()
       if (Object.keys(default_tabs).length === 0) {
         _.up('all_tabs_closed', {}, null)
       }
@@ -9907,6 +9913,14 @@ async function component (opts, invite) {
     entries.classList.toggle('tile-inactive', !is_focused)
   }
 
+  function get_tab_count () {
+    return Object.keys(default_tabs).length + Object.keys(variable_tabs).length
+  }
+
+  function sync_tab_count () {
+    _.up('update_tab_count', {}, { count: get_tab_count() })
+  }
+
   async function create_btn ({ name, id }, index = 0) {
     if (variable_tabs[id]) {
       console.error('tabs: variable tab already exists', id)
@@ -9941,6 +9955,7 @@ async function component (opts, invite) {
       const data = { type: 'tab', sid: opts.sid }
       _.up('ui_focus', {}, data)
       _.up('tab_close_clicked', {}, { id, name })
+      sync_tab_count()
     }
     async function get_doc_content () {
       const doc_file = await drive.get('docs/README.md')
@@ -10138,7 +10153,7 @@ async function tabsbar (opts, invite) {
     show_collapsed_tab_group: handle_forward_tabs,
     hide_collapsed_tab_group: handle_forward_tabs,
     tile_focus_changed: handle_forward_tabs,
-    restore_tab: handle_forward_tabs
+    restore_tab: handle_forward_tabs,
   }
   const { io, _ } = net(id)
   const el = document.createElement('div')
@@ -10243,7 +10258,16 @@ async function tabsbar (opts, invite) {
   }
 
   function io_tabs () {
-    return function tabs_protocol (msg) { _.up(msg.type, msg.head ? { cause: msg.head } : {}, msg.data) }
+    return function tabs_protocol (msg) {
+      const action_handlers = {
+        update_tab_count: tabs_update_tab_count
+      }
+      const handler = action_handlers[msg.type] || tabs_forward_up
+      handler(msg)
+
+      function tabs_update_tab_count (msg) { _.task_manager(msg.type, msg.head ? { cause: msg.head } : {}, msg.data) }
+      function tabs_forward_up (msg) { _.up(msg.type, msg.head ? { cause: msg.head } : {}, msg.data) }
+    }
   }
 
   function io_task_manager () {
@@ -10580,6 +10604,10 @@ async function task_manager (opts, invite) {
     docs.register_actions(actions_data)
   }
 
+  const on_message = {
+    update_tab_count: handle_update_count
+  }
+
   const on = {
     style: inject,
     count: update_count
@@ -10626,9 +10654,12 @@ async function task_manager (opts, invite) {
 
   function io_up () {
     return function onmessage (msg) {
-      // Temporary placeholder
+      const handler = on_message[msg.type] || onmessage_fail
+      handler(msg)
     }
   }
+
+  function handle_update_count (msg) { update_count(msg.data.count) }
 
   async function onbatch (batch) {
     for (const { type, paths } of batch) {
